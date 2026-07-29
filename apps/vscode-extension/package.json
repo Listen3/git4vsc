@@ -1,0 +1,71 @@
+{
+  "name": "git4vsc",
+  "displayName": "Git4VSC",
+  "description": "Dense, native Git workflows and a topology-aware commit log.",
+  "version": "0.1.0",
+  "publisher": "git4vsc",
+  "private": true,
+  "type": "module",
+  "engines": { "vscode": "^1.102.0" },
+  "main": "./dist/extension.cjs",
+  "activationEvents": ["onStartupFinished"],
+  "scripts": {
+    "build": "pnpm build:webview && pnpm build:extension",
+    "build:webview": "vite build --config vite.config.ts",
+    "build:extension": "tsup --config tsup.config.ts",
+    "typecheck": "tsc --noEmit",
+    "test:extension": "node ./test/runTest.cjs"
+  },
+  "dependencies": {
+    "@git4vsc/git-core": "workspace:*",
+    "@git4vsc/repo-state": "workspace:*",
+    "@git4vsc/shared-types": "workspace:*",
+    "@git4vsc/ui": "workspace:*",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@types/vscode": "1.102.0",
+    "@vscode/test-electron": "^3.1.0",
+    "mocha": "^11.7.5"
+  },
+  "contributes": {
+    "commands": [
+      { "command": "git4vsc.refresh", "title": "Refresh", "category": "Git4VSC", "icon": "$(refresh)" },
+      { "command": "git4vsc.stage", "title": "Stage Changes", "category": "Git4VSC", "icon": "$(add)" },
+      { "command": "git4vsc.unstage", "title": "Unstage Changes", "category": "Git4VSC", "icon": "$(remove)" },
+      { "command": "git4vsc.commit", "title": "Commit Staged Changes", "category": "Git4VSC", "icon": "$(check)" },
+      { "command": "git4vsc.commitAll", "title": "Commit All Changes", "category": "Git4VSC" },
+      { "command": "git4vsc.openLog", "title": "Open Commit Log", "category": "Git4VSC", "icon": "$(git-commit)" }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "git4vsc", "title": "Git4VSC", "icon": "media/git4vsc.svg" }
+      ]
+    },
+    "views": {
+      "git4vsc": [
+        { "id": "git4vsc.repositories", "name": "Repositories" }
+      ]
+    },
+    "viewsWelcome": [
+      { "view": "git4vsc.repositories", "contents": "Open a folder containing a Git repository." }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "git4vsc.refresh", "when": "view == git4vsc.repositories", "group": "navigation@1" },
+        { "command": "git4vsc.openLog", "when": "view == git4vsc.repositories", "group": "navigation@2" }
+      ],
+      "scm/title": [
+        { "command": "git4vsc.openLog", "when": "scmProvider == git4vsc", "group": "navigation@10" },
+        { "command": "git4vsc.refresh", "when": "scmProvider == git4vsc", "group": "navigation@20" }
+      ],
+      "scm/resourceState/context": [
+        { "command": "git4vsc.stage", "when": "scmProvider == git4vsc && scmResourceGroup != staged", "group": "inline@1" },
+        { "command": "git4vsc.unstage", "when": "scmProvider == git4vsc && scmResourceGroup == staged", "group": "inline@1" }
+      ]
+    }
+  }
+}

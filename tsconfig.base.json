@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "baseUrl": ".",
+    "paths": {
+      "@git4vsc/shared-types": ["packages/shared-types/src/index.ts"],
+      "@git4vsc/git-core": ["packages/git-core/src/index.ts"],
+      "@git4vsc/git-graph": ["packages/git-graph/src/index.ts"],
+      "@git4vsc/repo-state": ["packages/repo-state/src/index.ts"],
+      "@git4vsc/ui": ["packages/ui/src/index.ts"]
+    },
+    "strict": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "ignoreDeprecations": "6.0",
+    "types": ["node"]
+  }
+}

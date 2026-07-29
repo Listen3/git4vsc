@@ -1,0 +1,13 @@
+{
+  "main": "dist/index.html",
+  "logo": "logo.svg",
+  "preload": "preload.cjs",
+  "features": [
+    {
+      "code": "git4vsc.repositories",
+      "explain": "打开 Git 仓库面板",
+      "cmds": ["Git 仓库", "Git 面板", "git4vsc", { "type": "files", "label": "在 Git4VSC 中打开", "fileType": "directory", "minLength": 1, "maxLength": 1 }]
+    }
+  ]
+}
+

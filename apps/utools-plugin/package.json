@@ -1,0 +1,23 @@
+{
+  "name": "git4vsc-utools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@git4vsc/git-core": "workspace:*",
+    "@git4vsc/repo-state": "workspace:*",
+    "@git4vsc/shared-types": "workspace:*",
+    "@git4vsc/ui": "workspace:*",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3"
+  }
+}
+
