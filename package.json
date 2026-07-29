@@ -8,6 +8,7 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "vitest run",
     "test:extension": "pnpm --filter git4vsc test:extension",
+    "package:vscode": "pnpm --filter git4vsc package:vsix",
     "lint": "eslint .",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
   },

@@ -4,4 +4,6 @@ packages:
 onlyBuiltDependencies:
   - esbuild
 allowBuilds:
+  '@vscode/vsce-sign': true
   esbuild: true
+  keytar: true

@@ -6,4 +6,4 @@ coverage/
 *.log
 .DS_Store
 .vscode-test/
-
+artifacts/
