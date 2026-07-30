@@ -102,14 +102,29 @@ JetBrains 图能力位于平台而非 Git4Idea：
 
 本工程当前永久图的原创算法用“期望 commit id lane 列表”：首 parent 延续当前 lane，已出现 parent 收拢到既有 lane，其余 parents 从节点中心分叉到相邻 lane；每行保存 before/after lane 与 parent/through connections，geometry 再生成上下半行坐标。它已覆盖重复 parent、merge、octopus、多 root/孤立 head；筛选可见图与跨分页永久稳定性列入下一里程碑。
 
-## 7. Diff、冲突、未跟踪、多仓库
+## 7. VCS Log 三栏交互实现
+
+本轮基于本地 `intellij-community` 源码定位了 Log 主界面的实际组合方式，而不是按截图拼 UI：
+
+| 区域/行为 | JetBrains 关键源码与职责 | Git4VSC 对应模块 |
+| --- | --- | --- |
+| 中央提交表和右侧详情 | `platform/vcs-log/impl/.../ui/frame/MainFrame.java` 组合 `VcsLogGraphTable`、`CommitDetailsLoader`、`VcsLogAsyncChangesTreeModel`、`VcsLogChangesBrowser` 和 `CommitDetailsListPanel`，选择提交后异步加载详情与文件变更 | `packages/ui/src/CommitLog.tsx`、`CommitDetailsPane.tsx`；`apps/vscode-extension/src/log-panel.ts` 负责请求并发、选择态和渐进加载 |
+| 左侧分支树 | `plugins/git4idea/backend/src/ui/branch/dashboard/BranchesInGitLogUiFactoryProvider.kt` 用 splitter 把分支面板装配到 `MainFrame`；分支选择通过 `VcsLogFilterUiEx.filterBy` 执行过滤或定位 | `packages/ui/src/BranchSidebar.tsx`；选择 ref 后向 extension host 发送受控查询 |
+| 分支分组/筛选 | `BranchesDashboardTreeComponent.kt`、`BranchesDashboardTreeModel.kt`、`BranchesDashboardFilteringLogic.kt` 组织 Local、Remote、Tags 和搜索；`BranchesDashboardActions.kt` 从 Action DataContext 取得仓库与选中 ref | `BranchSidebar.tsx` 本地构建树和搜索；`log-panel.ts` 校验 ref 后执行 checkout/create/merge 等动作 |
+| 提交详情 | `platform/vcs-log/impl/.../ui/details/commit/CommitDetailsPanel.kt` 展示完整 message、hash、author、refs、tag 和 containing branches | `packages/shared-types` 的 `CommitDetails`；`GitClient.commitDetails()`；`CommitDetailsPane.tsx` |
+| 提交/分支右键动作 | `GitLogSingleCommitAction.java` 和 `GitLogBranchOperationsActionGroup.java` 依赖 Action System 按 commit/ref/repository 动态启用操作 | `ContextMenu.tsx` 只呈现 intent；`log-panel.ts` 做输入、确认和通知；`RepositoryController` 用单仓库 operation queue 串行化写操作 |
+| 文件 Diff | JetBrains 复用平台 Changes Browser/Diff API，不在 Git4Idea UI 内渲染 diff | `GitContentProvider` 提供不可变 revision 内容，`log-panel.ts` 调用原生 `vscode.diff` |
+
+当前实现保留了同样的职责边界：React 只管理可见选择、尺寸和菜单；Git CLI、参数校验、确认、刷新与错误反馈全部位于 extension host 和共享核心。没有复制 Swing 代码、图标或 JetBrains 品牌素材。
+
+## 8. Diff、冲突、未跟踪、多仓库
 
 - Git4Idea 将变更采集交给 Git backend，把 Diff/Merge viewer、ChangeList、dirty scope 交给平台。
 - 未跟踪/忽略/已解决冲突使用独立 holder 和 invalidation，避免每次全盘扫描。
 - operation 类几乎都按 `GitRepository` 聚合结果。跨 root 有 compound result，但单 repository 状态和命令上下文不共享。
 - 本工程同样让 core 只返回 path/status/content；VS Code 用 `TextDocumentContentProvider + vscode.diff`；冲突 state machine 属于操作层，不塞进 renderer。
 
-## 8. 官方源码索引
+## 9. 官方源码索引
 
 - [Git4Idea backend](https://github.com/JetBrains/intellij-community/tree/master/plugins/git4idea/backend/src)
 - [Git 命令层](https://github.com/JetBrains/intellij-community/tree/master/plugins/git4idea/backend/src/commands)

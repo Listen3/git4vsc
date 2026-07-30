@@ -1,4 +1,4 @@
-import type { ChangeCode, CommitSummary, GitChange, GitRef } from '@git4vsc/shared-types';
+import type { ChangeCode, CommitFileChange, CommitSummary, GitChange, GitRef } from '@git4vsc/shared-types';
 
 export interface ParsedStatus {
   head: string | null;
@@ -131,4 +131,34 @@ export function parseLog(output: string): CommitSummary[] {
     });
   }
   return commits;
+}
+
+const fileStatuses: Record<string, CommitFileChange['status'] | undefined> = {
+  A: 'added',
+  M: 'modified',
+  D: 'deleted',
+  R: 'renamed',
+  C: 'copied',
+  T: 'type-changed',
+  U: 'unmerged'
+};
+
+export function parseNameStatus(output: string): CommitFileChange[] {
+  const fields = output.split('\0');
+  const changes: CommitFileChange[] = [];
+  for (let index = 0; index < fields.length;) {
+    const code = fields[index++];
+    if (!code) continue;
+    const kind = code[0] ?? 'U';
+    const status = fileStatuses[kind] ?? 'unmerged';
+    if (kind === 'R' || kind === 'C') {
+      const originalPath = fields[index++] ?? '';
+      const path = fields[index++] ?? '';
+      if (path) changes.push({ path, originalPath, status });
+    } else {
+      const path = fields[index++] ?? '';
+      if (path) changes.push({ path, status });
+    }
+  }
+  return changes;
 }

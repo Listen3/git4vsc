@@ -2,33 +2,75 @@
   --git4vsc-background: var(--vscode-editor-background, #1e1e1e);
   --git4vsc-foreground: var(--vscode-foreground, #cccccc);
   --git4vsc-border: var(--vscode-panel-border, #3c3c3c);
+  --git4vsc-muted: var(--vscode-descriptionForeground, #9d9d9d);
   font-family: var(--vscode-font-family, system-ui, sans-serif);
   color: var(--git4vsc-foreground);
   background: var(--git4vsc-background);
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; overflow: hidden; }
-button { font: inherit; color: inherit; }
-.repository-panel { min-width: 640px; }
-.repository-header {
-  height: 40px;
-  padding: 6px 10px;
+html, body, #root { width: 100%; height: 100%; }
+body { margin: 0; overflow: hidden; user-select: none; }
+button, input { font: inherit; color: inherit; }
+button { cursor: default; }
+
+.repository-panel {
+  width: 100%;
+  height: 100%;
+  min-width: 900px;
+  display: grid;
+  overflow: hidden;
+  background: var(--git4vsc-background);
+}
+
+.splitter { background: var(--git4vsc-border); cursor: col-resize; position: relative; z-index: 2; }
+.splitter:hover, .splitter:active { background: var(--vscode-focusBorder, #007fd4); }
+
+.branch-sidebar { min-width: 0; display: flex; flex-direction: column; background: var(--vscode-sideBar-background, var(--git4vsc-background)); overflow: hidden; }
+.sidebar-search, .log-search {
+  height: 28px;
+  margin: 6px 8px;
+  border: 1px solid var(--vscode-input-border, var(--git4vsc-border));
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, var(--git4vsc-foreground));
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--git4vsc-border);
+  gap: 5px;
+  padding: 0 7px;
 }
-.repository-header span { opacity: .75; margin-left: 8px; }
-.repository-header button {
-  border: 1px solid var(--vscode-button-border, transparent);
-  background: var(--vscode-button-background, #0e639c);
-  color: var(--vscode-button-foreground, white);
-  padding: 3px 10px;
-}
-.repository-error { color: var(--vscode-errorForeground, #f48771); padding: 5px 10px; }
-.commit-log { overflow: auto; position: relative; outline: none; }
-.commit-log-spacer { position: relative; min-width: 760px; }
+.sidebar-search:focus-within, .log-search:focus-within { border-color: var(--vscode-focusBorder, #007fd4); }
+.sidebar-search input, .log-search input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; }
+.sidebar-search input::placeholder, .log-search input::placeholder { color: var(--vscode-input-placeholderForeground, #a6a6a6); }
+.branch-tree { flex: 1; overflow: auto; padding: 2px 5px 12px; }
+.branch-group { margin: 1px 0; }
+.branch-group summary { height: 26px; padding: 4px 7px; display: flex; align-items: center; gap: 6px; color: var(--git4vsc-muted); list-style: none; }
+.branch-group summary::-webkit-details-marker { display: none; }
+.branch-group summary::before { content: '›'; width: 10px; transform: rotate(0deg); transition: transform 80ms; }
+.branch-group[open] > summary::before { transform: rotate(90deg); }
+.branch-count { margin-left: auto; opacity: .7; font-size: 11px; }
+.branch-group > div { padding-left: 10px; }
+.branch-group-nested > div { padding-left: 12px; }
+.branch-item { width: 100%; height: 25px; border: 0; border-radius: 3px; padding: 0 7px; display: flex; align-items: center; gap: 7px; background: transparent; text-align: left; white-space: nowrap; overflow: hidden; }
+.branch-item span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.branch-item:hover { background: var(--vscode-list-hoverBackground, #2a2d2e); }
+.branch-item.active { color: var(--vscode-list-activeSelectionForeground, #fff); background: var(--vscode-list-activeSelectionBackground, #04395e); }
+.branch-item.current { font-weight: 600; }
+.branch-icon { width: 13px; text-align: center; color: var(--vscode-gitDecoration-addedResourceForeground, #81b88b); }
+
+.log-pane { min-width: 0; height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+.log-toolbar { height: 40px; flex: 0 0 40px; padding: 0 4px; border-bottom: 1px solid var(--git4vsc-border); display: flex; align-items: center; gap: 4px; background: var(--vscode-editorGroupHeader-tabsBackground, var(--git4vsc-background)); }
+.log-search { width: min(320px, 45%); margin: 5px 3px; }
+.active-filter { max-width: 220px; padding: 3px 7px; border-radius: 3px; color: var(--git4vsc-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toolbar-spacer { flex: 1; }
+.icon-button { width: 28px; height: 28px; border: 0; border-radius: 3px; background: transparent; font-size: 18px; }
+.icon-button:hover { background: var(--vscode-toolbar-hoverBackground, #2a2d2e); }
+.icon-button:disabled { opacity: .45; }
+.repository-error { flex: 0 0 auto; color: var(--vscode-errorForeground, #f48771); background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 9%, transparent); border-bottom: 1px solid var(--git4vsc-border); padding: 5px 10px; }
+
+.commit-table { min-height: 0; flex: 1; display: flex; flex-direction: column; }
+.commit-columns { height: 25px; flex: 0 0 25px; padding: 0 8px 0 57px; display: grid; grid-template-columns: minmax(180px, 1fr) 120px 150px 70px; align-items: center; border-bottom: 1px solid var(--git4vsc-border); color: var(--git4vsc-muted); font-size: 11px; }
+.commit-log { min-height: 0; flex: 1; overflow: auto; position: relative; outline: none; }
+.commit-log-spacer { position: relative; min-width: 660px; }
 .commit-row {
   position: absolute;
   left: 0;
@@ -36,21 +78,58 @@ button { font: inherit; color: inherit; }
   width: 100%;
   padding: 0 8px 0 0;
   border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--git4vsc-border) 45%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--git4vsc-border) 38%, transparent);
   background: transparent;
   display: grid;
-  grid-template-columns: auto minmax(180px, 1fr) auto 110px 90px 68px;
+  grid-template-columns: auto minmax(180px, 1fr) 120px 150px 70px;
   align-items: center;
   text-align: left;
-  cursor: default;
 }
 .commit-row:hover { background: var(--vscode-list-hoverBackground, #2a2d2e); }
+.commit-row.selected { color: var(--vscode-list-activeSelectionForeground, #fff); background: var(--vscode-list-activeSelectionBackground, #04395e); }
 .commit-row:focus { outline: 1px solid var(--vscode-focusBorder, #007fd4); outline-offset: -1px; }
 .git-graph { display: block; }
-.commit-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.commit-refs { display: flex; gap: 3px; padding: 0 5px; }
-.commit-ref { border-radius: 8px; padding: 0 6px; font-size: 11px; white-space: nowrap; background: var(--vscode-badge-background, #4d4d4d); color: var(--vscode-badge-foreground, white); }
-.commit-ref-tag { border-radius: 2px; }
-.commit-author, .commit-row time, .commit-row code { opacity: .72; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.commit-loading { position: sticky; bottom: 0; padding: 4px 10px; background: var(--git4vsc-background); }
+.commit-main { min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; }
+.commit-subject { min-width: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commit-refs { display: flex; flex: 0 1 auto; gap: 3px; overflow: hidden; }
+.commit-ref { border-radius: 8px; padding: 1px 6px; font-size: 10px; line-height: 16px; white-space: nowrap; background: var(--vscode-badge-background, #4d4d4d); color: var(--vscode-badge-foreground, white); }
+.commit-ref-tag { border-radius: 2px; background: color-mix(in srgb, var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d) 40%, transparent); }
+.commit-author, .commit-row time, .commit-row code { color: currentColor; opacity: .72; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commit-loading { position: sticky; bottom: 0; padding: 5px 10px; background: var(--vscode-notifications-background, var(--git4vsc-background)); border-top: 1px solid var(--git4vsc-border); }
+.commit-empty { padding: 28px 16px; color: var(--git4vsc-muted); text-align: center; }
 
+.details-pane { min-width: 0; height: 100%; display: flex; flex-direction: column; overflow: hidden; background: var(--vscode-sideBar-background, var(--git4vsc-background)); }
+.details-empty { align-items: center; justify-content: center; padding: 24px; text-align: center; color: var(--git4vsc-muted); }
+.changed-files { min-height: 150px; flex: 3 1 58%; display: flex; flex-direction: column; border-bottom: 1px solid var(--git4vsc-border); overflow: hidden; }
+.changed-files > header { height: 34px; flex: 0 0 34px; padding: 0 10px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--git4vsc-border); }
+.changed-files > header span { color: var(--git4vsc-muted); font-size: 11px; }
+.file-tree { flex: 1; overflow: auto; padding: 5px; }
+.file-folder summary { height: 24px; padding: 3px 5px; color: var(--git4vsc-muted); list-style-position: inside; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-folder > div { padding-left: 13px; }
+.file-change { width: 100%; height: 24px; padding: 2px 5px; border: 0; border-radius: 3px; background: transparent; display: flex; gap: 7px; align-items: center; text-align: left; white-space: nowrap; overflow: hidden; }
+.file-change:hover { background: var(--vscode-list-hoverBackground, #2a2d2e); }
+.file-change span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.file-status { width: 14px; font-weight: 700; text-align: center; }
+.file-status-added { color: var(--vscode-gitDecoration-addedResourceForeground, #81b88b); }
+.file-status-modified, .file-status-renamed, .file-status-copied { color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d); }
+.file-status-deleted { color: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39); }
+.commit-details { min-height: 160px; flex: 2 1 42%; padding: 14px; overflow: auto; user-select: text; }
+.commit-details h2 { margin: 0 0 12px; font-size: 17px; line-height: 1.35; }
+.commit-meta { display: flex; flex-wrap: wrap; gap: 6px 10px; color: var(--git4vsc-muted); font-size: 12px; }
+.commit-meta code { color: var(--vscode-textLink-foreground, #3794ff); }
+.commit-secondary, .merge-note { margin-top: 7px; color: var(--git4vsc-muted); font-size: 12px; }
+.detail-refs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; }
+.detail-refs span { padding: 1px 6px; border-radius: 8px; background: var(--vscode-badge-background, #4d4d4d); color: var(--vscode-badge-foreground, #fff); font-size: 10px; }
+.commit-details pre { margin: 14px 0; white-space: pre-wrap; word-break: break-word; font: inherit; line-height: 1.45; }
+.containing-branches { color: var(--git4vsc-muted); font-size: 12px; line-height: 1.5; }
+
+.context-menu { position: fixed; z-index: 1000; width: 230px; padding: 5px; border: 1px solid var(--vscode-menu-border, var(--git4vsc-border)); border-radius: 4px; background: var(--vscode-menu-background, #252526); color: var(--vscode-menu-foreground, var(--git4vsc-foreground)); box-shadow: 0 4px 16px #0008; }
+.context-menu button { width: 100%; height: 27px; padding: 0 10px; border: 0; border-radius: 3px; background: transparent; text-align: left; }
+.context-menu button:hover:not(:disabled) { color: var(--vscode-menu-selectionForeground, #fff); background: var(--vscode-menu-selectionBackground, #04395e); }
+.context-menu button:disabled { color: var(--vscode-disabledForeground, #777); }
+.context-menu-separator { height: 1px; margin: 4px 6px; background: var(--vscode-menu-separatorBackground, var(--git4vsc-border)); }
+
+@media (max-width: 1050px) {
+  .commit-columns { grid-template-columns: minmax(180px, 1fr) 100px 110px 62px; }
+  .commit-row { grid-template-columns: auto minmax(180px, 1fr) 100px 110px 62px; }
+}

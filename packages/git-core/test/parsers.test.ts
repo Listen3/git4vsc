@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseLog, parsePorcelainV2, parseRefs } from '../src/parsers.js';
+import { parseLog, parseNameStatus, parsePorcelainV2, parseRefs } from '../src/parsers.js';
 
 describe('parsePorcelainV2', () => {
   it('parses branch metadata and every change class', () => {
@@ -52,3 +52,13 @@ describe('refs and log', () => {
   });
 });
 
+describe('parseNameStatus', () => {
+  it('parses ordinary, renamed and copied commit files', () => {
+    expect(parseNameStatus('M\0src/main.ts\0R100\0old.ts\0new.ts\0C090\0base.txt\0copy.txt\0D\0gone.txt\0')).toEqual([
+      { path: 'src/main.ts', status: 'modified' },
+      { path: 'new.ts', originalPath: 'old.ts', status: 'renamed' },
+      { path: 'copy.txt', originalPath: 'base.txt', status: 'copied' },
+      { path: 'gone.txt', status: 'deleted' }
+    ]);
+  });
+});

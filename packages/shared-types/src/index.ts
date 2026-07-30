@@ -62,6 +62,25 @@ export interface CommitPage {
   hasMore: boolean;
 }
 
+export interface LogQuery {
+  ref?: string;
+  text?: string;
+}
+
+export interface CommitFileChange {
+  path: string;
+  originalPath?: string;
+  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'copied' | 'type-changed' | 'unmerged';
+}
+
+export interface CommitDetails extends CommitSummary {
+  message: string;
+  committerName: string;
+  committerEmail: string;
+  files: CommitFileChange[];
+  containingBranches: string[];
+}
+
 export type RepositoryInvalidation = 'status' | 'log' | 'refs';
 
 export interface RepositorySnapshot {
@@ -72,4 +91,3 @@ export interface RepositorySnapshot {
   error: string | null;
   version: number;
 }
-

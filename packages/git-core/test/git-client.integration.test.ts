@@ -6,8 +6,8 @@ describe('GitClient against generated repositories', () => {
   let fixtures: FixtureSet;
   const client = new GitClient();
 
-  beforeAll(() => { fixtures = createFixtureSet(); });
-  afterAll(() => fixtures.cleanup());
+  beforeAll(() => { fixtures = createFixtureSet(); }, 30_000);
+  afterAll(() => fixtures.cleanup(), 30_000);
 
   it('reads refs, status and topological merge parents', async () => {
     const location = await client.discover(fixtures.history);
@@ -33,6 +33,25 @@ describe('GitClient against generated repositories', () => {
     expect(worktree.gitDir.toLowerCase()).toContain('worktrees');
     expect((await client.status(worktree)).phase).toBe('detached');
     expect((await client.status(submoduleHost)).changes).toEqual([]);
+  });
+
+  it('filters the log and loads full commit details with changed files', async () => {
+    const location = await client.discover(fixtures.history);
+    const feature = (await client.log(location, 0, 100, { text: 'feature commit' })).commits[0];
+    expect(feature?.subject).toBe('feature commit');
+    const byHash = await client.log(location, 0, 10, { text: feature!.hash.slice(0, 8) });
+    expect(byHash.commits.map(commit => commit.hash)).toEqual([feature!.hash]);
+    const details = await client.commitDetails(location, feature!.hash);
+    expect(details.message).toContain('feature commit');
+    expect(details.files).toContainEqual({ path: 'feature.txt', status: 'added' });
+    expect(details.containingBranches.length).toBeGreaterThan(0);
+  });
+
+  it('compares changed files between revisions', async () => {
+    const location = await client.discover(fixtures.history);
+    const feature = (await client.log(location, 0, 100, { text: 'feature commit' })).commits[0]!;
+    const files = await client.changedFiles(location, `${feature.hash}^`, feature.hash);
+    expect(files).toContainEqual({ path: 'feature.txt', status: 'added' });
   });
 
   it('commits and refreshes real status/log data', async () => {

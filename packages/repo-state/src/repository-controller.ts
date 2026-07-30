@@ -87,6 +87,34 @@ export class RepositoryController {
     return this.runOperation('commit', () => this.git.commit(this.location, message, all), ['status', 'log', 'refs']);
   }
 
+  createBranch(name: string, startPoint: string): Promise<void> {
+    return this.runOperation('create-branch', () => this.git.createBranch(this.location, name, startPoint), ['status', 'log', 'refs']);
+  }
+
+  createTag(name: string, startPoint: string): Promise<void> {
+    return this.runOperation('create-tag', () => this.git.createTag(this.location, name, startPoint), ['log', 'refs']);
+  }
+
+  checkout(target: string, detach = false, track = false): Promise<void> {
+    return this.runOperation('checkout', () => this.git.checkout(this.location, target, detach, track), ['status', 'log', 'refs']);
+  }
+
+  merge(ref: string): Promise<void> {
+    return this.runOperation('merge', () => this.git.merge(this.location, ref), ['status', 'log', 'refs']);
+  }
+
+  cherryPick(hash: string): Promise<void> {
+    return this.runOperation('cherry-pick', () => this.git.cherryPick(this.location, hash), ['status', 'log', 'refs']);
+  }
+
+  revert(hash: string): Promise<void> {
+    return this.runOperation('revert', () => this.git.revert(this.location, hash), ['status', 'log', 'refs']);
+  }
+
+  reset(hash: string, mode: 'soft' | 'mixed' | 'hard'): Promise<void> {
+    return this.runOperation('reset', () => this.git.reset(this.location, hash, mode), ['status', 'log', 'refs']);
+  }
+
   private runOperation(
     name: string,
     operation: () => Promise<void>,
@@ -112,4 +140,3 @@ export class RepositoryController {
     this.events.emit('change', this.mutable);
   }
 }
-

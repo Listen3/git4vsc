@@ -84,9 +84,9 @@ export class GitContentProvider implements vscode.TextDocumentContentProvider {
   constructor(private readonly repositories: () => readonly RepositoryController[]) {}
 
   async provideTextDocumentContent(uri: vscode.Uri): Promise<string> {
-    const request = JSON.parse(decodeURIComponent(uri.query)) as { root: string; path: string; revision: 'HEAD' | 'index' };
+    const request = JSON.parse(decodeURIComponent(uri.query)) as { root: string; path: string; revision: string | null };
     const repository = this.repositories().find(candidate => candidate.root === request.root);
-    if (!repository) return '';
+    if (!repository || request.revision === null) return '';
     try {
       return await repository.git.show(repository.location, request.path, request.revision);
     } catch {
@@ -94,4 +94,3 @@ export class GitContentProvider implements vscode.TextDocumentContentProvider {
     }
   }
 }
-
