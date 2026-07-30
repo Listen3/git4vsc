@@ -1,13 +1,63 @@
+import { join } from 'node:path';
 import * as vscode from 'vscode';
 import type { CommitDetails, CommitFileChange, CommitSummary, GitRef } from '@git4vsc/shared-types';
 import type { RepositoryController } from '@git4vsc/repo-state';
 
-type CommitAction = 'copyRevision' | 'copySubject' | 'createBranch' | 'createTag' | 'checkout' | 'cherryPick' | 'revert' | 'reset';
+type CommitAction = 'copyRevision' | 'copySubject' | 'createBranch' | 'createTag' | 'checkout' | 'compareLocal' | 'cherryPick' | 'revert' | 'reset';
 type RefAction = 'copy' | 'checkout' | 'createBranch' | 'compare' | 'merge';
 
-export class LogPanel {
-  private static readonly panels = new Map<string, LogPanel>();
+export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
+  private view: vscode.WebviewView | null = null;
+  private repository: RepositoryController | null = null;
+  private session: LogSession | null = null;
+
+  constructor(
+    private readonly context: vscode.ExtensionContext,
+    private readonly defaultRepository: () => RepositoryController | undefined
+  ) {}
+
+  resolveWebviewView(view: vscode.WebviewView): void {
+    this.view = view;
+    this.repository ??= this.defaultRepository() ?? null;
+    view.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview')]
+    };
+    view.onDidDispose(() => {
+      this.session?.dispose();
+      this.session = null;
+      this.view = null;
+    });
+    this.attach();
+  }
+
+  show(repository: RepositoryController): void {
+    this.repository = repository;
+    this.attach();
+    void vscode.commands.executeCommand('git4vsc.logView.focus').then(() => this.view?.show(true));
+  }
+
+  initialize(repository: RepositoryController | undefined): void {
+    if (this.repository || !repository) return;
+    this.repository = repository;
+    this.attach();
+  }
+
+  dispose(): void {
+    this.session?.dispose();
+    this.session = null;
+  }
+
+  private attach(): void {
+    if (!this.view || !this.repository) return;
+    this.session?.dispose();
+    this.session = new LogSession(this.context, this.repository, this.view);
+  }
+}
+
+class LogSession implements vscode.Disposable {
   private readonly unsubscribe: () => void;
+  private readonly messageSubscription: vscode.Disposable;
   private commits: CommitSummary[];
   private activeRef: string | null = null;
   private search = '';
@@ -21,31 +71,17 @@ export class LogPanel {
   private detailsRequest = 0;
   private repositoryVersion: number;
 
-  static show(context: vscode.ExtensionContext, repository: RepositoryController): void {
-    const existing = this.panels.get(repository.root);
-    if (existing) {
-      existing.panel.reveal();
-      existing.postSnapshot();
-      return;
-    }
-    const panel = vscode.window.createWebviewPanel('git4vsc.log', `Git Log — ${repository.snapshot.status?.branch ?? 'HEAD'}`, vscode.ViewColumn.Active, {
-      enableScripts: true,
-      retainContextWhenHidden: true,
-      localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview')]
-    });
-    this.panels.set(repository.root, new LogPanel(context, repository, panel));
-  }
-
-  private constructor(
+  constructor(
     context: vscode.ExtensionContext,
     private readonly repository: RepositoryController,
-    readonly panel: vscode.WebviewPanel
+    private readonly view: vscode.WebviewView
   ) {
     this.commits = [...repository.snapshot.commits];
     this.repositoryVersion = repository.snapshot.version;
-    panel.webview.html = this.html(context, panel.webview);
+    view.title = `Git Log — ${repository.snapshot.status?.branch ?? 'HEAD'}`;
+    view.webview.html = this.html(context, view.webview);
     this.unsubscribe = repository.onDidChange(snapshot => {
-      panel.title = `Git Log — ${snapshot.status?.branch ?? 'HEAD'}`;
+      view.title = `Git Log — ${snapshot.status?.branch ?? 'HEAD'}`;
       if (snapshot.version !== this.repositoryVersion) {
         this.repositoryVersion = snapshot.version;
         void this.loadLog(true);
@@ -53,14 +89,15 @@ export class LogPanel {
         this.postSnapshot();
       }
     });
-    panel.webview.onDidReceiveMessage(message => void this.handleMessage(message));
-    panel.onDidDispose(() => {
-      this.logRequest += 1;
-      this.detailsRequest += 1;
-      this.unsubscribe();
-      LogPanel.panels.delete(repository.root);
-    });
+    this.messageSubscription = view.webview.onDidReceiveMessage(message => void this.handleMessage(message));
     void this.loadLog(true);
+  }
+
+  dispose(): void {
+    this.logRequest += 1;
+    this.detailsRequest += 1;
+    this.unsubscribe();
+    this.messageSubscription.dispose();
   }
 
   private async handleMessage(message: unknown): Promise<void> {
@@ -190,6 +227,10 @@ export class LogPanel {
       if (confirmed) await this.repository.checkout(commit.hash, true);
       return;
     }
+    if (action === 'compareLocal') {
+      await this.compareCommitWithLocal(commit);
+      return;
+    }
     if (action === 'cherryPick') {
       const confirmed = await vscode.window.showWarningMessage(`Cherry-pick ${commit.hash.slice(0, 8)} onto the current branch?`, { modal: true }, 'Cherry-Pick');
       if (confirmed) await this.repository.cherryPick(commit.hash);
@@ -201,6 +242,25 @@ export class LogPanel {
       return;
     }
     if (action === 'reset') await this.resetTo(commit.hash);
+  }
+
+  private async compareCommitWithLocal(commit: CommitSummary): Promise<void> {
+    const files = await this.repository.git.changedFiles(this.repository.location, commit.hash);
+    if (files.length === 0) {
+      void vscode.window.showInformationMessage(`${commit.hash.slice(0, 8)} has no file differences from the local working tree.`);
+      return;
+    }
+    const picked = await vscode.window.showQuickPick(files.map(change => ({
+      label: change.path,
+      description: change.status,
+      change
+    })), { title: `${commit.hash.slice(0, 8)} ↔ Local (${files.length} files)`, placeHolder: 'Select a file to open its diff' });
+    if (!picked) return;
+    const change = picked.change;
+    const leftPath = change.originalPath ?? change.path;
+    const left = revisionUri(this.repository, leftPath, change.status === 'added' ? null : commit.hash);
+    const right = change.status === 'deleted' ? revisionUri(this.repository, change.path, null) : vscode.Uri.file(join(this.repository.root, change.path));
+    await vscode.commands.executeCommand('vscode.diff', left, right, `${change.path} (${commit.hash.slice(0, 8)} ↔ Local)`);
   }
 
   private async resetTo(hash: string): Promise<void> {
@@ -280,7 +340,7 @@ export class LogPanel {
 
   private postSnapshot(): void {
     const snapshot = this.repository.snapshot;
-    void this.panel.webview.postMessage({
+    void this.view.webview.postMessage({
       type: 'snapshot',
       state: {
         status: snapshot.status,

@@ -40,7 +40,7 @@ describe('refs and log', () => {
   });
 
   it('parses NUL-delimited topological metadata', () => {
-    const output = ['abc', 'p1 p2', 'Ada', 'ada@example.com', '10', '11', 'merge subject', 'HEAD -> refs/heads/main, refs/tags/v1'].join('\0') + '\0';
+    const output = ['abc', 'p1 p2', 'Ada', 'ada@example.com', '10', '11', 'merge subject', 'HEAD -> refs/heads/main, refs/remotes/origin/HEAD, refs/tags/v1'].join('\0') + '\0';
     expect(parseLog(output)).toEqual([{
       hash: 'abc', parents: ['p1', 'p2'], authorName: 'Ada', authorEmail: 'ada@example.com',
       authorTime: 10, committerTime: 11, subject: 'merge subject',

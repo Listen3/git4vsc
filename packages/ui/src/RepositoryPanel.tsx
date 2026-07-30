@@ -28,8 +28,8 @@ export interface RepositoryPanelProps {
 export function RepositoryPanel(props: RepositoryPanelProps) {
   const { status, commits, activeRef, search, selectedHash, details, hasMore, loading, detailsLoading, error } = props;
   const [searchDraft, setSearchDraft] = useState(search);
-  const [leftWidth, setLeftWidth] = useState(230);
-  const [rightWidth, setRightWidth] = useState(360);
+  const [leftWidth, setLeftWidth] = useState(210);
+  const [rightWidth, setRightWidth] = useState(330);
 
   useEffect(() => setSearchDraft(search), [search]);
   useEffect(() => {
@@ -56,9 +56,9 @@ export function RepositoryPanel(props: RepositoryPanelProps) {
 
   const activeLabel = activeRef === null ? 'All branches' : activeRef === 'HEAD' ? 'HEAD' : status?.refs.find(ref => ref.fullName === activeRef)?.name ?? activeRef;
   return (
-    <main className="repository-panel" style={{ gridTemplateColumns: `${leftWidth}px 4px minmax(360px, 1fr) 4px ${rightWidth}px` }}>
+    <main className="repository-panel" style={{ gridTemplateColumns: `${leftWidth}px 3px minmax(320px, 1fr) 3px ${rightWidth}px` }}>
       <BranchSidebar status={status} activeRef={activeRef} onSelectRef={props.onSelectRef} onRefAction={props.onRefAction} />
-      <div className="splitter" onPointerDown={event => startResize('left', event)} onDoubleClick={() => setLeftWidth(230)} />
+      <div className="splitter" onPointerDown={event => startResize('left', event)} onDoubleClick={() => setLeftWidth(210)} />
       <section className="log-pane">
         <header className="log-toolbar">
           <div className="log-search"><span>⌕</span><input value={searchDraft} onChange={event => setSearchDraft(event.target.value)} placeholder="Text or hash" /></div>
@@ -69,7 +69,7 @@ export function RepositoryPanel(props: RepositoryPanelProps) {
         {error && <div className="repository-error">{error}</div>}
         <CommitLog commits={commits} selectedHash={selectedHash} hasMore={hasMore} loading={loading} onLoadMore={props.onLoadMore} onSelectCommit={props.onSelectCommit} onCommitAction={props.onCommitAction} />
       </section>
-      <div className="splitter" onPointerDown={event => startResize('right', event)} onDoubleClick={() => setRightWidth(360)} />
+      <div className="splitter" onPointerDown={event => startResize('right', event)} onDoubleClick={() => setRightWidth(330)} />
       <CommitDetailsPane details={details} loading={detailsLoading} onOpenFile={props.onOpenFile} />
     </main>
   );

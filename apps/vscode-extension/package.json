@@ -50,11 +50,17 @@
     "viewsContainers": {
       "activitybar": [
         { "id": "git4vsc", "title": "Git4VSC", "icon": "media/git4vsc.svg" }
+      ],
+      "panel": [
+        { "id": "git4vscLogPanel", "title": "Git Log", "icon": "media/git4vsc.svg" }
       ]
     },
     "views": {
       "git4vsc": [
         { "id": "git4vsc.repositories", "name": "Repositories" }
+      ],
+      "git4vscLogPanel": [
+        { "type": "webview", "id": "git4vsc.logView", "name": "Log" }
       ]
     },
     "viewsWelcome": [

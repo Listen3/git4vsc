@@ -29,7 +29,7 @@ export function ContextMenu({ x, y, items, onSelect, onClose }: {
 
   const width = 230;
   const left = Math.min(x, window.innerWidth - width - 8);
-  const top = Math.min(y, window.innerHeight - items.length * 28 - 8);
+  const top = Math.min(y, window.innerHeight - items.length * 25 - 8);
   return (
     <div className="context-menu" style={{ left: Math.max(8, left), top: Math.max(8, top) }} onPointerDown={event => event.stopPropagation()}>
       {items.map((item, index) => item.separator

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { CommitDetails, CommitFileChange } from '@git4vsc/shared-types';
 
 interface FileNode {
@@ -33,14 +33,16 @@ export function CommitDetailsPane({ details, loading, onOpenFile }: {
   loading?: boolean | undefined;
   onOpenFile?: ((change: CommitFileChange) => void) | undefined;
 }) {
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const tree = useMemo(() => fileTree(details?.files ?? []), [details]);
+  useEffect(() => setSelectedPath(null), [details?.hash]);
   if (loading) return <aside className="details-pane details-empty">Loading commit details…</aside>;
   if (!details) return <aside className="details-pane details-empty">Select a commit to view its details and changed files.</aside>;
   return (
     <aside className="details-pane" aria-label="Commit details">
       <section className="changed-files">
         <header><strong>Changes</strong><span>{details.files.length} files</span></header>
-        <div className="file-tree">{[...tree.children.values()].map(node => <FileTreeNode key={node.path} node={node} onOpenFile={onOpenFile} />)}</div>
+        <div className="file-tree">{[...tree.children.values()].map(node => <FileTreeNode key={node.path} node={node} selectedPath={selectedPath} onSelect={setSelectedPath} onOpenFile={onOpenFile} />)}</div>
       </section>
       <section className="commit-details">
         <h2>{details.subject}</h2>
@@ -55,14 +57,19 @@ export function CommitDetailsPane({ details, loading, onOpenFile }: {
   );
 }
 
-function FileTreeNode({ node, onOpenFile }: { node: FileNode; onOpenFile?: ((change: CommitFileChange) => void) | undefined }) {
+function FileTreeNode({ node, selectedPath, onSelect, onOpenFile }: {
+  node: FileNode;
+  selectedPath: string | null;
+  onSelect: (path: string) => void;
+  onOpenFile?: ((change: CommitFileChange) => void) | undefined;
+}) {
   if (node.change) {
-    return <button type="button" className="file-change" title={node.change.originalPath ? `${node.change.originalPath} → ${node.change.path}` : node.change.path} onClick={() => onOpenFile?.(node.change!)}><span className={`file-status file-status-${node.change.status}`}>{statusLetter[node.change.status]}</span><span>{node.name}</span></button>;
+    return <button type="button" className={`file-change${selectedPath === node.path ? ' selected' : ''}`} title={node.change.originalPath ? `${node.change.originalPath} → ${node.change.path}` : node.change.path} onClick={() => onSelect(node.path)} onDoubleClick={() => onOpenFile?.(node.change!)}><span className={`file-status file-status-${node.change.status}`}>{statusLetter[node.change.status]}</span><span>{node.name}</span></button>;
   }
   return (
     <details className="file-folder" open>
       <summary>{node.name}</summary>
-      <div>{[...node.children.values()].map(child => <FileTreeNode key={child.path} node={child} onOpenFile={onOpenFile} />)}</div>
+      <div>{[...node.children.values()].map(child => <FileTreeNode key={child.path} node={child} selectedPath={selectedPath} onSelect={onSelect} onOpenFile={onOpenFile} />)}</div>
     </details>
   );
 }

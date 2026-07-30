@@ -134,8 +134,8 @@ export class GitClient {
     return result.stdout;
   }
 
-  async changedFiles(location: RepositoryLocation, from: string, to: string): Promise<CommitFileChange[]> {
-    const result = await this.runner.run(['-C', location.root, 'diff', '--name-status', '-z', '-M', '-C', from, to, '--']);
+  async changedFiles(location: RepositoryLocation, from: string, to?: string): Promise<CommitFileChange[]> {
+    const result = await this.runner.run(['-C', location.root, 'diff', '--name-status', '-z', '-M', '-C', from, ...(to ? [to] : []), '--']);
     return parseNameStatus(result.stdout);
   }
 

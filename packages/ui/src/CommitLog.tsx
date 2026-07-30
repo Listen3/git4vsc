@@ -4,7 +4,7 @@ import type { CommitSummary } from '@git4vsc/shared-types';
 import { CommitGraph } from './CommitGraph.js';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu.js';
 
-export type CommitAction = 'copyRevision' | 'copySubject' | 'createBranch' | 'createTag' | 'checkout' | 'cherryPick' | 'revert' | 'reset';
+export type CommitAction = 'copyRevision' | 'copySubject' | 'createBranch' | 'createTag' | 'checkout' | 'compareLocal' | 'cherryPick' | 'revert' | 'reset';
 
 export interface CommitLogProps {
   commits: readonly CommitSummary[];
@@ -16,7 +16,7 @@ export interface CommitLogProps {
   onCommitAction?: ((action: CommitAction, commit: CommitSummary) => void) | undefined;
 }
 
-const rowHeight = 30;
+const rowHeight = 25;
 const overscan = 10;
 
 export function CommitLog({ commits, selectedHash, hasMore = false, loading = false, onLoadMore, onSelectCommit, onCommitAction }: CommitLogProps) {
@@ -59,10 +59,11 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
     { id: 'createBranch', label: 'New Branch…' },
     { id: 'createTag', label: 'New Tag…' },
     { id: 'checkout', label: 'Checkout Revision…' },
+    { id: 'compareLocal', label: 'Compare with Local' },
     { id: 'separator-2', separator: true },
     { id: 'cherryPick', label: 'Cherry-Pick…' },
-    { id: 'revert', label: 'Revert Commit…' },
-    { id: 'reset', label: 'Reset Current Branch to Here…' }
+    { id: 'reset', label: 'Reset Current Branch to Here…' },
+    { id: 'revert', label: 'Revert Commit…' }
   ];
 
   return (
@@ -83,7 +84,6 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
                 key={commit.hash}
                 style={{ height: rowHeight, top: index * rowHeight }}
                 onClick={() => onSelectCommit?.(commit)}
-                onDoubleClick={() => onCommitAction?.('copyRevision', commit)}
                 onContextMenu={event => { event.preventDefault(); onSelectCommit?.(commit); setMenu({ x: event.clientX, y: event.clientY, commit }); }}
                 onKeyDown={event => navigate(event, index)}
               >

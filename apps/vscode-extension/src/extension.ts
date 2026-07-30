@@ -8,7 +8,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const manager = new RepositoryManager();
   const adapters: ScmRepositoryAdapter[] = [];
   const tree = new RepositoryTree(() => manager.all);
+  const logPanel = new LogPanel(context, () => manager.all[0]);
   context.subscriptions.push(vscode.window.registerTreeDataProvider('git4vsc.repositories', tree));
+  context.subscriptions.push(logPanel, vscode.window.registerWebviewViewProvider('git4vsc.logView', logPanel, { webviewOptions: { retainContextWhenHidden: true } }));
   context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider('git4vsc', new GitContentProvider(() => manager.all)));
 
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
@@ -24,6 +26,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   }
   tree.refresh();
+  logPanel.initialize(manager.all[0]);
 
   const selectedRepository = (value?: RepositoryController | GitResourceState): RepositoryController | undefined => {
     if (value && 'location' in value) return value;
@@ -70,7 +73,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand('git4vsc.openLog', (value?: RepositoryController | GitResourceState) => {
       const repository = selectedRepository(value);
-      if (repository) LogPanel.show(context, repository);
+      if (repository) logPanel.show(repository);
     })
   );
 }

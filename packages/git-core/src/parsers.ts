@@ -108,7 +108,8 @@ export function parseRefs(output: string): GitRef[] {
 function decorationRef(value: string, hash: string): GitRef | null {
   const fullName = value.trim().replace(/^HEAD ->\s*/, '');
   if (fullName === 'HEAD') return { name: 'HEAD', fullName: 'HEAD', hash, type: 'head' };
-  return parseRefs(`${fullName}\t${hash}`)[0] ?? null;
+  const ref = parseRefs(`${fullName}\t${hash}`)[0] ?? null;
+  return ref?.type === 'remote-branch' && ref.name.endsWith('/HEAD') ? null : ref;
 }
 
 export function parseLog(output: string): CommitSummary[] {
