@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { RepositoryPanel } from '@git4vsc/ui';
 import '@git4vsc/ui/styles.css';
 import type { CommitDetails, CommitFileChange, CommitSummary, GitRef, RepositoryStatus } from '@git4vsc/shared-types';
-import type { CommitAction, RefAction } from '@git4vsc/ui';
+import type { CommitAction, RefAction, RemoteAction } from '@git4vsc/ui';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 const vscode = acquireVsCodeApi();
@@ -12,6 +12,7 @@ interface ViewState {
   status: RepositoryStatus | null;
   commits: CommitSummary[];
   activeRef: string | null;
+  favoriteRefs: string[];
   search: string;
   selectedHash: string | null;
   details: CommitDetails | null;
@@ -22,7 +23,7 @@ interface ViewState {
 }
 
 function App() {
-  const [state, setState] = useState<ViewState>({ status: null, commits: [], activeRef: null, search: '', selectedHash: null, details: null, hasMore: false, loading: true, detailsLoading: false, error: null });
+  const [state, setState] = useState<ViewState>({ status: null, commits: [], activeRef: null, favoriteRefs: [], search: '', selectedHash: null, details: null, hasMore: false, loading: true, detailsLoading: false, error: null });
   useEffect(() => {
     const listener = (event: MessageEvent<{ type: string; state: ViewState }>) => {
       if (event.data.type === 'snapshot') setState(event.data.state);
@@ -41,6 +42,7 @@ function App() {
     onOpenFile={(change: CommitFileChange) => vscode.postMessage({ type: 'openCommitDiff', hash: state.selectedHash, change })}
     onCommitAction={(action: CommitAction, commit: CommitSummary) => vscode.postMessage({ type: 'commitAction', action, hash: commit.hash })}
     onRefAction={(action: RefAction, ref: GitRef | null) => vscode.postMessage({ type: 'refAction', action, fullName: ref?.fullName ?? null })}
+    onRemoteAction={(action: RemoteAction, remote: string | null) => vscode.postMessage({ type: 'remoteAction', action, remote })}
   />;
 }
 

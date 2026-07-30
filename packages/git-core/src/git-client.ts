@@ -143,6 +143,20 @@ export class GitClient {
     await this.runner.run(['-C', location.root, 'branch', name, startPoint]);
   }
 
+  async createAndCheckoutBranch(location: RepositoryLocation, name: string, startPoint: string): Promise<void> {
+    await this.runner.run(['-C', location.root, 'switch', '--create', name, startPoint]);
+  }
+
+  async checkoutAndUpdate(location: RepositoryLocation, branch: string, upstream: string): Promise<void> {
+    const [remote, remoteBranch] = splitRemoteBranch(upstream);
+    await this.runner.run(['-C', location.root, 'switch', branch]);
+    await this.runner.run(['-C', location.root, 'pull', '--no-rebase', '--no-edit', remote, remoteBranch]);
+  }
+
+  async checkoutAndRebase(location: RepositoryLocation, branch: string, currentBranch: string): Promise<void> {
+    await this.runner.run(['-C', location.root, 'rebase', currentBranch, branch]);
+  }
+
   async createTag(location: RepositoryLocation, name: string, startPoint: string): Promise<void> {
     await this.runner.run(['-C', location.root, 'tag', name, startPoint]);
   }
@@ -159,6 +173,85 @@ export class GitClient {
     await this.runner.run(['-C', location.root, 'merge', '--no-edit', ref]);
   }
 
+  async rebase(location: RepositoryLocation, ref: string): Promise<void> {
+    await this.runner.run(['-C', location.root, 'rebase', ref]);
+  }
+
+  async renameBranch(location: RepositoryLocation, oldName: string, newName: string): Promise<void> {
+    await this.runner.run(['-C', location.root, 'branch', '--move', oldName, newName]);
+  }
+
+  async deleteBranch(location: RepositoryLocation, name: string, force = false): Promise<void> {
+    await this.runner.run(['-C', location.root, 'branch', force ? '-D' : '-d', name]);
+  }
+
+  async deleteRemoteBranch(location: RepositoryLocation, remote: string, branch: string): Promise<void> {
+    await this.runner.run(['-C', location.root, 'push', remote, '--delete', branch]);
+  }
+
+  async deleteTag(location: RepositoryLocation, name: string): Promise<void> {
+    await this.runner.run(['-C', location.root, 'tag', '--delete', name]);
+  }
+
+  async remotes(location: RepositoryLocation): Promise<string[]> {
+    const result = await this.runner.run(['-C', location.root, 'remote']);
+    return result.stdout.split(/\r?\n/).filter(Boolean);
+  }
+
+  async fetchRemote(location: RepositoryLocation, remote?: string): Promise<void> {
+    await this.runner.run(['-C', location.root, 'fetch', ...(remote ? [remote] : ['--all'])]);
+  }
+
+  async addRemote(location: RepositoryLocation, name: string, url: string): Promise<void> {
+    await this.runner.run(['-C', location.root, 'remote', 'add', name, url]);
+  }
+
+  async setRemoteUrl(location: RepositoryLocation, name: string, url: string): Promise<void> {
+    await this.runner.run(['-C', location.root, 'remote', 'set-url', name, url]);
+  }
+
+  async removeRemote(location: RepositoryLocation, name: string): Promise<void> {
+    await this.runner.run(['-C', location.root, 'remote', 'remove', name]);
+  }
+
+  async remoteUrl(location: RepositoryLocation, name: string): Promise<string> {
+    const result = await this.runner.run(['-C', location.root, 'remote', 'get-url', name]);
+    return result.stdout.trim();
+  }
+
+  async branchUpstream(location: RepositoryLocation, branch: string): Promise<string | null> {
+    const result = await this.runner.run(['-C', location.root, 'for-each-ref', '--format=%(upstream:short)', `refs/heads/${branch}`]);
+    return result.stdout.trim() || null;
+  }
+
+  async setUpstream(location: RepositoryLocation, branch: string, upstream: string): Promise<void> {
+    await this.runner.run(['-C', location.root, 'branch', `--set-upstream-to=${upstream}`, branch]);
+  }
+
+  async updateBranch(location: RepositoryLocation, branch: string, upstream: string): Promise<void> {
+    const separator = upstream.indexOf('/');
+    if (separator < 1) throw new Error(`Invalid upstream branch: ${upstream}`);
+    const remote = upstream.slice(0, separator);
+    const remoteBranch = upstream.slice(separator + 1);
+    await this.runner.run(['-C', location.root, 'fetch', remote, `${remoteBranch}:${branch}`]);
+  }
+
+  async pushBranch(location: RepositoryLocation, branch: string, remote: string): Promise<void> {
+    await this.runner.run(['-C', location.root, 'push', '--set-upstream', remote, branch]);
+  }
+
+  async pullBranch(location: RepositoryLocation, remote: string, branch: string, rebase: boolean): Promise<void> {
+    await this.runner.run(['-C', location.root, 'pull', rebase ? '--rebase' : '--no-rebase', ...(rebase ? [] : ['--no-edit']), remote, branch]);
+  }
+
+  async pushTag(location: RepositoryLocation, name: string, remote: string): Promise<void> {
+    await this.runner.run(['-C', location.root, 'push', remote, `refs/tags/${name}`]);
+  }
+
+  async addWorktree(location: RepositoryLocation, path: string, ref: string, newBranch?: string): Promise<void> {
+    await this.runner.run(['-C', location.root, 'worktree', 'add', ...(newBranch ? ['-b', newBranch] : ['--detach']), path, ref]);
+  }
+
   async cherryPick(location: RepositoryLocation, hash: string): Promise<void> {
     await this.runner.run(['-C', location.root, 'cherry-pick', hash]);
   }
@@ -170,4 +263,10 @@ export class GitClient {
   async reset(location: RepositoryLocation, hash: string, mode: 'soft' | 'mixed' | 'hard'): Promise<void> {
     await this.runner.run(['-C', location.root, 'reset', `--${mode}`, hash]);
   }
+}
+
+function splitRemoteBranch(value: string): [string, string] {
+  const separator = value.indexOf('/');
+  if (separator < 1) throw new Error(`Invalid remote branch: ${value}`);
+  return [value.slice(0, separator), value.slice(separator + 1)];
 }

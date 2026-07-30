@@ -91,6 +91,18 @@ export class RepositoryController {
     return this.runOperation('create-branch', () => this.git.createBranch(this.location, name, startPoint), ['status', 'log', 'refs']);
   }
 
+  createAndCheckoutBranch(name: string, startPoint: string): Promise<void> {
+    return this.runOperation('checkout-new-branch', () => this.git.createAndCheckoutBranch(this.location, name, startPoint), ['status', 'log', 'refs']);
+  }
+
+  checkoutAndUpdate(branch: string, upstream: string): Promise<void> {
+    return this.runOperation('checkout-update', () => this.git.checkoutAndUpdate(this.location, branch, upstream), ['status', 'log', 'refs']);
+  }
+
+  checkoutAndRebase(branch: string, currentBranch: string): Promise<void> {
+    return this.runOperation('checkout-rebase', () => this.git.checkoutAndRebase(this.location, branch, currentBranch), ['status', 'log', 'refs']);
+  }
+
   createTag(name: string, startPoint: string): Promise<void> {
     return this.runOperation('create-tag', () => this.git.createTag(this.location, name, startPoint), ['log', 'refs']);
   }
@@ -101,6 +113,66 @@ export class RepositoryController {
 
   merge(ref: string): Promise<void> {
     return this.runOperation('merge', () => this.git.merge(this.location, ref), ['status', 'log', 'refs']);
+  }
+
+  rebase(ref: string): Promise<void> {
+    return this.runOperation('rebase', () => this.git.rebase(this.location, ref), ['status', 'log', 'refs']);
+  }
+
+  renameBranch(oldName: string, newName: string): Promise<void> {
+    return this.runOperation('rename-branch', () => this.git.renameBranch(this.location, oldName, newName), ['status', 'log', 'refs']);
+  }
+
+  deleteBranch(name: string, force = false): Promise<void> {
+    return this.runOperation('delete-branch', () => this.git.deleteBranch(this.location, name, force), ['status', 'log', 'refs']);
+  }
+
+  deleteRemoteBranch(remote: string, branch: string): Promise<void> {
+    return this.runOperation('delete-remote-branch', () => this.git.deleteRemoteBranch(this.location, remote, branch), ['status', 'log', 'refs']);
+  }
+
+  deleteTag(name: string): Promise<void> {
+    return this.runOperation('delete-tag', () => this.git.deleteTag(this.location, name), ['log', 'refs']);
+  }
+
+  setUpstream(branch: string, upstream: string): Promise<void> {
+    return this.runOperation('set-upstream', () => this.git.setUpstream(this.location, branch, upstream), ['status', 'refs']);
+  }
+
+  updateBranch(branch: string, upstream: string): Promise<void> {
+    return this.runOperation('update-branch', () => this.git.updateBranch(this.location, branch, upstream), ['status', 'log', 'refs']);
+  }
+
+  pushBranch(branch: string, remote: string): Promise<void> {
+    return this.runOperation('push-branch', () => this.git.pushBranch(this.location, branch, remote), ['status', 'log', 'refs']);
+  }
+
+  pullBranch(remote: string, branch: string, rebase: boolean): Promise<void> {
+    return this.runOperation(rebase ? 'pull-rebase' : 'pull-merge', () => this.git.pullBranch(this.location, remote, branch, rebase), ['status', 'log', 'refs']);
+  }
+
+  pushTag(name: string, remote: string): Promise<void> {
+    return this.runOperation('push-tag', () => this.git.pushTag(this.location, name, remote), ['log', 'refs']);
+  }
+
+  fetchRemote(remote?: string): Promise<void> {
+    return this.runOperation('fetch', () => this.git.fetchRemote(this.location, remote), ['status', 'log', 'refs']);
+  }
+
+  addRemote(name: string, url: string): Promise<void> {
+    return this.runOperation('add-remote', () => this.git.addRemote(this.location, name, url), ['status', 'refs']);
+  }
+
+  setRemoteUrl(name: string, url: string): Promise<void> {
+    return this.runOperation('edit-remote', () => this.git.setRemoteUrl(this.location, name, url), ['status', 'refs']);
+  }
+
+  removeRemote(name: string): Promise<void> {
+    return this.runOperation('remove-remote', () => this.git.removeRemote(this.location, name), ['status', 'log', 'refs']);
+  }
+
+  addWorktree(path: string, ref: string, newBranch?: string): Promise<void> {
+    return this.runOperation('add-worktree', () => this.git.addWorktree(this.location, path, ref, newBranch), ['refs']);
   }
 
   cherryPick(hash: string): Promise<void> {
@@ -123,12 +195,18 @@ export class RepositoryController {
     return this.operations.run(async () => {
       this.patch({ operation: name, error: null });
       try {
-        await operation();
+        let operationError: unknown = null;
+        try {
+          await operation();
+        } catch (error) {
+          operationError = error;
+        }
         this.invalidate(...invalidations);
         await this.refresh();
-      } catch (error) {
-        this.patch({ error: error instanceof Error ? error.message : String(error) });
-        throw error;
+        if (operationError !== null) {
+          this.patch({ error: operationError instanceof Error ? operationError.message : String(operationError) });
+          throw operationError;
+        }
       } finally {
         this.patch({ operation: null });
       }

@@ -1,6 +1,6 @@
 import { useEffect, useState, type PointerEvent } from 'react';
 import type { CommitDetails, CommitFileChange, CommitSummary, GitRef, RepositoryStatus } from '@git4vsc/shared-types';
-import { BranchSidebar, type RefAction } from './BranchSidebar.js';
+import { BranchSidebar, type RefAction, type RemoteAction } from './BranchSidebar.js';
 import { CommitDetailsPane } from './CommitDetailsPane.js';
 import { CommitLog, type CommitAction } from './CommitLog.js';
 
@@ -8,6 +8,7 @@ export interface RepositoryPanelProps {
   status: RepositoryStatus | null;
   commits: readonly CommitSummary[];
   activeRef: string | null;
+  favoriteRefs?: readonly string[] | undefined;
   search: string;
   selectedHash: string | null;
   details: CommitDetails | null;
@@ -23,10 +24,11 @@ export interface RepositoryPanelProps {
   onOpenFile?: ((change: CommitFileChange) => void) | undefined;
   onCommitAction?: ((action: CommitAction, commit: CommitSummary) => void) | undefined;
   onRefAction?: ((action: RefAction, ref: GitRef | null) => void) | undefined;
+  onRemoteAction?: ((action: RemoteAction, remote: string | null) => void) | undefined;
 }
 
 export function RepositoryPanel(props: RepositoryPanelProps) {
-  const { status, commits, activeRef, search, selectedHash, details, hasMore, loading, detailsLoading, error } = props;
+  const { status, commits, activeRef, favoriteRefs, search, selectedHash, details, hasMore, loading, detailsLoading, error } = props;
   const [searchDraft, setSearchDraft] = useState(search);
   const [leftWidth, setLeftWidth] = useState(210);
   const [rightWidth, setRightWidth] = useState(330);
@@ -57,7 +59,7 @@ export function RepositoryPanel(props: RepositoryPanelProps) {
   const activeLabel = activeRef === null ? 'All branches' : activeRef === 'HEAD' ? 'HEAD' : status?.refs.find(ref => ref.fullName === activeRef)?.name ?? activeRef;
   return (
     <main className="repository-panel" style={{ gridTemplateColumns: `${leftWidth}px 3px minmax(320px, 1fr) 3px ${rightWidth}px` }}>
-      <BranchSidebar status={status} activeRef={activeRef} onSelectRef={props.onSelectRef} onRefAction={props.onRefAction} />
+      <BranchSidebar status={status} activeRef={activeRef} favoriteRefs={favoriteRefs} onSelectRef={props.onSelectRef} onRefAction={props.onRefAction} onRemoteAction={props.onRemoteAction} />
       <div className="splitter" onPointerDown={event => startResize('left', event)} onDoubleClick={() => setLeftWidth(210)} />
       <section className="log-pane">
         <header className="log-toolbar">

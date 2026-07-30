@@ -18,6 +18,7 @@ class FakeGit {
   async stage(): Promise<void> { await this.write(); }
   async unstage(): Promise<void> { await this.write(); }
   async commit(): Promise<void> { await this.write(); }
+  async merge(): Promise<void> { throw new Error('merge conflict'); }
   private async write(): Promise<void> {
     this.active += 1;
     this.maxActive = Math.max(this.maxActive, this.active);
@@ -50,5 +51,17 @@ describe('RepositoryController', () => {
     await Promise.all([a.commit('a'), b.commit('b')]);
     expect(fake.maxActive).toBe(2);
   });
-});
 
+  it('refreshes repository state when a write operation fails', async () => {
+    const fake = new FakeGit();
+    const repository = controller(fake, '/a');
+    await repository.refresh();
+
+    await expect(repository.merge('topic')).rejects.toThrow('merge conflict');
+
+    expect(fake.statusCalls).toBe(2);
+    expect(fake.logCalls).toBe(2);
+    expect(repository.snapshot.operation).toBeNull();
+    expect(repository.snapshot.error).toBe('merge conflict');
+  });
+});

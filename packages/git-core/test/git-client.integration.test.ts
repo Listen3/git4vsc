@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { join } from 'node:path';
 import { GitClient } from '../src/git-client.js';
 import { createFixtureSet, type FixtureSet } from './git-fixtures.js';
 
@@ -52,6 +53,39 @@ describe('GitClient against generated repositories', () => {
     const feature = (await client.log(location, 0, 100, { text: 'feature commit' })).commits[0]!;
     const files = await client.changedFiles(location, `${feature.hash}^`, feature.hash);
     expect(files).toContainEqual({ path: 'feature.txt', status: 'added' });
+  });
+
+  it('manages local branch and tag refs', async () => {
+    const location = await client.discover(fixtures.history);
+    await client.addRemote(location, 'origin', location.root);
+    await client.createBranch(location, 'client-action', 'HEAD');
+    await client.renameBranch(location, 'client-action', 'client-renamed');
+    await client.setUpstream(location, 'client-renamed', 'origin/main');
+    expect(await client.branchUpstream(location, 'client-renamed')).toBe('origin/main');
+    expect((await client.status(location)).refs.some(ref => ref.name === 'client-renamed')).toBe(true);
+    await client.createAndCheckoutBranch(location, 'client-checkout', 'HEAD');
+    expect((await client.status(location)).branch).toBe('client-checkout');
+    await client.checkout(location, 'main');
+    await client.deleteBranch(location, 'client-checkout');
+    await client.deleteBranch(location, 'client-renamed');
+    await client.createTag(location, 'client-tag', 'HEAD');
+    await client.deleteTag(location, 'client-tag');
+    const worktree = join(fixtures.base, 'client-created-worktree');
+    await client.addWorktree(location, worktree, 'HEAD');
+    expect((await client.status(await client.discover(worktree))).phase).toBe('detached');
+    await client.removeRemote(location, 'origin');
+    expect((await client.status(location)).refs.some(ref => ref.name.startsWith('client-'))).toBe(false);
+  });
+
+  it('manages remote configuration', async () => {
+    const location = await client.discover(fixtures.history);
+    await client.addRemote(location, 'client-remote', fixtures.submoduleHost);
+    expect(await client.remotes(location)).toContain('client-remote');
+    expect(await client.remoteUrl(location, 'client-remote')).toBe(fixtures.submoduleHost);
+    await client.setRemoteUrl(location, 'client-remote', fixtures.shallow);
+    expect(await client.remoteUrl(location, 'client-remote')).toBe(fixtures.shallow);
+    await client.removeRemote(location, 'client-remote');
+    expect(await client.remotes(location)).not.toContain('client-remote');
   });
 
   it('commits and refreshes real status/log data', async () => {

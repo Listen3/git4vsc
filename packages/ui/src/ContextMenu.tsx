@@ -27,7 +27,7 @@ export function ContextMenu({ x, y, items, onSelect, onClose }: {
     };
   }, [onClose]);
 
-  const width = 230;
+  const width = 245;
   const left = Math.min(x, window.innerWidth - width - 8);
   const top = Math.min(y, window.innerHeight - items.length * 25 - 8);
   return (

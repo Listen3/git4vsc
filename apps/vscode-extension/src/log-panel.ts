@@ -4,7 +4,13 @@ import type { CommitDetails, CommitFileChange, CommitSummary, GitRef } from '@gi
 import type { RepositoryController } from '@git4vsc/repo-state';
 
 type CommitAction = 'copyRevision' | 'copySubject' | 'createBranch' | 'createTag' | 'checkout' | 'compareLocal' | 'cherryPick' | 'revert' | 'reset';
-type RefAction = 'copy' | 'checkout' | 'createBranch' | 'compare' | 'merge';
+type RefAction =
+  | 'copy' | 'toggleFavorite'
+  | 'checkout' | 'checkoutUpdate' | 'checkoutRebase' | 'checkoutNew' | 'createBranch' | 'createTag' | 'newWorktree'
+  | 'compare' | 'diffLocal' | 'rebaseOnto' | 'merge'
+  | 'update' | 'push' | 'setUpstream' | 'pullMerge' | 'pullRebase'
+  | 'rename' | 'delete';
+type RemoteAction = 'fetch' | 'add' | 'edit' | 'remove';
 
 export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
   private view: vscode.WebviewView | null = null;
@@ -70,14 +76,16 @@ class LogSession implements vscode.Disposable {
   private logRequest = 0;
   private detailsRequest = 0;
   private repositoryVersion: number;
+  private readonly favoriteRefs: Set<string>;
 
   constructor(
-    context: vscode.ExtensionContext,
+    private readonly context: vscode.ExtensionContext,
     private readonly repository: RepositoryController,
     private readonly view: vscode.WebviewView
   ) {
     this.commits = [...repository.snapshot.commits];
     this.repositoryVersion = repository.snapshot.version;
+    this.favoriteRefs = new Set(context.workspaceState.get<string[]>(this.favoriteKey(), []));
     view.title = `Git Log — ${repository.snapshot.status?.branch ?? 'HEAD'}`;
     view.webview.html = this.html(context, view.webview);
     this.unsubscribe = repository.onDidChange(snapshot => {
@@ -117,6 +125,7 @@ class LogSession implements vscode.Disposable {
         case 'openCommitDiff': await this.openCommitDiff(request.hash, request.change); break;
         case 'commitAction': await this.commitAction(request.action, request.hash); break;
         case 'refAction': await this.refAction(request.action, request.fullName); break;
+        case 'remoteAction': await this.remoteAction(request.action, request.remote); break;
       }
     } catch (error) {
       this.localError = error instanceof Error ? error.message : String(error);
@@ -291,9 +300,54 @@ class LogSession implements vscode.Disposable {
       if (name) await this.repository.createBranch(name.trim(), startPoint);
       return;
     }
+    if (action === 'createTag') {
+      const name = await vscode.window.showInputBox({ title: `New Tag from ${ref?.name ?? 'HEAD'}`, prompt: 'Tag name', validateInput: value => value.trim() ? undefined : 'Enter a tag name' });
+      if (name) await this.repository.createTag(name.trim(), startPoint);
+      return;
+    }
+    if (action === 'newWorktree') {
+      await this.newWorktree(ref ?? null);
+      return;
+    }
     if (!ref) return;
+    if (action === 'toggleFavorite') {
+      if (this.favoriteRefs.has(ref.fullName)) this.favoriteRefs.delete(ref.fullName);
+      else this.favoriteRefs.add(ref.fullName);
+      await this.context.workspaceState.update(this.favoriteKey(), [...this.favoriteRefs]);
+      this.postSnapshot();
+      return;
+    }
+    if (action === 'checkoutNew') {
+      const suggested = ref.type === 'remote-branch' ? ref.name.slice(ref.name.indexOf('/') + 1) : ref.name;
+      const name = await this.branchName(`Checkout ${ref.name} as New Branch`, suggested);
+      if (name) await this.repository.createAndCheckoutBranch(name, ref.fullName);
+      return;
+    }
+    if (action === 'checkoutUpdate') {
+      if (ref.type !== 'local-branch') return;
+      const upstream = await this.repository.git.branchUpstream(this.repository.location, ref.name);
+      if (!upstream) {
+        void vscode.window.showWarningMessage(`${ref.name} has no tracked branch.`);
+        return;
+      }
+      const confirmed = await vscode.window.showWarningMessage(`Checkout ${ref.name} and update it from ${upstream}?`, { modal: true }, 'Checkout and Update');
+      if (confirmed) await this.repository.checkoutAndUpdate(ref.name, upstream);
+      return;
+    }
+    if (action === 'checkoutRebase') {
+      if (ref.type !== 'local-branch') return;
+      const current = this.repository.snapshot.status?.branch;
+      if (!current) return;
+      const confirmed = await vscode.window.showWarningMessage(`Rebase ${ref.name} onto ${current} and check it out?`, { modal: true }, 'Checkout and Rebase');
+      if (confirmed) await this.repository.checkoutAndRebase(ref.name, current);
+      return;
+    }
     if (action === 'compare') {
-      await this.compareWithCurrent(ref);
+      await this.compareRefCommits(ref);
+      return;
+    }
+    if (action === 'diffLocal') {
+      await this.showDiffWithCurrent(ref);
       return;
     }
     if (action === 'checkout') {
@@ -302,16 +356,53 @@ class LogSession implements vscode.Disposable {
         ? await vscode.window.showWarningMessage(`Checkout ${ref.name}? Local changes must be preserved by Git.`, { modal: true }, 'Checkout')
         : 'Checkout';
       if (!confirmed) return;
-      await this.repository.checkout(ref.type === 'local-branch' ? ref.name : ref.name, ref.type === 'tag', ref.type === 'remote-branch');
+      if (ref.type === 'remote-branch') {
+        const localName = ref.name.slice(ref.name.indexOf('/') + 1);
+        const localExists = this.repository.snapshot.status?.refs.some(candidate => candidate.type === 'local-branch' && candidate.name === localName) ?? false;
+        await this.repository.checkout(localExists ? localName : ref.name, false, !localExists);
+      } else {
+        await this.repository.checkout(ref.name, ref.type === 'tag');
+      }
+      return;
+    }
+    if (action === 'rebaseOnto') {
+      const confirmed = await vscode.window.showWarningMessage(`Rebase ${this.repository.snapshot.status?.branch ?? 'HEAD'} onto ${ref.name}?`, { modal: true }, 'Rebase');
+      if (confirmed) await this.repository.rebase(ref.fullName);
       return;
     }
     if (action === 'merge') {
       const confirmed = await vscode.window.showWarningMessage(`Merge ${ref.name} into ${this.repository.snapshot.status?.branch ?? 'HEAD'}?`, { modal: true }, 'Merge');
       if (confirmed) await this.repository.merge(ref.fullName);
+      return;
     }
+    if (action === 'update') await this.updateSelectedBranch(ref);
+    else if (action === 'push') await this.pushRef(ref);
+    else if (action === 'setUpstream') await this.setTrackedBranch(ref);
+    else if (action === 'pullMerge' || action === 'pullRebase') await this.pullRemoteBranch(ref, action === 'pullRebase');
+    else if (action === 'rename') await this.renameBranch(ref);
+    else if (action === 'delete') await this.deleteRef(ref);
   }
 
-  private async compareWithCurrent(ref: GitRef): Promise<void> {
+  private async compareRefCommits(ref: GitRef): Promise<void> {
+    const [selectedOnly, currentOnly] = await Promise.all([
+      this.repository.git.log(this.repository.location, 0, 100, { ref: `HEAD..${ref.fullName}` }),
+      this.repository.git.log(this.repository.location, 0, 100, { ref: `${ref.fullName}..HEAD` })
+    ]);
+    const items: Array<vscode.QuickPickItem & { hash?: string }> = [
+      { label: `${ref.name} only`, kind: vscode.QuickPickItemKind.Separator },
+      ...selectedOnly.commits.map(commit => ({ label: commit.subject, description: commit.hash.slice(0, 8), detail: commit.authorName, hash: commit.hash })),
+      { label: `${this.repository.snapshot.status?.branch ?? 'HEAD'} only`, kind: vscode.QuickPickItemKind.Separator },
+      ...currentOnly.commits.map(commit => ({ label: commit.subject, description: commit.hash.slice(0, 8), detail: commit.authorName, hash: commit.hash }))
+    ];
+    if (selectedOnly.commits.length + currentOnly.commits.length === 0) {
+      void vscode.window.showInformationMessage(`${ref.name} and the current branch contain the same commits.`);
+      return;
+    }
+    const picked = await vscode.window.showQuickPick(items, { title: `Compare ${ref.name} with ${this.repository.snapshot.status?.branch ?? 'HEAD'}`, placeHolder: 'Select a commit to show its details' });
+    if (picked?.hash) await this.loadDetails(picked.hash);
+  }
+
+  private async showDiffWithCurrent(ref: GitRef): Promise<void> {
     const files = await this.repository.git.changedFiles(this.repository.location, ref.fullName, 'HEAD');
     if (files.length === 0) {
       void vscode.window.showInformationMessage(`${ref.name} has no file differences from the current branch.`);
@@ -330,6 +421,129 @@ class LogSession implements vscode.Disposable {
     await vscode.commands.executeCommand('vscode.diff', left, right, `${change.path} (${ref.name} ↔ HEAD)`);
   }
 
+  private async updateSelectedBranch(ref: GitRef): Promise<void> {
+    if (ref.type !== 'local-branch') return;
+    const upstream = await this.repository.git.branchUpstream(this.repository.location, ref.name);
+    if (!upstream) {
+      void vscode.window.showWarningMessage(`${ref.name} has no tracked branch. Use “Set Tracked Branch” first.`);
+      return;
+    }
+    const confirmed = await vscode.window.showInformationMessage(`Update ${ref.name} from ${upstream}?`, { modal: true }, 'Update');
+    if (!confirmed) return;
+    if (ref.name === this.repository.snapshot.status?.branch) {
+      const [remote, branch] = splitRemoteBranch(upstream);
+      await this.repository.pullBranch(remote, branch, false);
+    }
+    else await this.repository.updateBranch(ref.name, upstream);
+  }
+
+  private async pushRef(ref: GitRef): Promise<void> {
+    const upstream = ref.type === 'local-branch' ? await this.repository.git.branchUpstream(this.repository.location, ref.name) : null;
+    const preferredRemote = upstream?.split('/', 1)[0];
+    const remote = await this.pickRemote(ref.type === 'tag' ? `Push Tag ${ref.name}` : `Push Branch ${ref.name}`, preferredRemote);
+    if (!remote) return;
+    if (ref.type === 'tag') await this.repository.pushTag(ref.name, remote);
+    else if (ref.type === 'local-branch') await this.repository.pushBranch(ref.name, remote);
+  }
+
+  private async setTrackedBranch(ref: GitRef): Promise<void> {
+    if (ref.type !== 'local-branch') return;
+    const choices = this.repository.snapshot.status?.refs.filter(candidate => candidate.type === 'remote-branch') ?? [];
+    const picked = await vscode.window.showQuickPick(choices.map(candidate => ({ label: candidate.name, ref: candidate })), { title: `Tracked Branch for ${ref.name}` });
+    if (picked) await this.repository.setUpstream(ref.name, picked.ref.name);
+  }
+
+  private async pullRemoteBranch(ref: GitRef, rebase: boolean): Promise<void> {
+    if (ref.type !== 'remote-branch') return;
+    const [remote, branch] = splitRemoteBranch(ref.name);
+    const method = rebase ? 'rebase' : 'merge';
+    const confirmed = await vscode.window.showWarningMessage(`Pull ${ref.name} into ${this.repository.snapshot.status?.branch ?? 'HEAD'} using ${method}?`, { modal: true }, 'Pull');
+    if (confirmed) await this.repository.pullBranch(remote, branch, rebase);
+  }
+
+  private async renameBranch(ref: GitRef): Promise<void> {
+    if (ref.type !== 'local-branch') return;
+    const name = await this.branchName(`Rename Branch ${ref.name}`, ref.name);
+    if (name && name !== ref.name) await this.repository.renameBranch(ref.name, name);
+  }
+
+  private async deleteRef(ref: GitRef): Promise<void> {
+    if (ref.type === 'local-branch') {
+      const choice = await vscode.window.showWarningMessage(`Delete local branch ${ref.name}?`, { modal: true, detail: 'Normal delete refuses to remove an unmerged branch. Force delete discards the branch ref even when unmerged.' }, 'Delete', 'Force Delete');
+      if (choice) await this.repository.deleteBranch(ref.name, choice === 'Force Delete');
+      return;
+    }
+    if (ref.type === 'remote-branch') {
+      const [remote, branch] = splitRemoteBranch(ref.name);
+      const confirmed = await vscode.window.showWarningMessage(`Delete ${branch} from remote ${remote}?`, { modal: true, detail: 'This changes the shared remote repository.' }, 'Delete Remote Branch');
+      if (confirmed) await this.repository.deleteRemoteBranch(remote, branch);
+      return;
+    }
+    const confirmed = await vscode.window.showWarningMessage(`Delete local tag ${ref.name}?`, { modal: true }, 'Delete Tag');
+    if (confirmed) await this.repository.deleteTag(ref.name);
+  }
+
+  private async newWorktree(ref: GitRef | null): Promise<void> {
+    const mode = await vscode.window.showQuickPick([
+      { label: 'Create New Branch', description: 'Create and check out a new branch in the worktree', branch: true },
+      { label: 'Detached HEAD', description: 'Open the selected revision without owning a branch', branch: false }
+    ], { title: `New Worktree for ${ref?.name ?? 'HEAD'}` });
+    if (!mode) return;
+    const newBranch = mode.branch ? await this.branchName('New Worktree Branch') : undefined;
+    if (mode.branch && !newBranch) return;
+    const target = await vscode.window.showOpenDialog({ title: `New Worktree for ${ref?.name ?? 'HEAD'}`, canSelectFiles: false, canSelectFolders: true, canSelectMany: false, openLabel: 'Use Empty Folder' });
+    const path = target?.[0]?.fsPath;
+    if (path) await this.repository.addWorktree(path, ref?.fullName ?? 'HEAD', newBranch);
+  }
+
+  private async branchName(title: string, value?: string): Promise<string | undefined> {
+    const name = await vscode.window.showInputBox({ title, ...(value ? { value } : {}), prompt: 'Branch name', validateInput: input => input.trim() ? undefined : 'Enter a branch name' });
+    return name?.trim() || undefined;
+  }
+
+  private async pickRemote(title: string, preferred?: string): Promise<string | undefined> {
+    const remotes = await this.repository.git.remotes(this.repository.location);
+    if (remotes.length === 0) {
+      void vscode.window.showWarningMessage('This repository has no configured remotes.');
+      return undefined;
+    }
+    if (remotes.length === 1) return remotes[0];
+    const items: vscode.QuickPickItem[] = remotes.map(remote => ({ label: remote, ...(remote === preferred ? { description: 'current upstream' } : {}) }));
+    return vscode.window.showQuickPick(items, { title }).then(item => item?.label);
+  }
+
+  private async remoteAction(actionValue: unknown, remoteValue: unknown): Promise<void> {
+    if (typeof actionValue !== 'string') return;
+    const action = actionValue as RemoteAction;
+    const remote = typeof remoteValue === 'string' ? remoteValue : null;
+    if (action === 'fetch') {
+      await this.repository.fetchRemote(remote ?? undefined);
+      return;
+    }
+    if (action === 'add') {
+      const name = await vscode.window.showInputBox({ title: 'Add Git Remote', prompt: 'Remote name', validateInput: value => value.trim() ? undefined : 'Enter a remote name' });
+      if (!name) return;
+      const url = await vscode.window.showInputBox({ title: `URL for ${name.trim()}`, prompt: 'Remote URL', validateInput: value => value.trim() ? undefined : 'Enter a remote URL' });
+      if (url) await this.repository.addRemote(name.trim(), url.trim());
+      return;
+    }
+    if (!remote) return;
+    if (action === 'edit') {
+      const currentUrl = await this.repository.git.remoteUrl(this.repository.location, remote);
+      const url = await vscode.window.showInputBox({ title: `Edit Remote ${remote}`, value: currentUrl, prompt: 'Remote URL', validateInput: value => value.trim() ? undefined : 'Enter a remote URL' });
+      if (url && url.trim() !== currentUrl) await this.repository.setRemoteUrl(remote, url.trim());
+      return;
+    }
+    if (action === 'remove') {
+      const confirmed = await vscode.window.showWarningMessage(`Remove remote ${remote}?`, { modal: true, detail: 'This removes the local remote configuration and its remote-tracking refs. It does not delete the remote repository.' }, 'Remove Remote');
+      if (confirmed) await this.repository.removeRemote(remote);
+    }
+  }
+
+  private favoriteKey(): string {
+    return `git4vsc.favoriteRefs:${this.repository.root}`;
+  }
+
   private findCommit(hash: string): CommitSummary | undefined {
     return this.commits.find(commit => commit.hash === hash);
   }
@@ -346,6 +560,7 @@ class LogSession implements vscode.Disposable {
         status: snapshot.status,
         commits: this.commits,
         activeRef: this.activeRef,
+        favoriteRefs: [...this.favoriteRefs],
         search: this.search,
         selectedHash: this.selectedHash,
         details: this.details,
@@ -374,4 +589,10 @@ function revisionUri(repository: RepositoryController, path: string, revision: s
     path: `/${revision ?? 'empty'}/${path.replaceAll('\\', '/')}`,
     query: encodeURIComponent(JSON.stringify({ root: repository.root, path, revision }))
   });
+}
+
+function splitRemoteBranch(value: string): [string, string] {
+  const separator = value.indexOf('/');
+  if (separator < 1) throw new Error(`Invalid remote branch: ${value}`);
+  return [value.slice(0, separator), value.slice(separator + 1)];
 }
