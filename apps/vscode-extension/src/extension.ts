@@ -74,6 +74,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('git4vsc.openLog', (value?: RepositoryController | GitResourceState) => {
       const repository = selectedRepository(value);
       if (repository) logPanel.show(repository);
+    }),
+    vscode.commands.registerCommand('git4vsc.toggleLog', (value?: RepositoryController | GitResourceState) => {
+      const repository = selectedRepository(value);
+      if (repository) logPanel.toggle(repository);
     })
   );
 }

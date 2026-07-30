@@ -64,9 +64,9 @@ export class ScmRepositoryAdapter implements vscode.Disposable {
     this.sourceControl.inputBox.enabled = this.repository.snapshot.operation === null;
     this.sourceControl.count = status.changes.length;
     this.sourceControl.statusBarCommands = [{
-      command: 'git4vsc.openLog',
+      command: 'git4vsc.toggleLog',
       title: status.branch ?? status.head?.slice(0, 8) ?? 'HEAD',
-      tooltip: `${status.phase}${status.upstream ? ` · ↑${status.ahead} ↓${status.behind}` : ''}`,
+      tooltip: `Toggle Git Log · ${status.phase}${status.upstream ? ` · ↑${status.ahead} ↓${status.behind}` : ''}`,
       arguments: [this.repository]
     }];
     this.staged.resourceStates = status.changes.filter(change => change.index !== null).map(change => resource(this.repository, change, 'staged'));

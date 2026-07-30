@@ -44,6 +44,14 @@ export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
     void vscode.commands.executeCommand('git4vsc.logView.focus').then(() => this.view?.show(true));
   }
 
+  toggle(repository: RepositoryController): void {
+    if (this.view?.visible && this.repository === repository) {
+      void vscode.commands.executeCommand('workbench.action.closePanel');
+    } else {
+      this.show(repository);
+    }
+  }
+
   initialize(repository: RepositoryController | undefined): void {
     if (this.repository || !repository) return;
     this.repository = repository;

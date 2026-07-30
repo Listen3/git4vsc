@@ -45,7 +45,8 @@
       { "command": "git4vsc.unstage", "title": "Unstage Changes", "category": "Git4VSC", "icon": "$(remove)" },
       { "command": "git4vsc.commit", "title": "Commit Staged Changes", "category": "Git4VSC", "icon": "$(check)" },
       { "command": "git4vsc.commitAll", "title": "Commit All Changes", "category": "Git4VSC" },
-      { "command": "git4vsc.openLog", "title": "Open Commit Log", "category": "Git4VSC", "icon": "$(git-commit)" }
+      { "command": "git4vsc.openLog", "title": "Open Commit Log", "category": "Git4VSC", "icon": "$(git-commit)" },
+      { "command": "git4vsc.toggleLog", "title": "Toggle Commit Log", "category": "Git4VSC", "icon": "$(git-commit)" }
     ],
     "viewsContainers": {
       "activitybar": [

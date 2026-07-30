@@ -9,6 +9,6 @@ suite('Git4VSC Extension Host', () => {
     const commands = await vscode.commands.getCommands(true);
     assert.ok(commands.includes('git4vsc.refresh'));
     assert.ok(commands.includes('git4vsc.openLog'));
+    assert.ok(commands.includes('git4vsc.toggleLog'));
   });
 });
-
