@@ -70,8 +70,12 @@ button { cursor: default; }
 .icon-button:disabled { opacity: .45; }
 .repository-error { flex: 0 0 auto; color: var(--vscode-errorForeground, #f48771); background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 9%, transparent); border-bottom: 1px solid var(--git4vsc-border); padding: 5px 10px; }
 
-.commit-table { min-height: 0; flex: 1; display: flex; flex-direction: column; }
-.commit-columns { height: 22px; flex: 0 0 22px; padding: 0 6px 0 57px; display: grid; grid-template-columns: minmax(180px, 1fr) 110px 132px 64px; align-items: center; border-bottom: 1px solid var(--git4vsc-border); color: var(--git4vsc-muted); font-size: 11px; }
+.commit-table { min-height: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.commit-columns { height: 22px; flex: 0 0 22px; width: 100%; padding-right: 6px; display: grid; align-items: center; border-bottom: 1px solid var(--git4vsc-border); color: var(--git4vsc-muted); font-size: 11px; }
+.commit-column { height: 100%; min-width: 0; padding-left: 6px; display: flex; align-items: center; position: relative; overflow: visible; }
+.commit-column-resizer { position: absolute; z-index: 3; top: 0; right: -3px; width: 7px; height: 100%; cursor: col-resize; touch-action: none; }
+.commit-column-resizer::after { content: ''; position: absolute; top: 3px; bottom: 3px; left: 3px; width: 1px; background: transparent; }
+.commit-column-resizer:hover::after { background: var(--vscode-focusBorder, #007fd4); }
 .commit-log { min-height: 0; flex: 1; overflow: auto; position: relative; outline: none; }
 .commit-log-spacer { position: relative; min-width: 660px; }
 .commit-row {
@@ -84,7 +88,6 @@ button { cursor: default; }
   border-bottom: 1px solid color-mix(in srgb, var(--git4vsc-border) 38%, transparent);
   background: transparent;
   display: grid;
-  grid-template-columns: auto minmax(180px, 1fr) 110px 132px 64px;
   align-items: center;
   text-align: left;
 }
@@ -132,8 +135,3 @@ button { cursor: default; }
 .context-menu button:hover:not(:disabled) { color: var(--vscode-menu-selectionForeground, #fff); background: var(--vscode-menu-selectionBackground, #04395e); }
 .context-menu button:disabled { color: var(--vscode-disabledForeground, #777); }
 .context-menu-separator { height: 1px; margin: 3px 5px; background: var(--vscode-menu-separatorBackground, var(--git4vsc-border)); }
-
-@media (max-width: 1050px) {
-  .commit-columns { grid-template-columns: minmax(170px, 1fr) 90px 105px 58px; }
-  .commit-row { grid-template-columns: auto minmax(170px, 1fr) 90px 105px 58px; }
-}

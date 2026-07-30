@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type UIEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type UIEvent } from 'react';
 import { layoutCommits } from '@git4vsc/git-graph';
 import type { CommitSummary } from '@git4vsc/shared-types';
+import { defaultCommitColumnWidths, normalizeCommitColumnWidths, type CommitColumn, type CommitColumnWidths } from './commit-columns.js';
 import { CommitGraph } from './CommitGraph.js';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu.js';
 
@@ -11,23 +12,32 @@ export interface CommitLogProps {
   selectedHash?: string | null | undefined;
   hasMore?: boolean | undefined;
   loading?: boolean | undefined;
+  columnWidths?: CommitColumnWidths | undefined;
   onLoadMore?: (() => void) | undefined;
   onSelectCommit?: ((commit: CommitSummary) => void) | undefined;
   onCommitAction?: ((action: CommitAction, commit: CommitSummary) => void) | undefined;
+  onColumnWidthsChange?: ((widths: CommitColumnWidths) => void) | undefined;
 }
 
 const rowHeight = 25;
 const overscan = 10;
 
-export function CommitLog({ commits, selectedHash, hasMore = false, loading = false, onLoadMore, onSelectCommit, onCommitAction }: CommitLogProps) {
+export function CommitLog({ commits, selectedHash, hasMore = false, loading = false, columnWidths: initialColumnWidths, onLoadMore, onSelectCommit, onCommitAction, onColumnWidthsChange }: CommitLogProps) {
   const graph = useMemo(() => layoutCommits(commits), [commits]);
   const container = useRef<HTMLDivElement>(null);
+  const widthsRef = useRef(normalizeCommitColumnWidths(initialColumnWidths));
   const [scrollTop, setScrollTop] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
   const [height, setHeight] = useState(500);
+  const [columnWidths, setColumnWidths] = useState(widthsRef.current);
   const [menu, setMenu] = useState<{ x: number; y: number; commit: CommitSummary } | null>(null);
   const first = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
   const last = Math.min(commits.length, Math.ceil((scrollTop + height) / rowHeight) + overscan);
   const graphWidth = Math.max(32, graph.maxLaneCount * 16 + 8);
+  const commitWidth = Math.max(columnWidths.commit, graphWidth + 80);
+  const columnTemplate = `${commitWidth}px ${columnWidths.author}px ${columnWidths.date}px ${columnWidths.hash}px`;
+  const rowTemplate = `${graphWidth}px ${commitWidth - graphWidth}px ${columnWidths.author}px ${columnWidths.date}px ${columnWidths.hash}px`;
+  const tableWidth = commitWidth + columnWidths.author + columnWidths.date + columnWidths.hash + 6;
 
   useEffect(() => {
     if (!container.current) return;
@@ -39,8 +49,38 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
   function handleScroll(event: UIEvent<HTMLDivElement>) {
     const target = event.currentTarget;
     setScrollTop(target.scrollTop);
+    setScrollLeft(target.scrollLeft);
     if (hasMore && onLoadMore && !loading && target.scrollTop + target.clientHeight >= target.scrollHeight - rowHeight * 8) onLoadMore();
   }
+
+  function startColumnResize(column: CommitColumn, event: PointerEvent) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = widthsRef.current[column];
+    const move = (moveEvent: globalThis.PointerEvent) => {
+      const next = normalizeCommitColumnWidths({ ...widthsRef.current, [column]: startWidth + moveEvent.clientX - startX });
+      widthsRef.current = next;
+      setColumnWidths(next);
+    };
+    const stop = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+      onColumnWidthsChange?.(widthsRef.current);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
+  }
+
+  function resetColumn(column: CommitColumn) {
+    const next = { ...widthsRef.current, [column]: defaultCommitColumnWidths[column] };
+    widthsRef.current = next;
+    setColumnWidths(next);
+    onColumnWidthsChange?.(next);
+  }
+
+  const headers: readonly [CommitColumn, string][] = [['commit', 'Commit'], ['author', 'Author'], ['date', 'Date'], ['hash', 'Hash']];
 
   function navigate(event: KeyboardEvent, index: number) {
     const next = event.key === 'ArrowUp' ? index - 1 : event.key === 'ArrowDown' ? index + 1 : -1;
@@ -68,9 +108,11 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
 
   return (
     <div className="commit-table">
-      <div className="commit-columns"><span>Commit</span><span>Author</span><span>Date</span><span>Hash</span></div>
+      <div className="commit-columns" style={{ gridTemplateColumns: columnTemplate, minWidth: tableWidth, transform: `translateX(${-scrollLeft}px)` }}>
+        {headers.map(([column, label]) => <div className="commit-column" key={column}><span>{label}</span><span className="commit-column-resizer" title={`Resize ${label} column; double-click to reset`} onPointerDown={event => startColumnResize(column, event)} onDoubleClick={() => resetColumn(column)} /></div>)}
+      </div>
       <div ref={container} className="commit-log" onScroll={handleScroll} role="table" aria-label="Git commit log">
-        <div className="commit-log-spacer" style={{ height: commits.length * rowHeight }}>
+        <div className="commit-log-spacer" style={{ height: commits.length * rowHeight, minWidth: tableWidth }}>
           {commits.slice(first, last).map((commit, offset) => {
             const index = first + offset;
             const row = graph.rows[index];
@@ -82,7 +124,7 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
                 aria-selected={selectedHash === commit.hash}
                 className={`commit-row${selectedHash === commit.hash ? ' selected' : ''}`}
                 key={commit.hash}
-                style={{ height: rowHeight, top: index * rowHeight }}
+                style={{ height: rowHeight, top: index * rowHeight, gridTemplateColumns: rowTemplate, minWidth: tableWidth }}
                 onClick={() => onSelectCommit?.(commit)}
                 onContextMenu={event => { event.preventDefault(); onSelectCommit?.(commit); setMenu({ x: event.clientX, y: event.clientY, commit }); }}
                 onKeyDown={event => navigate(event, index)}

@@ -3,6 +3,7 @@ import type { CommitDetails, CommitFileChange, CommitSummary, GitRef, Repository
 import { BranchSidebar, type RefAction, type RemoteAction } from './BranchSidebar.js';
 import { CommitDetailsPane } from './CommitDetailsPane.js';
 import { CommitLog, type CommitAction } from './CommitLog.js';
+import type { CommitColumnWidths } from './commit-columns.js';
 
 export interface RepositoryPanelProps {
   status: RepositoryStatus | null;
@@ -16,6 +17,7 @@ export interface RepositoryPanelProps {
   loading?: boolean | undefined;
   detailsLoading?: boolean | undefined;
   error?: string | null | undefined;
+  commitColumnWidths?: CommitColumnWidths | undefined;
   onRefresh?: (() => void) | undefined;
   onLoadMore?: (() => void) | undefined;
   onSelectRef?: ((ref: string | null) => void) | undefined;
@@ -25,6 +27,7 @@ export interface RepositoryPanelProps {
   onCommitAction?: ((action: CommitAction, commit: CommitSummary) => void) | undefined;
   onRefAction?: ((action: RefAction, ref: GitRef | null) => void) | undefined;
   onRemoteAction?: ((action: RemoteAction, remote: string | null) => void) | undefined;
+  onCommitColumnWidthsChange?: ((widths: CommitColumnWidths) => void) | undefined;
 }
 
 export function RepositoryPanel(props: RepositoryPanelProps) {
@@ -69,7 +72,7 @@ export function RepositoryPanel(props: RepositoryPanelProps) {
           <button type="button" className="icon-button" title="Refresh Log" onClick={props.onRefresh} disabled={loading}>↻</button>
         </header>
         {error && <div className="repository-error">{error}</div>}
-        <CommitLog commits={commits} selectedHash={selectedHash} hasMore={hasMore} loading={loading} onLoadMore={props.onLoadMore} onSelectCommit={props.onSelectCommit} onCommitAction={props.onCommitAction} />
+        <CommitLog commits={commits} selectedHash={selectedHash} hasMore={hasMore} loading={loading} columnWidths={props.commitColumnWidths} onLoadMore={props.onLoadMore} onSelectCommit={props.onSelectCommit} onCommitAction={props.onCommitAction} onColumnWidthsChange={props.onCommitColumnWidthsChange} />
       </section>
       <div className="splitter" onPointerDown={event => startResize('right', event)} onDoubleClick={() => setRightWidth(330)} />
       <CommitDetailsPane details={details} loading={detailsLoading} onOpenFile={props.onOpenFile} />
