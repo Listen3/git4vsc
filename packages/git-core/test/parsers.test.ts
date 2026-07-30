@@ -32,8 +32,8 @@ describe('parsePorcelainV2', () => {
 
 describe('refs and log', () => {
   it('keeps full ref identity', () => {
-    expect(parseRefs('refs/heads/main\taaa\nrefs/remotes/origin/main\taaa\nrefs/tags/v1\taaa\n')).toEqual([
-      { name: 'main', fullName: 'refs/heads/main', hash: 'aaa', type: 'local-branch' },
+    expect(parseRefs('refs/heads/main\taaa\torigin/main\nrefs/remotes/origin/main\taaa\nrefs/tags/v1\taaa\n')).toEqual([
+      { name: 'main', fullName: 'refs/heads/main', hash: 'aaa', type: 'local-branch', upstream: 'origin/main' },
       { name: 'origin/main', fullName: 'refs/remotes/origin/main', hash: 'aaa', type: 'remote-branch', remote: 'origin' },
       { name: 'v1', fullName: 'refs/tags/v1', hash: 'aaa', type: 'tag' }
     ]);

@@ -91,10 +91,10 @@ export function parsePorcelainV2(output: string): ParsedStatus {
 export function parseRefs(output: string): GitRef[] {
   const refs: GitRef[] = [];
   for (const line of output.split(/\r?\n/).filter(Boolean)) {
-    const [fullName, hash] = line.split('\t');
+    const [fullName, hash, upstream] = line.split('\t');
     if (!fullName || !hash) continue;
     if (fullName.startsWith('refs/heads/')) {
-      refs.push({ name: fullName.slice(11), fullName, hash, type: 'local-branch' });
+      refs.push({ name: fullName.slice(11), fullName, hash, type: 'local-branch', ...(upstream ? { upstream } : {}) });
     } else if (fullName.startsWith('refs/remotes/')) {
       const name = fullName.slice(13);
       refs.push({ name, fullName, hash, type: 'remote-branch', remote: name.split('/')[0]! });

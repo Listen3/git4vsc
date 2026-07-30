@@ -91,8 +91,8 @@ export class RepositoryController {
     return this.runOperation('create-branch', () => this.git.createBranch(this.location, name, startPoint), ['status', 'log', 'refs']);
   }
 
-  createAndCheckoutBranch(name: string, startPoint: string): Promise<void> {
-    return this.runOperation('checkout-new-branch', () => this.git.createAndCheckoutBranch(this.location, name, startPoint), ['status', 'log', 'refs']);
+  createAndCheckoutBranch(name: string, startPoint: string, track = false): Promise<void> {
+    return this.runOperation('checkout-new-branch', () => this.git.createAndCheckoutBranch(this.location, name, startPoint, track), ['status', 'log', 'refs']);
   }
 
   checkoutAndUpdate(branch: string, upstream: string): Promise<void> {
@@ -101,6 +101,10 @@ export class RepositoryController {
 
   checkoutAndRebase(branch: string, currentBranch: string): Promise<void> {
     return this.runOperation('checkout-rebase', () => this.git.checkoutAndRebase(this.location, branch, currentBranch), ['status', 'log', 'refs']);
+  }
+
+  checkoutRemoteAndRebase(localBranch: string, remoteBranch: string, currentBranch: string): Promise<void> {
+    return this.runOperation('checkout-rebase', () => this.git.checkoutRemoteAndRebase(this.location, localBranch, remoteBranch, currentBranch), ['status', 'log', 'refs']);
   }
 
   createTag(name: string, startPoint: string): Promise<void> {

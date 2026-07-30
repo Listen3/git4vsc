@@ -29,6 +29,7 @@ export interface GitRef {
   hash: string;
   type: 'head' | 'local-branch' | 'remote-branch' | 'tag';
   remote?: string;
+  upstream?: string;
 }
 
 export interface RepositoryStatus {

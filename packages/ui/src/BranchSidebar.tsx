@@ -45,7 +45,7 @@ export function BranchSidebar({ status, activeRef, favoriteRefs = [], onSelectRe
     setRemoteMenu({ x: event.clientX, y: event.clientY, remote });
   }
 
-  const menuItems: ContextMenuItem[] = menu ? buildMenu(menu.ref, status, favoriteRefs) : [];
+  const menuItems: ContextMenuItem[] = menu ? buildBranchMenu(menu.ref, status, favoriteRefs) : [];
 
   return (
     <aside className="branch-sidebar" aria-label="Branches and tags">
@@ -81,7 +81,7 @@ export function BranchSidebar({ status, activeRef, favoriteRefs = [], onSelectRe
   );
 }
 
-function buildMenu(ref: GitRef | null, status: RepositoryStatus | null, favoriteRefs: readonly string[]): ContextMenuItem[] {
+export function buildBranchMenu(ref: GitRef | null, status: RepositoryStatus | null, favoriteRefs: readonly string[]): ContextMenuItem[] {
   if (!ref) return [
     { id: 'copy', label: 'Copy HEAD Revision' },
     { id: 'separator-1', separator: true },
@@ -91,45 +91,98 @@ function buildMenu(ref: GitRef | null, status: RepositoryStatus | null, favorite
   ];
   const current = ref.type === 'local-branch' && ref.name === status?.branch;
   const branch = ref.type === 'local-branch' || ref.type === 'remote-branch';
-  const items: ContextMenuItem[] = [
+  const hasCurrentBranch = Boolean(status?.branch);
+  const currentTag = ref.type === 'tag' && !hasCurrentBranch && ref.hash === status?.head;
+  const common: ContextMenuItem[] = [
     { id: 'copy', label: ref.type === 'tag' ? 'Copy Tag Name' : 'Copy Branch Name' },
-    ...(branch ? [{ id: 'toggleFavorite', label: favoriteRefs.includes(ref.fullName) ? 'Remove from Favorites' : 'Add to Favorites' }] : []),
-    { id: 'separator-1', separator: true },
-    { id: 'checkout', label: ref.type === 'tag' ? 'Checkout Tag (Detached)' : 'Checkout', disabled: current },
-    ...(ref.type === 'local-branch' ? [
-      { id: 'checkoutUpdate', label: 'Checkout and Update…', disabled: current },
-      { id: 'checkoutRebase', label: 'Checkout and Rebase onto Current…', disabled: current }
-    ] : []),
-    { id: 'checkoutNew', label: 'Checkout as New Branch…' },
-    { id: 'createBranch', label: 'New Branch from Here…' },
-    { id: 'createTag', label: 'New Tag from Here…' },
-    { id: 'newWorktree', label: 'New Worktree…' },
-    { id: 'separator-2', separator: true },
-    { id: 'compare', label: 'Compare with Current', disabled: current },
-    { id: 'diffLocal', label: 'Show Diff with Local', disabled: current },
-    { id: 'rebaseOnto', label: 'Rebase Current onto Selected…', disabled: current || ref.type === 'tag' },
-    { id: 'merge', label: 'Merge into Current Branch…', disabled: current },
-    { id: 'separator-3', separator: true }
+    ...(branch ? [{ id: 'toggleFavorite', label: favoriteRefs.includes(ref.fullName) ? 'Remove from Favorites' : 'Add to Favorites' }] : [])
   ];
-  if (ref.type === 'local-branch') items.push(
-    { id: 'update', label: 'Update Selected Branch…' },
-    { id: 'push', label: 'Push Branch…' },
-    { id: 'setUpstream', label: 'Set Tracked Branch…' },
-    { id: 'separator-4', separator: true },
-    { id: 'rename', label: 'Rename Branch…' },
-    { id: 'delete', label: 'Delete Branch…', disabled: current }
+
+  if (ref.type === 'local-branch' && current) return joinMenuSections(
+    common,
+    [
+      { id: 'checkoutNew', label: 'Checkout as New Branch…' },
+      { id: 'newWorktree', label: 'New Worktree…' }
+    ],
+    [{ id: 'diffLocal', label: 'Show Diff with Local' }],
+    [
+      ...(status?.upstream ? [{ id: 'update', label: 'Update Selected Branch…' }] : []),
+      { id: 'push', label: 'Push Branch…' },
+      { id: 'setUpstream', label: 'Set Tracked Branch…' }
+    ],
+    [{ id: 'rename', label: 'Rename Branch…' }]
   );
-  else if (ref.type === 'remote-branch') items.push(
-    { id: 'pullMerge', label: 'Pull into Current Using Merge…' },
-    { id: 'pullRebase', label: 'Pull into Current Using Rebase…' },
-    { id: 'separator-4', separator: true },
-    { id: 'delete', label: 'Delete Remote Branch…' }
+
+  if (ref.type === 'local-branch') return joinMenuSections(
+    common,
+    [
+      { id: 'checkout', label: 'Checkout' },
+      { id: 'checkoutNew', label: 'Checkout as New Branch…' },
+      ...(hasCurrentBranch ? [{ id: 'checkoutRebase', label: 'Checkout and Rebase onto Current…' }] : []),
+      ...(ref.upstream ? [{ id: 'checkoutUpdate', label: 'Checkout and Update…' }] : []),
+      { id: 'newWorktree', label: 'New Worktree…' }
+    ],
+    [
+      { id: 'compare', label: 'Compare with Current' },
+      { id: 'diffLocal', label: 'Show Diff with Local' },
+      ...(hasCurrentBranch ? [
+        { id: 'rebaseOnto', label: 'Rebase Current onto Selected…' },
+        { id: 'merge', label: 'Merge into Current Branch…' }
+      ] : [])
+    ],
+    [
+      ...(ref.upstream ? [{ id: 'update', label: 'Update Selected Branch…' }] : []),
+      { id: 'push', label: 'Push Branch…' },
+      { id: 'setUpstream', label: 'Set Tracked Branch…' }
+    ],
+    [
+      { id: 'rename', label: 'Rename Branch…' },
+      { id: 'delete', label: 'Delete Branch…' }
+    ]
   );
-  else items.push(
-    { id: 'push', label: 'Push Tag…' },
-    { id: 'delete', label: 'Delete Tag…' }
+
+  if (ref.type === 'remote-branch') return joinMenuSections(
+    common,
+    [
+      { id: 'checkout', label: 'Checkout' },
+      { id: 'checkoutNew', label: 'Checkout as New Branch…' },
+      ...(hasCurrentBranch ? [{ id: 'checkoutRebase', label: 'Checkout and Rebase onto Current…' }] : []),
+      { id: 'newWorktree', label: 'New Worktree…' }
+    ],
+    [
+      { id: 'compare', label: 'Compare with Current' },
+      { id: 'diffLocal', label: 'Show Diff with Local' },
+      ...(hasCurrentBranch ? [
+        { id: 'rebaseOnto', label: 'Rebase Current onto Selected…' },
+        { id: 'merge', label: 'Merge into Current Branch…' }
+      ] : [])
+    ],
+    hasCurrentBranch ? [
+      { id: 'pullRebase', label: 'Pull into Current Using Rebase…' },
+      { id: 'pullMerge', label: 'Pull into Current Using Merge…' }
+    ] : [],
+    [{ id: 'delete', label: 'Delete Remote Branch…' }]
   );
-  return items;
+
+  return joinMenuSections(
+    common,
+    currentTag ? [] : [{ id: 'checkout', label: 'Checkout Tag (Detached)' }],
+    [
+      { id: 'newWorktree', label: 'New Worktree…' },
+      { id: 'diffLocal', label: 'Show Diff with Local' },
+      ...(!currentTag && hasCurrentBranch ? [{ id: 'merge', label: 'Merge into Current Branch…' }] : [])
+    ],
+    [
+      { id: 'push', label: 'Push Tag…' },
+      ...(!currentTag ? [{ id: 'delete', label: 'Delete Tag…' }] : [])
+    ]
+  );
+}
+
+function joinMenuSections(...sections: ContextMenuItem[][]): ContextMenuItem[] {
+  return sections.filter(section => section.length > 0).flatMap((section, index) =>
+    index === 0 ? section : [{ id: `separator-${index}`, separator: true }, ...section]
+  );
 }
 
 function BranchGroup({ label, count, nested = false, children, onContextMenu }: { label: string; count: number; nested?: boolean; children: React.ReactNode; onContextMenu?: ((event: MouseEvent) => void) | undefined }) {

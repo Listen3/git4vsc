@@ -44,7 +44,7 @@ export class GitClient {
   async status(location: RepositoryLocation): Promise<RepositoryStatus> {
     const [statusResult, refsResult, shallowResult] = await Promise.all([
       this.runner.run(['-C', location.root, 'status', '--porcelain=v2', '-z', '--branch', '--untracked-files=all']),
-      this.runner.run(['-C', location.root, 'for-each-ref', '--format=%(refname)%09%(objectname)', 'refs/heads', 'refs/remotes', 'refs/tags']),
+      this.runner.run(['-C', location.root, 'for-each-ref', '--format=%(refname)%09%(objectname)%09%(upstream:short)', 'refs/heads', 'refs/remotes', 'refs/tags']),
       this.runner.run(['-C', location.root, 'rev-parse', '--is-shallow-repository'])
     ]);
     const parsed = parsePorcelainV2(statusResult.stdout);
@@ -143,8 +143,8 @@ export class GitClient {
     await this.runner.run(['-C', location.root, 'branch', name, startPoint]);
   }
 
-  async createAndCheckoutBranch(location: RepositoryLocation, name: string, startPoint: string): Promise<void> {
-    await this.runner.run(['-C', location.root, 'switch', '--create', name, startPoint]);
+  async createAndCheckoutBranch(location: RepositoryLocation, name: string, startPoint: string, track = false): Promise<void> {
+    await this.runner.run(['-C', location.root, 'switch', '--create', name, ...(track ? ['--track'] : []), startPoint]);
   }
 
   async checkoutAndUpdate(location: RepositoryLocation, branch: string, upstream: string): Promise<void> {
@@ -155,6 +155,11 @@ export class GitClient {
 
   async checkoutAndRebase(location: RepositoryLocation, branch: string, currentBranch: string): Promise<void> {
     await this.runner.run(['-C', location.root, 'rebase', currentBranch, branch]);
+  }
+
+  async checkoutRemoteAndRebase(location: RepositoryLocation, localBranch: string, remoteBranch: string, currentBranch: string): Promise<void> {
+    await this.runner.run(['-C', location.root, 'switch', '--create', localBranch, '--track', remoteBranch]);
+    await this.runner.run(['-C', location.root, 'rebase', currentBranch]);
   }
 
   async createTag(location: RepositoryLocation, name: string, startPoint: string): Promise<void> {

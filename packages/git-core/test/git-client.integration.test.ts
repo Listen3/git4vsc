@@ -63,10 +63,16 @@ describe('GitClient against generated repositories', () => {
     await client.setUpstream(location, 'client-renamed', 'origin/main');
     expect(await client.branchUpstream(location, 'client-renamed')).toBe('origin/main');
     expect((await client.status(location)).refs.some(ref => ref.name === 'client-renamed')).toBe(true);
-    await client.createAndCheckoutBranch(location, 'client-checkout', 'HEAD');
+    await client.createAndCheckoutBranch(location, 'client-checkout', 'refs/remotes/origin/main', true);
     expect((await client.status(location)).branch).toBe('client-checkout');
+    expect(await client.branchUpstream(location, 'client-checkout')).toBe('origin/main');
     await client.checkout(location, 'main');
     await client.deleteBranch(location, 'client-checkout');
+    await client.checkoutRemoteAndRebase(location, 'client-remote-rebase', 'origin/main', 'main');
+    expect((await client.status(location)).branch).toBe('client-remote-rebase');
+    expect(await client.branchUpstream(location, 'client-remote-rebase')).toBe('origin/main');
+    await client.checkout(location, 'main');
+    await client.deleteBranch(location, 'client-remote-rebase');
     await client.deleteBranch(location, 'client-renamed');
     await client.createTag(location, 'client-tag', 'HEAD');
     await client.deleteTag(location, 'client-tag');

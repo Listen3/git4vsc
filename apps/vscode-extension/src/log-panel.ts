@@ -320,7 +320,7 @@ class LogSession implements vscode.Disposable {
     if (action === 'checkoutNew') {
       const suggested = ref.type === 'remote-branch' ? ref.name.slice(ref.name.indexOf('/') + 1) : ref.name;
       const name = await this.branchName(`Checkout ${ref.name} as New Branch`, suggested);
-      if (name) await this.repository.createAndCheckoutBranch(name, ref.fullName);
+      if (name) await this.repository.createAndCheckoutBranch(name, ref.fullName, ref.type === 'remote-branch');
       return;
     }
     if (action === 'checkoutUpdate') {
@@ -335,11 +335,17 @@ class LogSession implements vscode.Disposable {
       return;
     }
     if (action === 'checkoutRebase') {
-      if (ref.type !== 'local-branch') return;
       const current = this.repository.snapshot.status?.branch;
       if (!current) return;
       const confirmed = await vscode.window.showWarningMessage(`Rebase ${ref.name} onto ${current} and check it out?`, { modal: true }, 'Checkout and Rebase');
-      if (confirmed) await this.repository.checkoutAndRebase(ref.name, current);
+      if (!confirmed) return;
+      if (ref.type === 'local-branch') await this.repository.checkoutAndRebase(ref.name, current);
+      else if (ref.type === 'remote-branch') {
+        const local = await this.localBranchForRemote(ref);
+        if (!local) return;
+        if (local.exists) await this.repository.checkoutAndRebase(local.name, current);
+        else await this.repository.checkoutRemoteAndRebase(local.name, ref.name, current);
+      }
       return;
     }
     if (action === 'compare') {
@@ -357,9 +363,10 @@ class LogSession implements vscode.Disposable {
         : 'Checkout';
       if (!confirmed) return;
       if (ref.type === 'remote-branch') {
-        const localName = ref.name.slice(ref.name.indexOf('/') + 1);
-        const localExists = this.repository.snapshot.status?.refs.some(candidate => candidate.type === 'local-branch' && candidate.name === localName) ?? false;
-        await this.repository.checkout(localExists ? localName : ref.name, false, !localExists);
+        const local = await this.localBranchForRemote(ref);
+        if (!local) return;
+        if (local.exists) await this.repository.checkout(local.name);
+        else await this.repository.createAndCheckoutBranch(local.name, ref.fullName, true);
       } else {
         await this.repository.checkout(ref.name, ref.type === 'tag');
       }
@@ -403,22 +410,31 @@ class LogSession implements vscode.Disposable {
   }
 
   private async showDiffWithCurrent(ref: GitRef): Promise<void> {
-    const files = await this.repository.git.changedFiles(this.repository.location, ref.fullName, 'HEAD');
+    const files = await this.repository.git.changedFiles(this.repository.location, ref.fullName);
     if (files.length === 0) {
-      void vscode.window.showInformationMessage(`${ref.name} has no file differences from the current branch.`);
+      void vscode.window.showInformationMessage(`${ref.name} has no file differences from the local working tree.`);
       return;
     }
     const picked = await vscode.window.showQuickPick(files.map(change => ({
       label: change.path,
       description: change.status,
       change
-    })), { title: `${ref.name} ↔ ${this.repository.snapshot.status?.branch ?? 'HEAD'} (${files.length} files)`, placeHolder: 'Select a file to open its diff' });
+    })), { title: `${ref.name} ↔ Local (${files.length} files)`, placeHolder: 'Select a file to open its diff' });
     if (!picked) return;
     const change = picked.change;
     const leftPath = change.originalPath ?? change.path;
     const left = revisionUri(this.repository, leftPath, change.status === 'added' ? null : ref.fullName);
-    const right = revisionUri(this.repository, change.path, change.status === 'deleted' ? null : 'HEAD');
-    await vscode.commands.executeCommand('vscode.diff', left, right, `${change.path} (${ref.name} ↔ HEAD)`);
+    const right = change.status === 'deleted' ? revisionUri(this.repository, change.path, null) : vscode.Uri.file(join(this.repository.root, change.path));
+    await vscode.commands.executeCommand('vscode.diff', left, right, `${change.path} (${ref.name} ↔ Local)`);
+  }
+
+  private async localBranchForRemote(ref: GitRef): Promise<{ name: string; exists: boolean } | undefined> {
+    const name = ref.name.slice(ref.name.indexOf('/') + 1);
+    const local = this.repository.snapshot.status?.refs.find(candidate => candidate.type === 'local-branch' && candidate.name === name);
+    if (!local) return { name, exists: false };
+    if (await this.repository.git.branchUpstream(this.repository.location, name) === ref.name) return { name, exists: true };
+    const replacement = await this.branchName(`Local branch ${name} already tracks another branch`, `${ref.remote ?? 'remote'}-${name}`);
+    return replacement ? { name: replacement, exists: false } : undefined;
   }
 
   private async updateSelectedBranch(ref: GitRef): Promise<void> {
