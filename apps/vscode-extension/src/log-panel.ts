@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import * as vscode from 'vscode';
 import type { CommitDetails, CommitFileChange, CommitSummary, GitRef } from '@git4vsc/shared-types';
 import type { RepositoryController } from '@git4vsc/repo-state';
+import { selectionAfterLogReload } from './log-selection.js';
 
 type CommitAction = 'copyRevision' | 'copySubject' | 'createBranch' | 'createTag' | 'checkout' | 'compareLocal' | 'cherryPick' | 'revert' | 'reset';
 type RefAction =
@@ -150,16 +151,12 @@ class LogSession implements vscode.Disposable {
   private async loadLog(reset: boolean): Promise<void> {
     if (!reset && (this.logLoading || !this.hasMore)) return;
     const request = ++this.logRequest;
+    const limit = reset ? Math.max(200, this.commits.length) : 200;
     this.logLoading = true;
     this.localError = null;
-    if (reset) {
-      this.selectedHash = null;
-      this.details = null;
-      this.detailsRequest += 1;
-    }
     this.postSnapshot();
     try {
-      const page = await this.repository.git.log(this.repository.location, reset ? 0 : this.commits.length, 200, {
+      const page = await this.repository.git.log(this.repository.location, reset ? 0 : this.commits.length, limit, {
         ...(this.activeRef ? { ref: this.activeRef } : {}),
         ...(this.search ? { text: this.search } : {})
       });
@@ -168,9 +165,22 @@ class LogSession implements vscode.Disposable {
       this.commits = next;
       this.hasMore = page.hasMore;
       this.logLoading = false;
-      this.postSnapshot();
-      const first = next[0];
-      if (reset && first) await this.loadDetails(first.hash);
+      if (!reset) {
+        this.postSnapshot();
+        return;
+      }
+      const nextSelection = selectionAfterLogReload(next, this.selectedHash);
+      if (!nextSelection) {
+        this.detailsRequest += 1;
+        this.selectedHash = null;
+        this.details = null;
+        this.detailsLoading = false;
+        this.postSnapshot();
+      } else if (nextSelection !== this.selectedHash || (!this.detailsLoading && this.details?.hash !== nextSelection)) {
+        await this.loadDetails(nextSelection);
+      } else {
+        this.postSnapshot();
+      }
     } catch (error) {
       if (request !== this.logRequest) return;
       this.logLoading = false;

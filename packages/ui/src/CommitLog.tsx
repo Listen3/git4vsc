@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type UIEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type UIEvent } from 'react';
 import { layoutCommits } from '@git4vsc/git-graph';
 import type { CommitSummary } from '@git4vsc/shared-types';
 import { defaultCommitColumnWidths, normalizeCommitColumnWidths, type CommitColumn, type CommitColumnWidths } from './commit-columns.js';
@@ -25,6 +25,8 @@ const overscan = 10;
 export function CommitLog({ commits, selectedHash, hasMore = false, loading = false, columnWidths: initialColumnWidths, onLoadMore, onSelectCommit, onCommitAction, onColumnWidthsChange }: CommitLogProps) {
   const graph = useMemo(() => layoutCommits(commits), [commits]);
   const container = useRef<HTMLDivElement>(null);
+  const previousCommits = useRef(commits);
+  const previousSelectedHash = useRef(selectedHash);
   const widthsRef = useRef(normalizeCommitColumnWidths(initialColumnWidths));
   const [scrollTop, setScrollTop] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
@@ -45,6 +47,27 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
     observer.observe(container.current);
     return () => observer.disconnect();
   }, []);
+
+  useLayoutEffect(() => {
+    const element = container.current;
+    const oldCommits = previousCommits.current;
+    const oldSelectedHash = previousSelectedHash.current;
+    previousCommits.current = commits;
+    previousSelectedHash.current = selectedHash;
+    if (!element || oldCommits === commits) return;
+
+    const firstVisible = Math.floor(element.scrollTop / rowHeight);
+    const selectedIndex = oldSelectedHash ? oldCommits.findIndex(commit => commit.hash === oldSelectedHash) : -1;
+    const selectedVisible = selectedIndex >= firstVisible && selectedIndex * rowHeight < element.scrollTop + element.clientHeight;
+    const anchorIndex = selectedVisible ? selectedIndex : firstVisible;
+    const anchor = oldCommits[anchorIndex];
+    const anchorOffset = anchorIndex * rowHeight - element.scrollTop;
+    const nextAnchorIndex = anchor ? commits.findIndex(commit => commit.hash === anchor.hash) : -1;
+    const nextSelectedIndex = selectedHash ? commits.findIndex(commit => commit.hash === selectedHash) : -1;
+    if (nextAnchorIndex >= 0) element.scrollTop = nextAnchorIndex * rowHeight - anchorOffset;
+    else if (nextSelectedIndex >= 0) element.scrollTop = nextSelectedIndex * rowHeight;
+    setScrollTop(element.scrollTop);
+  }, [commits, selectedHash]);
 
   function handleScroll(event: UIEvent<HTMLDivElement>) {
     const target = event.currentTarget;
@@ -138,7 +161,7 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
             );
           })}
         </div>
-        {loading && <div className="commit-loading">Loading…</div>}
+        {loading && commits.length === 0 && <div className="commit-loading">Loading…</div>}
         {!loading && commits.length === 0 && <div className="commit-empty">No commits match the current filters.</div>}
       </div>
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} onSelect={id => onCommitAction?.(id as CommitAction, menu.commit)} />}
