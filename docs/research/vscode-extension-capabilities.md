@@ -1,4 +1,4 @@
-# VS Code 与 uTools 平台能力调研
+# VS Code 平台能力调研
 
 调研时间：2026-07-29；VS Code 实现目标基线为 1.102。链接指向官方文档及 Microsoft VS Code 内置 Git 扩展源码。
 
@@ -20,7 +20,7 @@
 
 - [`extensions/git/src/repository.ts`](https://github.com/microsoft/vscode/blob/main/extensions/git/src/repository.ts)：单仓库命令 facade、状态组、操作枚举/队列、事件与 watcher。
 - [`extensions/git/src/model.ts`](https://github.com/microsoft/vscode/blob/main/extensions/git/src/model.ts)：仓库发现、多 root model、open/close/change events。
-- [`extensions/git/src/api/git.d.ts`](https://github.com/microsoft/vscode/blob/main/extensions/git/src/api/git.d.ts)：内置 Git extension 对其他扩展暴露的 API（repository、state、refs、diff 等）。该 API 可用于互操作，但不是本工程共享 core 的基础，否则 uTools 无法复用且能力受内置扩展版本限制。
+- [`extensions/git/src/api/git.d.ts`](https://github.com/microsoft/vscode/blob/main/extensions/git/src/api/git.d.ts)：内置 Git extension 对其他扩展暴露的 API（repository、state、refs、diff 等）。该 API 可用于互操作，但不是本工程 core 的基础，避免核心能力受内置扩展版本限制。
 
 本工程选择：本机 Git CLI 是事实源；VS Code adapter 使用公共 `vscode` API。后续可选读取 `vscode.git` API 做“避免重复 provider”的兼容模式，但核心不依赖它。
 
@@ -59,32 +59,13 @@
 - `workspace.fs`、URI、`env.openExternal` 和 `window.createTerminal({ cwd })` 应替代安装路径硬编码。
 - VS Code watcher 可能合并/漏掉瞬时事件，因此事件只触发 invalidation，最终状态仍由 Git 命令重读。
 
-## uTools preload 与 React 安全通信
-
-官方 [preload 文档](https://www.u-tools.cn/docs/developer/information/preload.html) 说明：
-
-- `plugin.json.preload` 指向 CommonJS 文件；它能使用 Node.js 与 Electron renderer API。
-- 前端通过 preload 挂到 `window` 的属性调用本机能力。
-- preload 与引入的第三方模块必须保持源码清晰可读，不允许压缩、混淆；发布时源码一起提交。
-
-官方 [`plugin.json` 文档](https://www.u-tools.cn/docs/developer/information/plugin-json.html) 定义 `main/logo/preload/features`，并允许 `files` 匹配目录。
-
-本工程安全规则：
-
-1. `preload.cjs` 保持手写、未打包 CommonJS。
-2. 只暴露 `open/refresh/stage/commit/loadMore/chooseRepository`，不暴露 `exec`、`spawn`、fs 或任意 Git 参数。
-3. path/message/array 在 preload 边界校验；core 使用参数数组和 `--`，不启 shell。
-4. React 只能发送领域 intent；repository 必须先由 `open` 注册，后续用已知 root 查询。
-5. 生产打包需要把共享包的可读产物与许可证一同包含，不能把 preload dependency 压成不可审计 bundle。
-
 ## 能力映射
 
-| 产品区域 | VS Code | uTools | 共享层 |
-| --- | --- | --- | --- |
-| 变更/暂存 | SCM groups + native Diff | React changes sidebar | status parser, GitClient |
-| Commit input | SCM input box | React textarea | RepositoryController.commit |
-| 仓库列表 | Activity Bar TreeView | workspace/repository React list | RepositoryManager |
-| Commit Log | editor Webview | main React view | log parser, git-graph, ui |
-| 文件内容/Diff | content provider + `vscode.diff` | shared Diff（后续） | blob/diff command API（后续） |
-| 操作进度 | `withProgress`, OutputChannel | inline progress/toast | operation events |
-
+| 产品区域 | VS Code | 核心模块 |
+| --- | --- | --- |
+| 变更/暂存 | SCM groups + native Diff | status parser, GitClient |
+| Commit input | SCM input box | RepositoryController.commit |
+| 仓库列表 | Activity Bar TreeView | RepositoryManager |
+| Commit Log | editor Webview | log parser, git-graph, ui |
+| 文件内容/Diff | content provider + `vscode.diff` | blob/diff command API（后续） |
+| 操作进度 | `withProgress`, OutputChannel | operation events |

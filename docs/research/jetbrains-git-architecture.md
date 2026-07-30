@@ -107,7 +107,7 @@ JetBrains 图能力位于平台而非 Git4Idea：
 - Git4Idea 将变更采集交给 Git backend，把 Diff/Merge viewer、ChangeList、dirty scope 交给平台。
 - 未跟踪/忽略/已解决冲突使用独立 holder 和 invalidation，避免每次全盘扫描。
 - operation 类几乎都按 `GitRepository` 聚合结果。跨 root 有 compound result，但单 repository 状态和命令上下文不共享。
-- 本工程同样让 core 只返回 path/status/content；VS Code 用 `TextDocumentContentProvider + vscode.diff`，uTools 后续用共享 Diff React UI；冲突 state machine 属于操作层，不塞进 renderer。
+- 本工程同样让 core 只返回 path/status/content；VS Code 用 `TextDocumentContentProvider + vscode.diff`；冲突 state machine 属于操作层，不塞进 renderer。
 
 ## 8. 官方源码索引
 
@@ -117,4 +117,3 @@ JetBrains 图能力位于平台而非 Git4Idea：
 - [GitLogProvider](https://github.com/JetBrains/intellij-community/blob/master/plugins/git4idea/backend/src/log/GitLogProvider.kt)
 - [平台 VCS Log](https://github.com/JetBrains/intellij-community/tree/master/platform/vcs-log)
 - [平台 Commit Graph](https://github.com/JetBrains/intellij-community/tree/master/platform/vcs-log/graph)
-

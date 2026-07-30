@@ -24,9 +24,4 @@ No VS Code source code or product artwork is copied into this repository. `@type
 
 ## Runtime and build dependencies
 
-The project currently uses React, Vite, Vitest, TypeScript, tsup, ESLint and their transitive dependencies under their respective published open-source licenses. Production packaging must generate a dependency license inventory from the lockfile and ship all notices required by the versions actually included. Development-only packages are not bundled into the VS Code extension or uTools plugin.
-
-## uTools
-
-uTools is a target host platform. This repository contains an original `plugin.json`, preload bridge and logo. It does not redistribute uTools software or brand assets.
-
+The project currently uses React, Vite, Vitest, TypeScript, tsup, ESLint and their transitive dependencies under their respective published open-source licenses. Production packaging must generate a dependency license inventory from the lockfile and ship all notices required by the versions actually included. Development-only packages are not bundled into the VS Code extension.

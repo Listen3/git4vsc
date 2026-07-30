@@ -1,8 +1,6 @@
 # Git4VSC
 
-面向 VS Code 与 uTools 的本机 Git 客户端 monorepo，参考 JetBrains Git4Idea 与 VCS Log 的专业工作流、信息结构和交互逻辑进行原创实现。
-
-项目优先提供 VS Code Git 增强扩展，并让 uTools 插件共享 Git 命令层、仓库状态、日志解析、提交图算法和 React UI。
+面向 VS Code 的本机 Git 增强扩展，参考 JetBrains Git4Idea 与 VCS Log 的专业工作流、信息结构和交互逻辑进行原创实现。
 
 ## 当前进度
 
@@ -15,7 +13,6 @@
 - 按拓扑顺序分页读取 Commit Log
 - 绘制支持 merge、octopus merge 和多 root 的提交图
 - VS Code 原生 SCM、Activity Bar、TreeView、Command Palette 和 Diff 集成
-- uTools preload 安全桥接和 React 仓库面板
 
 Fetch、Pull、Push、冲突处理、Stash、Reset、Cherry-pick 和 Rebase 将按垂直链路继续实现。
 
@@ -31,7 +28,6 @@ packages/
 
 apps/
   vscode-extension/
-  utools-plugin/
 ```
 
 ## 开发
@@ -53,7 +49,7 @@ pnpm test:extension
 
 - [总体架构](docs/architecture.md)
 - [JetBrains Git/VCS Log 源码调研](docs/research/jetbrains-git-architecture.md)
-- [VS Code 与 uTools 平台能力](docs/research/vscode-extension-capabilities.md)
+- [VS Code 平台能力](docs/research/vscode-extension-capabilities.md)
 - [功能对照矩阵](docs/research/feature-parity-matrix.md)
 - [第三方声明](THIRD_PARTY_NOTICES.md)
 

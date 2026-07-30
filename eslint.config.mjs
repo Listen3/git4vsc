@@ -25,7 +25,6 @@ export default tseslint.config(
       globals: {
         ...globals.node,
         window: 'readonly',
-        utools: 'readonly',
         suite: 'readonly',
         test: 'readonly'
       }

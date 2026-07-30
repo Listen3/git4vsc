@@ -39,34 +39,6 @@ importers:
         specifier: ^4.1.0
         version: 4.1.10(@types/node@26.1.2)(vite@7.3.6(@types/node@26.1.2)(lightningcss@1.33.0))
 
-  apps/utools-plugin:
-    dependencies:
-      '@git4vsc/git-core':
-        specifier: workspace:*
-        version: link:../../packages/git-core
-      '@git4vsc/repo-state':
-        specifier: workspace:*
-        version: link:../../packages/repo-state
-      '@git4vsc/shared-types':
-        specifier: workspace:*
-        version: link:../../packages/shared-types
-      '@git4vsc/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
-      react:
-        specifier: ^19.2.8
-        version: 19.2.8
-      react-dom:
-        specifier: ^19.2.8
-        version: 19.2.8(react@19.2.8)
-    devDependencies:
-      '@types/react':
-        specifier: ^19.2.17
-        version: 19.2.17
-      '@types/react-dom':
-        specifier: ^19.2.3
-        version: 19.2.3(@types/react@19.2.17)
-
   apps/vscode-extension:
     dependencies:
       '@git4vsc/git-core':
@@ -102,7 +74,7 @@ importers:
         version: 3.1.0
       '@vscode/vsce':
         specifier: ^3.9.2
-        version: 3.9.2
+        version: 3.9.2(supports-color@8.1.1)
       mocha:
         specifier: ^11.7.5
         version: 11.7.6
@@ -2802,7 +2774,7 @@ snapshots:
       '@babel/code-frame': 7.29.7
       '@babel/generator': 7.29.7
       '@babel/helper-compilation-targets': 7.29.7
-      '@babel/helper-module-transforms': 7.29.7(@babel/core@7.29.7)
+      '@babel/helper-module-transforms': 7.29.7(@babel/core@7.29.7(supports-color@8.1.1))
       '@babel/helpers': 7.29.7
       '@babel/parser': 7.29.7
       '@babel/template': 7.29.7
@@ -2842,7 +2814,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@babel/helper-module-transforms@7.29.7(@babel/core@7.29.7)':
+  '@babel/helper-module-transforms@7.29.7(@babel/core@7.29.7(supports-color@8.1.1))':
     dependencies:
       '@babel/core': 7.29.7(supports-color@8.1.1)
       '@babel/helper-module-imports': 7.29.7
@@ -3509,7 +3481,7 @@ snapshots:
       '@vscode/vsce-sign-win32-arm64': 2.0.6
       '@vscode/vsce-sign-win32-x64': 2.0.6
 
-  '@vscode/vsce@3.9.2':
+  '@vscode/vsce@3.9.2(supports-color@8.1.1)':
     dependencies:
       '@azure/identity': 4.13.1
       '@secretlint/node': 10.2.2
@@ -3532,7 +3504,7 @@ snapshots:
       minimatch: 10.2.6
       parse-semver: 1.1.1
       read: 1.0.7
-      secretlint: 10.2.2
+      secretlint: 10.2.2(supports-color@8.1.1)
       semver: 7.8.5
       tmp: 0.2.7
       typed-rest-client: 1.8.11
@@ -4840,7 +4812,7 @@ snapshots:
 
   scheduler@0.27.0: {}
 
-  secretlint@10.2.2:
+  secretlint@10.2.2(supports-color@8.1.1):
     dependencies:
       '@secretlint/config-creator': 10.2.2
       '@secretlint/formatter': 10.2.2

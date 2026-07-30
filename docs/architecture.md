@@ -3,7 +3,7 @@
 ## 目标与约束
 
 - 本机 Git CLI 是唯一 Git 执行后端；不启 shell，不硬编码 Git/terminal/IDE 路径。
-- UI 不组装 Git 参数；VS Code 与 uTools 只发送领域 intent。
+- UI 不组装 Git 参数；VS Code adapter 只发送领域 intent。
 - repository 是状态、锁、loading、error、cache 和未来 AI 状态的隔离单元。
 - 写操作在单 repository 内串行，不同 repository 之间并发。
 - 事件只标记 invalidation，刷新命令重新建立可信快照。
@@ -20,16 +20,15 @@ packages/
   ui/            React virtual Commit Log and graph renderer
 apps/
   vscode-extension/  SCM, TreeView, virtual content/Diff, Webview host
-  utools-plugin/     readable CommonJS preload and React shell
 ```
 
-依赖只向下：apps → ui/repo-state → git-core/git-graph → shared-types。`git-core` 不依赖 React、VS Code、Electron 或 uTools。
+依赖只向下：apps → ui/repo-state → git-core/git-graph → shared-types。`git-core` 不依赖 React 或 VS Code。
 
 ## 运行链路
 
 ```mermaid
 flowchart LR
-  UI["SCM / React intent"] --> Adapter["VS Code or uTools adapter"]
+  UI["SCM / React intent"] --> Adapter["VS Code adapter"]
   Adapter --> Controller["RepositoryController"]
   Controller --> Queue["Per-repository operation queue"]
   Queue --> Client["GitClient"]
@@ -101,13 +100,6 @@ flowchart LR
 - Webview 使用 CSP、固定资源目录、VS Code theme variables；消息白名单是 `ready/refresh/loadMore`。
 - desktop/remote extension host 执行所在环境的 Git；不支持 browser-only VS Code。
 
-## uTools adapter
-
-- `preload.cjs` 不打包、不压缩，CommonJS 可审计。
-- `window.git4vsc` 只暴露 typed repository intent；没有通用 execute API。
-- React 共享 log/graph，外层提供 repository selection、changes 和 commit form。
-- 发布流程必须复制共享包的可读 CJS 与 notices；开发 workspace symlink 不是最终交付格式。
-
 ## 错误与进度
 
 当前命令结果保留 exit code/stdout/stderr，用户消息清理 `fatal:`。第二链路增加：
@@ -124,7 +116,7 @@ flowchart LR
 - Windows/macOS/Linux 都通过 Node `spawn` 查找 PATH 上的 `git`；未来设置只接受用户显式 executable path。
 - worktree 使用 `--absolute-git-dir`，不能假定 `.git` 是目录。
 - filesystem path 留在 adapter/core；共享 UI 接收字符串/URI-safe DTO。
-- 打开终端使用宿主 API 的 cwd；uTools 端用系统 API/显式已安装应用发现，不能枚举硬编码安装目录。
+- 打开终端使用 VS Code API 的 cwd，不能枚举硬编码安装目录。
 
 ## 测试策略
 
@@ -133,5 +125,3 @@ flowchart LR
 - repo-state：fake client 检查同 repo 串行、跨 repo 并发、commit 后 invalidation/refresh。
 - graph：synthetic DAG snapshot + geometry exact coordinates/continuity。
 - VS Code：`@vscode/test-electron` 激活 smoke；SCM adapter 的领域投影尽量保持纯函数可单测。
-- uTools：preload contract/静态安全测试，随后在 uTools 开发者工具做真实 IPC smoke。
-
