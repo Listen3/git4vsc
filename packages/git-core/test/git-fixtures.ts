@@ -25,6 +25,7 @@ export interface FixtureSet {
   shallow: string;
   worktree: string;
   submoduleHost: string;
+  conflict: string;
   cleanup(): void;
 }
 
@@ -83,11 +84,32 @@ export function createFixtureSet(): FixtureSet {
   git(submoduleHost, '-c', 'protocol.file.allow=always', 'submodule', 'add', submodule, 'modules/sample');
   git(submoduleHost, 'commit', '-m', 'add submodule');
 
+  const conflict = join(base, 'conflict');
+  mkdirSync(conflict);
+  git(conflict, 'init', '-b', 'main');
+  configure(conflict);
+  commit(conflict, 'first.txt', 'base first', 'conflict base');
+  commit(conflict, 'second.txt', 'base second', 'second base');
+  commit(conflict, 'delete-us.txt', 'base delete us', 'delete us base');
+  commit(conflict, 'delete-them.txt', 'base delete them', 'delete them base');
+  git(conflict, 'checkout', '-b', 'topic');
+  commit(conflict, 'first.txt', 'incoming first', 'incoming first');
+  commit(conflict, 'second.txt', 'incoming second', 'incoming second');
+  commit(conflict, 'delete-us.txt', 'incoming kept', 'modify file deleted by current');
+  git(conflict, 'rm', 'delete-them.txt');
+  git(conflict, 'commit', '-m', 'delete incoming file');
+  git(conflict, 'checkout', 'main');
+  commit(conflict, 'first.txt', 'current first', 'current first');
+  commit(conflict, 'second.txt', 'current second', 'current second');
+  git(conflict, 'rm', 'delete-us.txt');
+  git(conflict, 'commit', '-m', 'delete current file');
+  commit(conflict, 'delete-them.txt', 'current kept', 'modify file deleted by incoming');
+  try { git(conflict, 'merge', '--no-edit', 'topic'); } catch { /* expected conflicts */ }
+
   return {
-    base, history, shallow, worktree, submoduleHost,
+    base, history, shallow, worktree, submoduleHost, conflict,
     cleanup() {
       if (base.startsWith(tmpdir()) && base.includes('git4vsc-fixtures-')) rmSync(base, { recursive: true, force: true });
     }
   };
 }
-

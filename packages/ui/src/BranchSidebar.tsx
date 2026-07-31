@@ -49,12 +49,12 @@ export function BranchSidebar({ status, activeRef, favoriteRefs = [], onSelectRe
 
   return (
     <aside className="branch-sidebar" aria-label="Branches and tags">
-      <div className="sidebar-search"><span className="codicon codicon-search">⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Branch or tag" /></div>
+      <div className="sidebar-search"><span className="sidebar-search-icon" aria-hidden="true" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Branch or tag" /></div>
       <nav className="branch-tree">
         <BranchItem label="All" active={activeRef === null} icon="◎" onClick={() => onSelectRef?.(null)} />
         <BranchItem label={status?.branch ? `HEAD (${status.branch})` : 'HEAD (Detached)'} active={activeRef === 'HEAD'} icon="◆" onClick={() => onSelectRef?.('HEAD')} onContextMenu={event => openMenu(event, currentRef)} />
         <BranchGroup label="Local" count={local.length} onContextMenu={event => openMenu(event, null)}>
-          {local.map(ref => <BranchItem key={ref.fullName} label={ref.name} active={activeRef === ref.fullName} icon={ref.name === status?.branch ? '●' : '◇'} current={ref.name === status?.branch} favorite={favoriteRefs.includes(ref.fullName)} onClick={() => onSelectRef?.(ref.fullName)} onContextMenu={event => openMenu(event, ref)} />)}
+          {local.map(ref => <BranchItem key={ref.fullName} label={ref.name} active={activeRef === ref.fullName} icon={ref.name === status?.branch ? '●' : '◇'} current={ref.name === status?.branch} favorite={favoriteRefs.includes(ref.fullName)} updateAvailable={hasRemoteUpdate(ref, status)} onClick={() => onSelectRef?.(ref.fullName)} onContextMenu={event => openMenu(event, ref)} />)}
         </BranchGroup>
         <BranchGroup label="Remote" count={[...remoteGroups.values()].reduce((sum, group) => sum + group.length, 0)} onContextMenu={event => openRemoteMenu(event, null)}>
           {[...remoteGroups.entries()].map(([remote, remoteRefs]) => (
@@ -179,6 +179,12 @@ export function buildBranchMenu(ref: GitRef | null, status: RepositoryStatus | n
   );
 }
 
+export function hasRemoteUpdate(ref: GitRef, status: RepositoryStatus | null): boolean {
+  if (ref.type !== 'local-branch') return false;
+  if (ref.tracking === 'behind' || ref.tracking === 'diverged') return true;
+  return ref.name === status?.branch && status.behind > 0;
+}
+
 function joinMenuSections(...sections: ContextMenuItem[][]): ContextMenuItem[] {
   return sections.filter(section => section.length > 0).flatMap((section, index) =>
     index === 0 ? section : [{ id: `separator-${index}`, separator: true }, ...section]
@@ -194,14 +200,15 @@ function BranchGroup({ label, count, nested = false, children, onContextMenu }: 
   );
 }
 
-function BranchItem({ label, icon, active, current, favorite, onClick, onContextMenu }: {
+function BranchItem({ label, icon, active, current, favorite, updateAvailable, onClick, onContextMenu }: {
   label: string;
   icon: string;
   active?: boolean;
   current?: boolean;
   favorite?: boolean;
+  updateAvailable?: boolean;
   onClick: () => void;
   onContextMenu?: ((event: MouseEvent) => void) | undefined;
 }) {
-  return <button type="button" className={`branch-item${active ? ' active' : ''}${current ? ' current' : ''}`} onClick={onClick} onContextMenu={onContextMenu}><span className="branch-icon">{icon}</span><span className="branch-label">{label}</span>{favorite && <span className="branch-favorite">★</span>}</button>;
+  return <button type="button" className={`branch-item${active ? ' active' : ''}${current ? ' current' : ''}`} onClick={onClick} onContextMenu={onContextMenu}><span className="branch-icon">{icon}</span><span className="branch-label">{label}</span>{updateAvailable && <span className="branch-update" title="Updates available">↙</span>}{favorite && <span className="branch-favorite">★</span>}</button>;
 }

@@ -26,7 +26,7 @@
 | Fetch | fetch support/remote queue | progress/errors | operation use-case | Next |
 | Pull merge/rebase | update process | progress/conflict | operation use-case | Next |
 | Push/rejected update | push operation | progress/reject action | operation use-case | Next |
-| Conflict continue/abort | platform Merge + operation | Merge Editor + actions | operation state | Next |
+| Conflict continue/abort | platform Merge + operation | Merge Editor + actions | operation state | Done（逐文件会话、accept side、continue/abort） |
 | Stash | stash tracker/cache | TreeView/actions | stash store | Planned |
 | Reset | reset operation/preview | QuickPick/confirm | reset use-case | Planned |
 | Cherry-pick | sequence process | log context action | sequence use-case | Planned |

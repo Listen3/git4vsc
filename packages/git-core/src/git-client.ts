@@ -1,8 +1,8 @@
-import { access } from 'node:fs/promises';
+import { access, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { CommitDetails, CommitFileChange, CommitPage, LogQuery, RepositoryPhase, RepositoryStatus } from '@git4vsc/shared-types';
+import type { CommitDetails, CommitFileChange, CommitPage, GitChange, LogQuery, MergeConflict, RepositoryPhase, RepositoryStatus } from '@git4vsc/shared-types';
 import { CommandRunner } from './command-runner.js';
-import { parseLog, parseNameStatus, parsePorcelainV2, parseRefs } from './parsers.js';
+import { parseLog, parseNameStatus, parsePorcelainV2, parseRefs, parseUnmergedIndex } from './parsers.js';
 
 export interface RepositoryLocation {
   root: string;
@@ -44,7 +44,7 @@ export class GitClient {
   async status(location: RepositoryLocation): Promise<RepositoryStatus> {
     const [statusResult, refsResult, shallowResult] = await Promise.all([
       this.runner.run(['-C', location.root, 'status', '--porcelain=v2', '-z', '--branch', '--untracked-files=all']),
-      this.runner.run(['-C', location.root, 'for-each-ref', '--format=%(refname)%09%(objectname)%09%(upstream:short)', 'refs/heads', 'refs/remotes', 'refs/tags']),
+      this.runner.run(['-C', location.root, 'for-each-ref', '--format=%(refname)%09%(objectname)%09%(upstream:short)%09%(upstream:trackshort)', 'refs/heads', 'refs/remotes', 'refs/tags']),
       this.runner.run(['-C', location.root, 'rev-parse', '--is-shallow-repository'])
     ]);
     const parsed = parsePorcelainV2(statusResult.stdout);
@@ -123,15 +123,71 @@ export class GitClient {
     await this.runner.run(['-C', location.root, 'restore', '--staged', '--', ...paths]);
   }
 
+  async addToIgnore(location: RepositoryLocation, path: string): Promise<void> {
+    const ignoreFile = join(location.root, '.gitignore');
+    let contents = '';
+    try { contents = await readFile(ignoreFile, 'utf8'); } catch { /* create below */ }
+    const entry = path.replaceAll('\\', '/');
+    if (contents.split(/\r?\n/).includes(entry)) return;
+    await writeFile(ignoreFile, `${contents}${contents && !contents.endsWith('\n') ? '\n' : ''}${entry}\n`, 'utf8');
+  }
+
+  async rollbackChanges(location: RepositoryLocation, changes: readonly GitChange[]): Promise<void> {
+    const unstage = changes.filter(change => change.index === 'added' || change.index === 'copied' || change.index === 'renamed').map(change => change.path);
+    const restore = changes.flatMap(change => {
+      if (change.index === 'added' || change.index === 'copied' || change.workingTree === 'added' || change.workingTree === 'untracked') return [];
+      return [change.originalPath ?? change.path];
+    });
+    if (unstage.length) await this.runner.run(['-C', location.root, 'rm', '--cached', '-f', '--', ...unstage]);
+    if (restore.length) await this.runner.run(['-C', location.root, 'restore', '--source=HEAD', '--staged', '--worktree', '--', ...restore]);
+  }
+
   async commit(location: RepositoryLocation, message: string, all = false): Promise<void> {
     if (all) await this.runner.run(['-C', location.root, 'add', '--all']);
     await this.runner.run(['-C', location.root, 'commit', '--file=-'], { input: message });
+  }
+
+  async commitPaths(location: RepositoryLocation, message: string, paths: readonly string[]): Promise<void> {
+    await this.runner.run(['-C', location.root, 'add', '--', ...paths]);
+    await this.runner.run(['-C', location.root, 'commit', '--only', '--file=-', '--', ...paths], { input: message });
   }
 
   async show(location: RepositoryLocation, path: string, revision: string): Promise<string> {
     const resolvedSpec = revision === 'index' ? `:${path}` : `${revision}:${path}`;
     const result = await this.runner.run(['-C', location.root, 'show', resolvedSpec]);
     return result.stdout;
+  }
+
+  async conflicts(location: RepositoryLocation): Promise<MergeConflict[]> {
+    const result = await this.runner.run(['-C', location.root, 'ls-files', '--unmerged', '-z']);
+    return parseUnmergedIndex(result.stdout);
+  }
+
+  async acceptConflictSide(location: RepositoryLocation, paths: readonly string[], side: 'ours' | 'theirs'): Promise<void> {
+    const conflicts = new Map((await this.conflicts(location)).map(conflict => [conflict.path, conflict]));
+    const keep = paths.filter(path => conflicts.get(path)?.[side]);
+    const remove = paths.filter(path => !conflicts.get(path)?.[side]);
+    if (keep.length) {
+      await this.runner.run(['-C', location.root, 'checkout', `--${side}`, '--', ...keep]);
+      await this.runner.run(['-C', location.root, 'add', '--', ...keep]);
+    }
+    if (remove.length) await this.runner.run(['-C', location.root, 'rm', '-f', '--', ...remove]);
+  }
+
+  async markConflictResolved(location: RepositoryLocation, paths: readonly string[]): Promise<void> {
+    await this.runner.run(['-C', location.root, 'add', '--', ...paths]);
+  }
+
+  async restoreConflict(location: RepositoryLocation, paths: readonly string[]): Promise<void> {
+    await this.runner.run(['-C', location.root, 'checkout', '-m', '--', ...paths]);
+  }
+
+  async continueOperation(location: RepositoryLocation, phase: RepositoryPhase): Promise<void> {
+    await this.runner.run(['-C', location.root, '-c', 'core.editor=true', operationCommand(phase), '--continue'], { env: { GIT_EDITOR: 'true' } });
+  }
+
+  async abortOperation(location: RepositoryLocation, phase: RepositoryPhase): Promise<void> {
+    await this.runner.run(['-C', location.root, operationCommand(phase), '--abort']);
   }
 
   async changedFiles(location: RepositoryLocation, from: string, to?: string): Promise<CommitFileChange[]> {
@@ -274,4 +330,12 @@ function splitRemoteBranch(value: string): [string, string] {
   const separator = value.indexOf('/');
   if (separator < 1) throw new Error(`Invalid remote branch: ${value}`);
   return [value.slice(0, separator), value.slice(separator + 1)];
+}
+
+function operationCommand(phase: RepositoryPhase): 'merge' | 'rebase' | 'cherry-pick' | 'revert' {
+  if (phase === 'merging') return 'merge';
+  if (phase === 'rebasing') return 'rebase';
+  if (phase === 'cherry-picking') return 'cherry-pick';
+  if (phase === 'reverting') return 'revert';
+  throw new Error('No Git operation is in progress.');
 }

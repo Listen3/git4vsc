@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseLog, parseNameStatus, parsePorcelainV2, parseRefs } from '../src/parsers.js';
+import { parseLog, parseNameStatus, parsePorcelainV2, parseRefs, parseUnmergedIndex } from '../src/parsers.js';
 
 describe('parsePorcelainV2', () => {
   it('parses branch metadata and every change class', () => {
@@ -32,8 +32,9 @@ describe('parsePorcelainV2', () => {
 
 describe('refs and log', () => {
   it('keeps full ref identity', () => {
-    expect(parseRefs('refs/heads/main\taaa\torigin/main\nrefs/remotes/origin/main\taaa\nrefs/tags/v1\taaa\n')).toEqual([
-      { name: 'main', fullName: 'refs/heads/main', hash: 'aaa', type: 'local-branch', upstream: 'origin/main' },
+    expect(parseRefs('refs/heads/main\taaa\torigin/main\t<\nrefs/heads/feature\tbbb\torigin/feature\t<>\nrefs/remotes/origin/main\taaa\nrefs/tags/v1\taaa\n')).toEqual([
+      { name: 'main', fullName: 'refs/heads/main', hash: 'aaa', type: 'local-branch', upstream: 'origin/main', tracking: 'behind' },
+      { name: 'feature', fullName: 'refs/heads/feature', hash: 'bbb', type: 'local-branch', upstream: 'origin/feature', tracking: 'diverged' },
       { name: 'origin/main', fullName: 'refs/remotes/origin/main', hash: 'aaa', type: 'remote-branch', remote: 'origin' },
       { name: 'v1', fullName: 'refs/tags/v1', hash: 'aaa', type: 'tag' }
     ]);
@@ -49,6 +50,21 @@ describe('refs and log', () => {
         { name: 'v1', fullName: 'refs/tags/v1', hash: 'abc', type: 'tag' }
       ]
     }]);
+  });
+});
+
+describe('parseUnmergedIndex', () => {
+  it('preserves stage availability and conflict kinds', () => {
+    const output = [
+      '100644 aaaa 1\tboth.txt', '100644 bbbb 2\tboth.txt', '100644 cccc 3\tboth.txt',
+      '100644 dddd 1\tdeleted-by-us.txt', '100644 eeee 3\tdeleted-by-us.txt',
+      '100644 ffff 2\tboth-added.txt', '100644 aaaa 3\tboth-added.txt', ''
+    ].join('\0');
+    expect(parseUnmergedIndex(output)).toEqual([
+      { path: 'both.txt', kind: 'both-modified', base: true, ours: true, theirs: true },
+      { path: 'deleted-by-us.txt', kind: 'deleted-by-us', base: true, ours: false, theirs: true },
+      { path: 'both-added.txt', kind: 'both-added', base: false, ours: true, theirs: true }
+    ]);
   });
 });
 

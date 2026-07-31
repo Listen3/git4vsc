@@ -41,10 +41,10 @@ Already implemented:
 - Stage, unstage, Commit Staged and Commit All.
 - Commit success invalidates and refreshes repository status, refs and log.
 - Log panel shows committed-file changes and opens commit-to-parent diffs on double click.
+- Conflicts use a dedicated `Merge Changes` group and Git Merge panel, with a stage-based three-way Merge Editor and next-file workflow.
 
 Important gaps:
 
-- Conflicts are not presented as a dedicated group and have no Merge Editor commands.
 - No discard, delete untracked, add to `.gitignore`, open file or copy-path actions.
 - No group-level Stage All / Unstage All / Discard All commands.
 - No Commit and Push, Amend or pre-commit validation flow.
@@ -135,6 +135,8 @@ flowchart LR
 
 - Operations in one repository are serialized by `RepositoryController`; another repository remains enabled and can run concurrently.
 - Source Control progress reports the repository name and current phase.
+- The status bar is the compact repository dashboard: it shows the branch, ahead/behind counts, active operation and conflicts, and opens the searchable branches-and-actions menu.
+- Updating a tracked branch runs immediately and reports progress in the status bar. Confirmation is reserved for destructive operations, not routine update/fetch/pull actions.
 - Expected Git failures are classified into actionable cases: empty commit, hook failure, unresolved conflict, non-fast-forward, authentication and missing upstream.
 - Refresh is invalidation-based. UI commands do not manually patch repository snapshots after writes.
 
@@ -211,4 +213,3 @@ JetBrains changelists, shelf and Local History are intentionally outside these s
 - Repository-state tests: exact invalidations after every success/failure and concurrent operations in different repositories.
 - Extension Host tests: group ordering, context values, multi-selection command arguments and commit input behavior.
 - Manual VS Code checks on Windows and macOS: native diff preview, Merge Editor, confirmation dialogs, theme/high-contrast rendering and keyboard focus.
-

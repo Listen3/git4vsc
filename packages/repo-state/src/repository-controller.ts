@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import type { GitClient, RepositoryLocation } from '@git4vsc/git-core';
-import type { RepositoryInvalidation, RepositorySnapshot } from '@git4vsc/shared-types';
+import type { GitChange, RepositoryInvalidation, RepositorySnapshot } from '@git4vsc/shared-types';
 
 class OperationQueue {
   private tail = Promise.resolve();
@@ -83,8 +83,20 @@ export class RepositoryController {
     return this.runOperation('unstage', () => this.git.unstage(this.location, paths), ['status']);
   }
 
+  addToIgnore(path: string): Promise<void> {
+    return this.runOperation('add-to-ignore', () => this.git.addToIgnore(this.location, path), ['status']);
+  }
+
+  rollbackChanges(changes: readonly GitChange[]): Promise<void> {
+    return this.runOperation('rollback', () => this.git.rollbackChanges(this.location, changes), ['status']);
+  }
+
   commit(message: string, all = false): Promise<void> {
     return this.runOperation('commit', () => this.git.commit(this.location, message, all), ['status', 'log', 'refs']);
+  }
+
+  commitPaths(message: string, paths: readonly string[]): Promise<void> {
+    return this.runOperation('commit', () => this.git.commitPaths(this.location, message, paths), ['status', 'log', 'refs']);
   }
 
   createBranch(name: string, startPoint: string): Promise<void> {
@@ -96,15 +108,15 @@ export class RepositoryController {
   }
 
   checkoutAndUpdate(branch: string, upstream: string): Promise<void> {
-    return this.runOperation('checkout-update', () => this.git.checkoutAndUpdate(this.location, branch, upstream), ['status', 'log', 'refs']);
+    return this.runOperation('checkout-update', () => this.git.checkoutAndUpdate(this.location, branch, upstream), ['status', 'log', 'refs'], true);
   }
 
   checkoutAndRebase(branch: string, currentBranch: string): Promise<void> {
-    return this.runOperation('checkout-rebase', () => this.git.checkoutAndRebase(this.location, branch, currentBranch), ['status', 'log', 'refs']);
+    return this.runOperation('checkout-rebase', () => this.git.checkoutAndRebase(this.location, branch, currentBranch), ['status', 'log', 'refs'], true);
   }
 
   checkoutRemoteAndRebase(localBranch: string, remoteBranch: string, currentBranch: string): Promise<void> {
-    return this.runOperation('checkout-rebase', () => this.git.checkoutRemoteAndRebase(this.location, localBranch, remoteBranch, currentBranch), ['status', 'log', 'refs']);
+    return this.runOperation('checkout-rebase', () => this.git.checkoutRemoteAndRebase(this.location, localBranch, remoteBranch, currentBranch), ['status', 'log', 'refs'], true);
   }
 
   createTag(name: string, startPoint: string): Promise<void> {
@@ -116,11 +128,33 @@ export class RepositoryController {
   }
 
   merge(ref: string): Promise<void> {
-    return this.runOperation('merge', () => this.git.merge(this.location, ref), ['status', 'log', 'refs']);
+    return this.runOperation('merge', () => this.git.merge(this.location, ref), ['status', 'log', 'refs'], true);
+  }
+
+  acceptConflictSide(paths: readonly string[], side: 'ours' | 'theirs'): Promise<void> {
+    return this.runOperation(`accept-${side}`, () => this.git.acceptConflictSide(this.location, paths, side), ['status']);
+  }
+
+  markConflictResolved(paths: readonly string[]): Promise<void> {
+    return this.runOperation('mark-resolved', () => this.git.markConflictResolved(this.location, paths), ['status']);
+  }
+
+  restoreConflict(paths: readonly string[]): Promise<void> {
+    return this.runOperation('restore-conflict', () => this.git.restoreConflict(this.location, paths), ['status']);
+  }
+
+  continueOperation(): Promise<void> {
+    const phase = this.mutable.status?.phase ?? 'normal';
+    return this.runOperation('continue', () => this.git.continueOperation(this.location, phase), ['status', 'log', 'refs']);
+  }
+
+  abortOperation(): Promise<void> {
+    const phase = this.mutable.status?.phase ?? 'normal';
+    return this.runOperation('abort', () => this.git.abortOperation(this.location, phase), ['status', 'log', 'refs']);
   }
 
   rebase(ref: string): Promise<void> {
-    return this.runOperation('rebase', () => this.git.rebase(this.location, ref), ['status', 'log', 'refs']);
+    return this.runOperation('rebase', () => this.git.rebase(this.location, ref), ['status', 'log', 'refs'], true);
   }
 
   renameBranch(oldName: string, newName: string): Promise<void> {
@@ -152,7 +186,7 @@ export class RepositoryController {
   }
 
   pullBranch(remote: string, branch: string, rebase: boolean): Promise<void> {
-    return this.runOperation(rebase ? 'pull-rebase' : 'pull-merge', () => this.git.pullBranch(this.location, remote, branch, rebase), ['status', 'log', 'refs']);
+    return this.runOperation(rebase ? 'pull-rebase' : 'pull-merge', () => this.git.pullBranch(this.location, remote, branch, rebase), ['status', 'log', 'refs'], true);
   }
 
   pushTag(name: string, remote: string): Promise<void> {
@@ -180,11 +214,11 @@ export class RepositoryController {
   }
 
   cherryPick(hash: string): Promise<void> {
-    return this.runOperation('cherry-pick', () => this.git.cherryPick(this.location, hash), ['status', 'log', 'refs']);
+    return this.runOperation('cherry-pick', () => this.git.cherryPick(this.location, hash), ['status', 'log', 'refs'], true);
   }
 
   revert(hash: string): Promise<void> {
-    return this.runOperation('revert', () => this.git.revert(this.location, hash), ['status', 'log', 'refs']);
+    return this.runOperation('revert', () => this.git.revert(this.location, hash), ['status', 'log', 'refs'], true);
   }
 
   reset(hash: string, mode: 'soft' | 'mixed' | 'hard'): Promise<void> {
@@ -194,7 +228,8 @@ export class RepositoryController {
   private runOperation(
     name: string,
     operation: () => Promise<void>,
-    invalidations: RepositoryInvalidation[]
+    invalidations: RepositoryInvalidation[],
+    conflictsAreResult = false
   ): Promise<void> {
     return this.operations.run(async () => {
       this.patch({ operation: name, error: null });
@@ -208,6 +243,7 @@ export class RepositoryController {
         this.invalidate(...invalidations);
         await this.refresh();
         if (operationError !== null) {
+          if (conflictsAreResult && this.mutable.status?.changes.some(change => change.conflict)) return;
           this.patch({ error: operationError instanceof Error ? operationError.message : String(operationError) });
           throw operationError;
         }

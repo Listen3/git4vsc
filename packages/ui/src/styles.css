@@ -43,17 +43,21 @@ button { cursor: default; }
 .sidebar-search:focus-within, .log-search:focus-within { border-color: var(--vscode-focusBorder, #007fd4); }
 .sidebar-search input, .log-search input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; }
 .sidebar-search input::placeholder, .log-search input::placeholder { color: var(--vscode-input-placeholderForeground, #a6a6a6); }
+.sidebar-search-icon { position: relative; width: 16px; height: 16px; flex: 0 0 16px; }
+.sidebar-search-icon::before { content: ''; position: absolute; width: 8px; height: 8px; top: 2px; left: 2px; border: 1.5px solid currentColor; border-radius: 50%; }
+.sidebar-search-icon::after { content: ''; position: absolute; width: 6px; height: 1.5px; top: 11px; left: 10px; border-radius: 1px; background: currentColor; transform: rotate(45deg); transform-origin: left center; }
 .branch-tree { flex: 1; overflow: auto; padding: 1px 4px 8px; }
 .branch-group { margin: 1px 0; }
 .branch-group summary { height: 22px; padding: 2px 6px; display: flex; align-items: center; gap: 5px; color: var(--git4vsc-muted); list-style: none; }
 .branch-group summary::-webkit-details-marker { display: none; }
-.branch-group summary::before { content: '›'; width: 10px; transform: rotate(0deg); transition: transform 80ms; }
+.branch-group summary::before { content: '›'; width: 14px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 18px; line-height: 18px; transform: rotate(0deg); transform-origin: center; transition: transform 80ms; }
 .branch-group[open] > summary::before { transform: rotate(90deg); }
 .branch-count { margin-left: auto; opacity: .7; font-size: 11px; }
 .branch-group > div { padding-left: 10px; }
 .branch-group-nested > div { padding-left: 12px; }
 .branch-item { width: 100%; height: 22px; border: 0; border-radius: 2px; padding: 0 6px; display: flex; align-items: center; gap: 6px; background: transparent; text-align: left; white-space: nowrap; overflow: hidden; }
 .branch-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.branch-update { color: #589df6; font-size: 14px; line-height: 1; }
 .branch-favorite { margin-left: auto; color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d); font-size: 10px; }
 .branch-item:hover { background: var(--vscode-list-hoverBackground, #2a2d2e); }
 .branch-item.active { color: var(--vscode-list-activeSelectionForeground, #fff); background: var(--vscode-list-activeSelectionBackground, #04395e); }

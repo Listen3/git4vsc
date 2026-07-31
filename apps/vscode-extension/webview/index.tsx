@@ -4,6 +4,7 @@ import { RepositoryPanel } from '@git4vsc/ui';
 import '@git4vsc/ui/styles.css';
 import type { CommitDetails, CommitFileChange, CommitSummary, GitRef, RepositoryStatus } from '@git4vsc/shared-types';
 import type { CommitAction, CommitColumnWidths, RefAction, RemoteAction } from '@git4vsc/ui';
+import { CommitApp } from './commit-app.js';
 
 interface PersistedWebviewState {
   commitColumnWidths?: CommitColumnWidths;
@@ -31,7 +32,7 @@ interface ViewState {
   error: string | null;
 }
 
-function App() {
+function LogApp() {
   const [state, setState] = useState<ViewState>({ status: null, commits: [], activeRef: null, favoriteRefs: [], search: '', selectedHash: null, details: null, hasMore: false, loading: true, detailsLoading: false, error: null });
   const [commitColumnWidths, setCommitColumnWidths] = useState(restoredState?.commitColumnWidths);
   useEffect(() => {
@@ -62,4 +63,8 @@ function App() {
   />;
 }
 
-createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);
+const app = document.body.dataset.view === 'commit'
+  ? <CommitApp postMessage={message => vscode.postMessage(message)} />
+  : <LogApp />;
+
+createRoot(document.getElementById('root')!).render(<StrictMode>{app}</StrictMode>);

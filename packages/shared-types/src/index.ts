@@ -23,6 +23,23 @@ export interface GitChange {
   conflict: boolean;
 }
 
+export type MergeConflictKind =
+  | 'both-modified'
+  | 'both-added'
+  | 'deleted-by-us'
+  | 'deleted-by-them'
+  | 'added-by-us'
+  | 'added-by-them'
+  | 'both-deleted';
+
+export interface MergeConflict {
+  path: string;
+  kind: MergeConflictKind;
+  base: boolean;
+  ours: boolean;
+  theirs: boolean;
+}
+
 export interface GitRef {
   name: string;
   fullName: string;
@@ -30,6 +47,7 @@ export interface GitRef {
   type: 'head' | 'local-branch' | 'remote-branch' | 'tag';
   remote?: string;
   upstream?: string;
+  tracking?: 'ahead' | 'behind' | 'diverged' | 'equal';
 }
 
 export interface RepositoryStatus {

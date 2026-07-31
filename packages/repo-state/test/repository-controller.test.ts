@@ -12,13 +12,23 @@ class FakeGit {
   maxActive = 0;
   statusCalls = 0;
   logCalls = 0;
+  conflictOnMerge = false;
+  hasConflict = false;
 
-  async status(location: RepositoryLocation): Promise<RepositoryStatus> { this.statusCalls += 1; return status(location.root); }
+  async status(location: RepositoryLocation): Promise<RepositoryStatus> {
+    this.statusCalls += 1;
+    const result = status(location.root);
+    if (this.hasConflict) result.changes.push({ path: 'conflict.txt', index: 'unmerged', workingTree: 'unmerged', conflict: true });
+    return result;
+  }
   async log(_location: RepositoryLocation): Promise<CommitPage> { this.logCalls += 1; return { commits: [], offset: 0, hasMore: false }; }
   async stage(): Promise<void> { await this.write(); }
   async unstage(): Promise<void> { await this.write(); }
   async commit(): Promise<void> { await this.write(); }
-  async merge(): Promise<void> { throw new Error('merge conflict'); }
+  async merge(): Promise<void> {
+    if (this.conflictOnMerge) this.hasConflict = true;
+    throw new Error('merge conflict');
+  }
   private async write(): Promise<void> {
     this.active += 1;
     this.maxActive = Math.max(this.maxActive, this.active);
@@ -63,5 +73,18 @@ describe('RepositoryController', () => {
     expect(fake.logCalls).toBe(2);
     expect(repository.snapshot.operation).toBeNull();
     expect(repository.snapshot.error).toBe('merge conflict');
+  });
+
+  it('treats a merge conflict as repository state instead of a generic operation error', async () => {
+    const fake = new FakeGit();
+    fake.conflictOnMerge = true;
+    const repository = controller(fake, '/a');
+    await repository.refresh();
+
+    await repository.merge('topic');
+
+    expect(repository.snapshot.status?.changes[0]?.conflict).toBe(true);
+    expect(repository.snapshot.error).toBeNull();
+    expect(repository.snapshot.operation).toBeNull();
   });
 });

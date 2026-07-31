@@ -13,6 +13,7 @@
 - 按拓扑顺序分页读取 Commit Log
 - 绘制支持 merge、octopus merge 和多 root 的提交图
 - VS Code 原生 SCM、Activity Bar、TreeView、Command Palette 和 Diff 集成
+- Git4Idea 风格的逐文件冲突列表、三方 Merge Editor、Accept Current/Incoming、Continue 和 Abort
 
 Fetch、Pull、Push、冲突处理、Stash、Reset、Cherry-pick 和 Rebase 将按垂直链路继续实现。
 

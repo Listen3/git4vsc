@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GitRef, RepositoryStatus } from '@git4vsc/shared-types';
-import { buildBranchMenu } from '../src/BranchSidebar.js';
+import { buildBranchMenu, hasRemoteUpdate } from '../src/BranchSidebar.js';
 
 const refs: GitRef[] = [
   { name: 'main', fullName: 'refs/heads/main', hash: 'main-hash', type: 'local-branch' },
@@ -30,6 +30,13 @@ function actions(ref: GitRef, repositoryStatus: RepositoryStatus = status): stri
 }
 
 describe('branch context menus', () => {
+  it('marks branches whose upstream has updates', () => {
+    expect(hasRemoteUpdate({ ...refs[1]!, tracking: 'behind' }, status)).toBe(true);
+    expect(hasRemoteUpdate({ ...refs[1]!, tracking: 'diverged' }, status)).toBe(true);
+    expect(hasRemoteUpdate({ ...refs[1]!, tracking: 'ahead' }, status)).toBe(false);
+    expect(hasRemoteUpdate(refs[0]!, { ...status, behind: 2 })).toBe(true);
+  });
+
   it('shows only actions that apply to the current local branch', () => {
     expect(actions(refs[0]!)).toEqual([
       'copy', 'toggleFavorite', 'checkoutNew', 'newWorktree', 'diffLocal',

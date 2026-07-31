@@ -260,12 +260,18 @@ class LogSession implements vscode.Disposable {
     }
     if (action === 'cherryPick') {
       const confirmed = await vscode.window.showWarningMessage(`Cherry-pick ${commit.hash.slice(0, 8)} onto the current branch?`, { modal: true }, 'Cherry-Pick');
-      if (confirmed) await this.repository.cherryPick(commit.hash);
+      if (confirmed) {
+        await this.repository.cherryPick(commit.hash);
+        await this.resolveConflictsIfNeeded();
+      }
       return;
     }
     if (action === 'revert') {
       const confirmed = await vscode.window.showWarningMessage(`Create a new commit that reverts ${commit.hash.slice(0, 8)}?`, { modal: true }, 'Revert');
-      if (confirmed) await this.repository.revert(commit.hash);
+      if (confirmed) {
+        await this.repository.revert(commit.hash);
+        await this.resolveConflictsIfNeeded();
+      }
       return;
     }
     if (action === 'reset') await this.resetTo(commit.hash);
@@ -348,8 +354,7 @@ class LogSession implements vscode.Disposable {
         void vscode.window.showWarningMessage(`${ref.name} has no tracked branch.`);
         return;
       }
-      const confirmed = await vscode.window.showWarningMessage(`Checkout ${ref.name} and update it from ${upstream}?`, { modal: true }, 'Checkout and Update');
-      if (confirmed) await this.repository.checkoutAndUpdate(ref.name, upstream);
+      await this.repository.checkoutAndUpdate(ref.name, upstream);
       return;
     }
     if (action === 'checkoutRebase') {
@@ -392,12 +397,18 @@ class LogSession implements vscode.Disposable {
     }
     if (action === 'rebaseOnto') {
       const confirmed = await vscode.window.showWarningMessage(`Rebase ${this.repository.snapshot.status?.branch ?? 'HEAD'} onto ${ref.name}?`, { modal: true }, 'Rebase');
-      if (confirmed) await this.repository.rebase(ref.fullName);
+      if (confirmed) {
+        await this.repository.rebase(ref.fullName);
+        await this.resolveConflictsIfNeeded();
+      }
       return;
     }
     if (action === 'merge') {
       const confirmed = await vscode.window.showWarningMessage(`Merge ${ref.name} into ${this.repository.snapshot.status?.branch ?? 'HEAD'}?`, { modal: true }, 'Merge');
-      if (confirmed) await this.repository.merge(ref.fullName);
+      if (confirmed) {
+        await this.repository.merge(ref.fullName);
+        await this.resolveConflictsIfNeeded();
+      }
       return;
     }
     if (action === 'update') await this.updateSelectedBranch(ref);
@@ -462,8 +473,6 @@ class LogSession implements vscode.Disposable {
       void vscode.window.showWarningMessage(`${ref.name} has no tracked branch. Use “Set Tracked Branch” first.`);
       return;
     }
-    const confirmed = await vscode.window.showInformationMessage(`Update ${ref.name} from ${upstream}?`, { modal: true }, 'Update');
-    if (!confirmed) return;
     if (ref.name === this.repository.snapshot.status?.branch) {
       const [remote, branch] = splitRemoteBranch(upstream);
       await this.repository.pullBranch(remote, branch, false);
@@ -492,7 +501,16 @@ class LogSession implements vscode.Disposable {
     const [remote, branch] = splitRemoteBranch(ref.name);
     const method = rebase ? 'rebase' : 'merge';
     const confirmed = await vscode.window.showWarningMessage(`Pull ${ref.name} into ${this.repository.snapshot.status?.branch ?? 'HEAD'} using ${method}?`, { modal: true }, 'Pull');
-    if (confirmed) await this.repository.pullBranch(remote, branch, rebase);
+    if (confirmed) {
+      await this.repository.pullBranch(remote, branch, rebase);
+      await this.resolveConflictsIfNeeded();
+    }
+  }
+
+  private async resolveConflictsIfNeeded(): Promise<void> {
+    if (this.repository.snapshot.status?.changes.some(change => change.conflict)) {
+      await vscode.commands.executeCommand('git4vsc.resolveConflicts', this.repository);
+    }
   }
 
   private async renameBranch(ref: GitRef): Promise<void> {

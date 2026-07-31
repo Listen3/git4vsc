@@ -1,4 +1,4 @@
-import type { ChangeCode, CommitFileChange, CommitSummary, GitChange, GitRef } from '@git4vsc/shared-types';
+import type { ChangeCode, CommitFileChange, CommitSummary, GitChange, GitRef, MergeConflict, MergeConflictKind } from '@git4vsc/shared-types';
 
 export interface ParsedStatus {
   head: string | null;
@@ -88,13 +88,39 @@ export function parsePorcelainV2(output: string): ParsedStatus {
   return { head, branch, upstream, ahead, behind, changes };
 }
 
+export function parseUnmergedIndex(output: string): MergeConflict[] {
+  const files = new Map<string, Set<number>>();
+  for (const record of output.split('\0')) {
+    const match = /^\d+ [0-9a-f]+ ([123])\t([\s\S]+)$/i.exec(record);
+    if (!match?.[2]) continue;
+    const stages = files.get(match[2]) ?? new Set<number>();
+    stages.add(Number(match[1]));
+    files.set(match[2], stages);
+  }
+  return [...files].map(([path, stages]) => {
+    const base = stages.has(1);
+    const ours = stages.has(2);
+    const theirs = stages.has(3);
+    let kind: MergeConflictKind;
+    if (base && ours && theirs) kind = 'both-modified';
+    else if (!base && ours && theirs) kind = 'both-added';
+    else if (base && !ours && theirs) kind = 'deleted-by-us';
+    else if (base && ours && !theirs) kind = 'deleted-by-them';
+    else if (!base && ours) kind = 'added-by-us';
+    else if (!base && theirs) kind = 'added-by-them';
+    else kind = 'both-deleted';
+    return { path, kind, base, ours, theirs };
+  });
+}
+
 export function parseRefs(output: string): GitRef[] {
   const refs: GitRef[] = [];
   for (const line of output.split(/\r?\n/).filter(Boolean)) {
-    const [fullName, hash, upstream] = line.split('\t');
+    const [fullName, hash, upstream, track] = line.split('\t');
     if (!fullName || !hash) continue;
     if (fullName.startsWith('refs/heads/')) {
-      refs.push({ name: fullName.slice(11), fullName, hash, type: 'local-branch', ...(upstream ? { upstream } : {}) });
+      const tracking = track === '<' ? 'behind' : track === '>' ? 'ahead' : track === '<>' ? 'diverged' : track === '=' ? 'equal' : undefined;
+      refs.push({ name: fullName.slice(11), fullName, hash, type: 'local-branch', ...(upstream ? { upstream } : {}), ...(tracking ? { tracking } : {}) });
     } else if (fullName.startsWith('refs/remotes/')) {
       const name = fullName.slice(13);
       refs.push({ name, fullName, hash, type: 'remote-branch', remote: name.split('/')[0]! });

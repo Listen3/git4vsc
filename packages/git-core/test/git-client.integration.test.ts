@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { join } from 'node:path';
+import { readFile, rename } from 'node:fs/promises';
 import { GitClient } from '../src/git-client.js';
 import { createFixtureSet, type FixtureSet } from './git-fixtures.js';
 
@@ -102,5 +103,83 @@ describe('GitClient against generated repositories', () => {
     await client.commit(location, 'vertical chain commit', true);
     expect((await client.status(location)).changes).toEqual([]);
     expect((await client.log(location, 0, 1)).commits[0]?.subject).toBe('vertical chain commit');
+  });
+
+  it('commits only the files selected in the Commit view', async () => {
+    const location = await client.discover(fixtures.history);
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(`${location.root}/selected.txt`, 'selected');
+    await writeFile(`${location.root}/left-staged.txt`, 'left staged');
+    await client.stage(location, ['left-staged.txt']);
+    await client.commitPaths(location, 'selected files commit', ['selected.txt']);
+
+    const status = await client.status(location);
+    expect(status.changes).toContainEqual({ path: 'left-staged.txt', index: 'added', workingTree: null, conflict: false });
+    expect(status.changes.some(change => change.path === 'selected.txt')).toBe(false);
+    expect((await client.log(location, 0, 1)).commits[0]?.subject).toBe('selected files commit');
+  });
+
+  it('commits both sides of a selected rename', async () => {
+    const location = await client.discover(fixtures.history);
+    await rename(`${location.root}/line.txt`, `${location.root}/line-renamed.txt`);
+    await client.commitPaths(location, 'selected rename commit', ['line.txt', 'line-renamed.txt']);
+
+    const details = await client.commitDetails(location, (await client.log(location, 0, 1)).commits[0]!.hash);
+    expect(details.files).toContainEqual({ path: 'line-renamed.txt', originalPath: 'line.txt', status: 'renamed' });
+    expect((await client.status(location)).changes).toContainEqual({ path: 'left-staged.txt', index: 'added', workingTree: null, conflict: false });
+  });
+
+  it('rolls back tracked changes without deleting added or unversioned files', async () => {
+    const location = await client.discover(fixtures.history);
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(`${location.root}/base.txt`, 'changed');
+    await writeFile(`${location.root}/rollback-added.txt`, 'added');
+    await writeFile(`${location.root}/rollback-unversioned.txt`, 'unversioned');
+    await client.stage(location, ['rollback-added.txt']);
+    await client.rollbackChanges(location, [
+      { path: 'base.txt', index: null, workingTree: 'modified', conflict: false },
+      { path: 'rollback-added.txt', index: 'added', workingTree: null, conflict: false },
+      { path: 'rollback-unversioned.txt', index: null, workingTree: 'untracked', conflict: false }
+    ]);
+
+    expect(await readFile(`${location.root}/base.txt`, 'utf8')).toBe('base');
+    const changes = (await client.status(location)).changes;
+    expect(changes).toContainEqual({ path: 'rollback-added.txt', index: null, workingTree: 'untracked', conflict: false });
+    expect(changes).toContainEqual({ path: 'rollback-unversioned.txt', index: null, workingTree: 'untracked', conflict: false });
+  });
+
+  it('adds an unversioned file to the repository ignore file once', async () => {
+    const location = await client.discover(fixtures.history);
+    await client.addToIgnore(location, 'cache/output.tmp');
+    await client.addToIgnore(location, 'cache/output.tmp');
+
+    const ignore = await readFile(`${location.root}/.gitignore`, 'utf8');
+    expect(ignore.match(/cache\/output\.tmp/g)).toHaveLength(1);
+  });
+
+  it('loads three-way conflicts, accepts each side and continues the merge', async () => {
+    const location = await client.discover(fixtures.conflict);
+    expect((await client.status(location)).phase).toBe('merging');
+    expect(await client.conflicts(location)).toEqual([
+      { path: 'delete-them.txt', kind: 'deleted-by-them', base: true, ours: true, theirs: false },
+      { path: 'delete-us.txt', kind: 'deleted-by-us', base: true, ours: false, theirs: true },
+      { path: 'first.txt', kind: 'both-modified', base: true, ours: true, theirs: true },
+      { path: 'second.txt', kind: 'both-modified', base: true, ours: true, theirs: true }
+    ]);
+    expect(await client.show(location, 'first.txt', ':1')).toBe('base first');
+    expect(await client.show(location, 'first.txt', ':2')).toBe('current first');
+    expect(await client.show(location, 'first.txt', ':3')).toBe('incoming first');
+
+    await client.acceptConflictSide(location, ['first.txt'], 'ours');
+    await client.acceptConflictSide(location, ['second.txt', 'delete-us.txt', 'delete-them.txt'], 'theirs');
+    expect(await client.conflicts(location)).toEqual([]);
+    expect(await readFile(join(location.root, 'first.txt'), 'utf8')).toBe('current first');
+    expect(await readFile(join(location.root, 'second.txt'), 'utf8')).toBe('incoming second');
+    expect(await readFile(join(location.root, 'delete-us.txt'), 'utf8')).toBe('incoming kept');
+    await expect(readFile(join(location.root, 'delete-them.txt'), 'utf8')).rejects.toThrow();
+
+    await client.continueOperation(location, 'merging');
+    expect((await client.status(location)).phase).toBe('normal');
+    expect((await client.log(location, 0, 1)).commits[0]?.parents).toHaveLength(2);
   });
 });
