@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { GitChange } from '@git4vsc/shared-types';
-import { changeGroups, changeTone, compareIdeaFiles, fileContextActions, selectedChangeSummary } from '../webview/commit-app.js';
+import type { GitChange, RepositoryStatus } from '@git4vsc/shared-types';
+import { changeGroups, changeTone, compareIdeaFiles, fileContextActions, repositorySyncIndicators, selectedChangeSummary } from '../webview/commit-app.js';
 
 describe('commit change groups', () => {
   it('keeps tracked files in one stable group while selection changes', () => {
@@ -45,5 +45,17 @@ describe('commit change groups', () => {
     const change = (path: string): GitChange => ({ path, index: null, workingTree: 'modified', conflict: false });
     const sorted = [change('z/file10.ts'), change('a/beta.ts'), change('x/file2.ts'), change('q/alpha.ts')].sort(compareIdeaFiles);
     expect(sorted.map(item => item.path)).toEqual(['q/alpha.ts', 'a/beta.ts', 'x/file2.ts', 'z/file10.ts']);
+  });
+
+  it('shows IDEA-style incoming and outgoing branch indicators', () => {
+    const status = { upstream: 'origin/main', ahead: 2, behind: 3 } as RepositoryStatus;
+    expect(repositorySyncIndicators(status)).toEqual([
+      { kind: 'incoming', icon: '↙', label: '3 incoming commits from origin/main' },
+      { kind: 'outgoing', icon: '↗', label: '2 outgoing commits to origin/main' }
+    ]);
+    expect(repositorySyncIndicators({ ...status, ahead: 0, behind: 0 })).toEqual([
+      { kind: 'current', icon: '●', label: 'Up to date with origin/main' }
+    ]);
+    expect(repositorySyncIndicators({ ...status, upstream: null })).toEqual([]);
   });
 });

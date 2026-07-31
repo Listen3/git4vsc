@@ -64,6 +64,33 @@ body[data-view='commit'] {
 .commit-repository-name { font-weight: 600; }
 .commit-branch { color: #9da2a8; }
 
+.commit-sync-status {
+  height: 24px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0 2px;
+}
+
+.commit-sync-indicator {
+  width: 15px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.commit-sync-indicator.sync-current {
+  color: var(--vscode-gitDecoration-addedResourceForeground, #73c991);
+  font-size: 9px;
+}
+.commit-sync-indicator.sync-incoming { color: var(--vscode-gitDecoration-modifiedResourceForeground, #75beff); }
+.commit-sync-indicator.sync-outgoing { color: var(--vscode-gitDecoration-addedResourceForeground, #73c991); }
+
 .commit-row-action {
   border: 0;
   border-radius: 3px;
@@ -167,9 +194,12 @@ button:disabled { opacity: .45; }
 }
 
 .commit-change-row:hover { background: var(--vscode-list-hoverBackground, #2a2d2e); }
+.commit-change-row.selected { background: var(--vscode-list-activeSelectionBackground, #04395e); }
 .commit-change-main { min-width: 0; flex: 1; height: 100%; padding: 0; border: 0; display: flex; align-items: center; gap: 5px; text-align: left; color: inherit; background: transparent; }
 .commit-change-name { min-width: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.commit-change-folder { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #969ba0; }
+.commit-change-folder { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-descriptionForeground, #969ba0); opacity: .62; }
+.commit-change-row.selected .commit-change-name { color: var(--vscode-list-activeSelectionForeground, #fff); }
+.commit-change-row.selected .commit-change-folder { color: var(--vscode-list-activeSelectionForeground, #fff); opacity: .54; }
 .commit-row-action { width: 20px; height: 19px; flex: 0 0 20px; visibility: hidden; font-size: 14px; }
 .commit-change-row:hover .commit-row-action, .commit-row-action:focus { visibility: visible; }
 .change-added { color: #79ad82; }

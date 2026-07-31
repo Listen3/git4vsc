@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEve
 import { layoutCommits } from '@git4vsc/git-graph';
 import type { CommitSummary } from '@git4vsc/shared-types';
 import { defaultCommitColumnWidths, normalizeCommitColumnWidths, type CommitColumn, type CommitColumnWidths } from './commit-columns.js';
+import { formatCommitTime, formatExactCommitTime } from './commit-date.js';
 import { CommitGraph } from './CommitGraph.js';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu.js';
 
@@ -33,6 +34,7 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
   const [height, setHeight] = useState(500);
   const [columnWidths, setColumnWidths] = useState(widthsRef.current);
   const [menu, setMenu] = useState<{ x: number; y: number; commit: CommitSummary } | null>(null);
+  const [clock, setClock] = useState(Date.now());
   const first = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
   const last = Math.min(commits.length, Math.ceil((scrollTop + height) / rowHeight) + overscan);
   const graphWidth = Math.max(32, graph.maxLaneCount * 16 + 8);
@@ -46,6 +48,11 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
     const observer = new ResizeObserver(entries => setHeight(entries[0]?.contentRect.height ?? 500));
     observer.observe(container.current);
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   useLayoutEffect(() => {
@@ -155,7 +162,7 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
                 <CommitGraph row={row} width={graphWidth} />
                 <span className="commit-main"><span className="commit-subject">{commit.subject}</span><span className="commit-refs">{commit.refs.map(ref => <span className={`commit-ref commit-ref-${ref.type}`} key={ref.fullName}>{ref.name}</span>)}</span></span>
                 <span className="commit-author">{commit.authorName}</span>
-                <time>{new Date(commit.authorTime * 1000).toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</time>
+                <time title={formatExactCommitTime(commit.authorTime)}>{formatCommitTime(commit.authorTime, clock)}</time>
                 <code>{commit.hash.slice(0, 8)}</code>
               </button>
             );

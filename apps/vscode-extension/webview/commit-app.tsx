@@ -42,6 +42,12 @@ interface SelectionSummary {
   deleted: number;
 }
 
+interface SyncIndicator {
+  kind: 'current' | 'incoming' | 'outgoing';
+  icon: string;
+  label: string;
+}
+
 const initialState: CommitViewState = {
   repositories: [],
   activeRoot: null,
@@ -57,6 +63,7 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
   const [state, setState] = useState(initialState);
   const [message, setMessage] = useState('');
   const [fileMenu, setFileMenu] = useState<FileMenuState | null>(null);
+  const [activePath, setActivePath] = useState<string | null>(null);
   const [messageHeight, setMessageHeight] = useState(136);
   const messageRef = useRef('');
   const messageInput = useRef<HTMLTextAreaElement>(null);
@@ -65,6 +72,7 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
     const listener = (event: MessageEvent<{ type: string; state: CommitViewState }>) => {
       if (event.data.type !== 'commitSnapshot') return;
       setState(event.data.state);
+      setActivePath(current => event.data.state.status?.changes.some(change => change.path === current) ? current : null);
       setMessage(event.data.state.message);
       messageRef.current = event.data.state.message;
     };
@@ -160,6 +168,7 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
           <span className="commit-repository-name">{state.repositories[0]?.name}</span>
           <span className="commit-branch">{state.repositories[0]?.branch}</span>
         </div>}
+      <RepositorySyncStatus status={state.status} />
       <button
         className="commit-toolbar-action"
         title="Rollback selected changes…"
@@ -174,7 +183,7 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
     <section className="commit-changes" aria-label="Changes">
       {groups.length === 0
         ? <div className="commit-no-changes">No changes</div>
-        : groups.map(group => <ChangeGroupView key={group.id} group={group} busy={busy} selected={selected} setSelected={setSelected} postMessage={postMessage} openFileMenu={setFileMenu} />)}
+        : groups.map(group => <ChangeGroupView key={group.id} group={group} busy={busy} selected={selected} activePath={activePath} setActivePath={setActivePath} setSelected={setSelected} postMessage={postMessage} openFileMenu={setFileMenu} />)}
     </section>
 
     <footer className="commit-message-area" style={{ height: messageHeight }}>
@@ -205,6 +214,31 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
   </main>;
 }
 
+function RepositorySyncStatus({ status }: { status: RepositoryStatus | null }) {
+  const indicators = repositorySyncIndicators(status);
+  if (!indicators.length) return null;
+  return <span className="commit-sync-status" aria-label={indicators.map(indicator => indicator.label).join(', ')}>
+    {indicators.map(indicator => <span key={indicator.kind} className={`commit-sync-indicator sync-${indicator.kind}`} title={indicator.label}>{indicator.icon}</span>)}
+  </span>;
+}
+
+export function repositorySyncIndicators(status: RepositoryStatus | null): SyncIndicator[] {
+  if (!status?.upstream) return [];
+  const indicators: SyncIndicator[] = [];
+  if (status.behind) indicators.push({
+    kind: 'incoming',
+    icon: '↙',
+    label: `${status.behind} incoming commit${status.behind === 1 ? '' : 's'} from ${status.upstream}`
+  });
+  if (status.ahead) indicators.push({
+    kind: 'outgoing',
+    icon: '↗',
+    label: `${status.ahead} outgoing commit${status.ahead === 1 ? '' : 's'} to ${status.upstream}`
+  });
+  if (!indicators.length) indicators.push({ kind: 'current', icon: '●', label: `Up to date with ${status.upstream}` });
+  return indicators;
+}
+
 function SelectionSummaryView({ summary }: { summary: SelectionSummary }) {
   const entries = [
     { key: 'added', value: summary.added },
@@ -218,10 +252,12 @@ function SelectionSummaryView({ summary }: { summary: SelectionSummary }) {
   </div>;
 }
 
-function ChangeGroupView({ group, busy, selected, setSelected, postMessage, openFileMenu }: {
+function ChangeGroupView({ group, busy, selected, activePath, setActivePath, setSelected, postMessage, openFileMenu }: {
   group: ChangeGroup;
   busy: boolean;
   selected(change: GitChange): boolean;
+  activePath: string | null;
+  setActivePath(path: string): void;
   setSelected(changes: readonly GitChange[], value: boolean): void;
   postMessage(message: unknown): void;
   openFileMenu(menu: FileMenuState): void;
@@ -243,16 +279,18 @@ function ChangeGroupView({ group, busy, selected, setSelected, postMessage, open
       <small>{group.changes.length}</small>
     </summary>
     <div>
-      {group.changes.map(change => <ChangeRow key={`${group.id}:${change.path}`} change={change} staged={selected(change)} conflict={conflict} busy={busy} setSelected={setSelected} postMessage={postMessage} openFileMenu={openFileMenu} />)}
+      {group.changes.map(change => <ChangeRow key={`${group.id}:${change.path}`} change={change} staged={selected(change)} active={activePath === change.path} conflict={conflict} busy={busy} setActivePath={setActivePath} setSelected={setSelected} postMessage={postMessage} openFileMenu={openFileMenu} />)}
     </div>
   </details>;
 }
 
-function ChangeRow({ change, staged, conflict, busy, setSelected, postMessage, openFileMenu }: {
+function ChangeRow({ change, staged, active, conflict, busy, setActivePath, setSelected, postMessage, openFileMenu }: {
   change: GitChange;
   staged: boolean;
+  active: boolean;
   conflict: boolean;
   busy: boolean;
+  setActivePath(path: string): void;
   setSelected(changes: readonly GitChange[], value: boolean): void;
   postMessage(message: unknown): void;
   openFileMenu(menu: FileMenuState): void;
@@ -263,10 +301,11 @@ function ChangeRow({ change, staged, conflict, busy, setSelected, postMessage, o
   const side = change.workingTree !== null ? 'working' : 'staged';
   const tone = changeTone(change);
   return <div
-    className="commit-change-row"
+    className={`commit-change-row${active ? ' selected' : ''}`}
     title={change.path}
     onContextMenu={event => {
       event.preventDefault();
+      setActivePath(change.path);
       openFileMenu({ change, x: event.clientX, y: event.clientY });
     }}
   >
@@ -276,7 +315,10 @@ function ChangeRow({ change, staged, conflict, busy, setSelected, postMessage, o
       disabled={busy}
       onChange={() => setSelected([change], !staged)}
     />}
-    <button className="commit-change-main" onClick={() => postMessage({ type: conflict ? 'resolveConflict' : 'openChange', path: change.path, side })}>
+    <button className="commit-change-main" onClick={() => {
+      setActivePath(change.path);
+      postMessage({ type: conflict ? 'resolveConflict' : 'openChange', path: change.path, side });
+    }}>
       <span className={`commit-change-name change-${tone}`}>{name}</span>
       {folder && <span className="commit-change-folder">{folder}</span>}
     </button>
