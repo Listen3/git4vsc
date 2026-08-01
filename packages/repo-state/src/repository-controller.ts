@@ -95,6 +95,14 @@ export class RepositoryController {
     return this.runOperation('revert-changes', () => this.git.revertCommitChanges(this.location, parent, hash, changes), ['status']);
   }
 
+  cherryPickCommitChanges(parent: string | null, hash: string, changes: readonly CommitFileChange[]): Promise<void> {
+    return this.runOperation('cherry-pick-changes', () => this.git.cherryPickCommitChanges(this.location, parent, hash, changes), ['status'], true);
+  }
+
+  getChangesFromRevision(hash: string, changes: readonly CommitFileChange[]): Promise<void> {
+    return this.runOperation('get-from-revision', () => this.git.getChangesFromRevision(this.location, hash, changes), ['status']);
+  }
+
   commit(message: string, all = false): Promise<void> {
     return this.runOperation('commit', () => this.git.commit(this.location, message, all), ['status', 'log', 'refs']);
   }

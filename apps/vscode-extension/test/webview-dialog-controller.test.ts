@@ -19,4 +19,13 @@ describe('WebviewDialogController', () => {
     void controller.show({ kind: 'list', title: 'Second', items: [] });
     await expect(first).resolves.toBeNull();
   });
+
+  it('returns multiple paths from a path tree dialog', async () => {
+    const messages: unknown[] = [];
+    const controller = new WebviewDialogController(message => { messages.push(message); return Promise.resolve(true); });
+    const result = controller.show({ kind: 'path-tree', title: 'Paths', entries: [], selectedPaths: [] });
+    const id = (messages[0] as { dialog: { id: number } }).dialog.id;
+    controller.resolve(id, ['src', 'README.md']);
+    await expect(result).resolves.toEqual(['src', 'README.md']);
+  });
 });

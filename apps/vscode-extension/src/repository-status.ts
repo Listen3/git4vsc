@@ -52,6 +52,11 @@ export function operationLabel(operation: string): string {
   return `${operation.replaceAll('-', ' ')}…`;
 }
 
+export function operationActivity(operation: string | null): string | null {
+  if (!operation || ['stage', 'unstage', 'add-to-ignore', 'rollback', 'revert-changes', 'mark-resolved', 'restore-conflict', 'accept-ours', 'accept-theirs'].includes(operation)) return null;
+  return operationLabel(operation);
+}
+
 function phaseLabel(phase: RepositoryStatus['phase']): string {
   if (phase === 'cherry-picking') return 'cherry-picking';
   return phase;

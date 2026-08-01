@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RepositorySnapshot, RepositoryStatus } from '@git4vsc/shared-types';
-import { statusBarPresentation } from '../src/repository-status.js';
+import { operationActivity, statusBarPresentation } from '../src/repository-status.js';
 
 const status: RepositoryStatus = {
   root: '/repo',
@@ -29,6 +29,8 @@ describe('repository status bar presentation', () => {
 
   it('shows the active repository operation', () => {
     expect(statusBarPresentation(snapshot({ operation: 'pull-merge' })).title).toBe('$(sync~spin) Updating…');
+    expect(operationActivity('pull-merge')).toBe('Updating…');
+    expect(operationActivity('stage')).toBeNull();
   });
 
   it('promotes unresolved conflicts', () => {

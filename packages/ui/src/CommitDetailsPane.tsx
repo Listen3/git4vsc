@@ -1,6 +1,13 @@
-import { useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import type { CommitDetails, CommitFileChange } from '@git4vsc/shared-types';
 import type { LogViewOptions } from './RepositoryPanel.js';
+import { ContextMenu, type ContextMenuItem } from './ContextMenu.js';
+import { OverlayScrollbar } from './OverlayScrollbar.js';
+
+export type CommitFileAction =
+  | 'showDiff' | 'showDiffNewTab' | 'compareLocal' | 'compareBeforeLocal'
+  | 'editSource' | 'openRepositoryVersion' | 'revertSelected' | 'cherryPickSelected'
+  | 'createPatch' | 'getFromRevision' | 'historyUpToHere' | 'showChangesToParent' | 'copyPath';
 
 interface FileNode {
   name: string;
@@ -29,20 +36,22 @@ const statusLetter: Record<CommitFileChange['status'], string> = {
   added: 'A', modified: 'M', deleted: 'D', renamed: 'R', copied: 'C', 'type-changed': 'T', unmerged: 'U'
 };
 
-export function CommitDetailsPane({ details, loading, groupByDirectory, showDetails, onOptionsChange, onOpenFile, onRevertChanges }: {
+export function CommitDetailsPane({ details, loading, groupByDirectory, showDetails, onOptionsChange, onOpenFile, onFileAction }: {
   details: CommitDetails | null;
   loading?: boolean | undefined;
   groupByDirectory: boolean;
   showDetails: boolean;
   onOptionsChange?: ((options: LogViewOptions) => void) | undefined;
   onOpenFile?: ((change: CommitFileChange) => void) | undefined;
-  onRevertChanges?: ((changes: readonly CommitFileChange[]) => void) | undefined;
+  onFileAction?: ((action: CommitFileAction, changes: readonly CommitFileChange[]) => void) | undefined;
 }) {
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null);
   const [optionsMenu, setOptionsMenu] = useState<{ x: number; y: number } | null>(null);
+  const [fileMenu, setFileMenu] = useState<{ x: number; y: number; changes: CommitFileChange[] } | null>(null);
+  const fileTreeRef = useRef<HTMLDivElement>(null);
   const tree = useMemo(() => fileTree(details?.files ?? []), [details]);
-  useEffect(() => { setSelectedPaths(new Set()); setSelectionAnchor(null); }, [details?.hash]);
+  useEffect(() => { setSelectedPaths(new Set()); setSelectionAnchor(null); setFileMenu(null); }, [details?.hash]);
   if (loading) return <aside className="details-pane details-empty">Loading commit details…</aside>;
   if (!details) return <aside className="details-pane details-empty">Select a commit to view its details and changed files.</aside>;
 
@@ -65,32 +74,42 @@ export function CommitDetailsPane({ details, loading, groupByDirectory, showDeta
   };
   const selected = details.files.filter(change => selectedPaths.has(change.path));
   const updateOptions = (patch: Partial<LogViewOptions>) => onOptionsChange?.({ groupByDirectory, showDetails, ...patch });
+  const openFileMenu = (change: CommitFileChange, event: MouseEvent) => {
+    event.preventDefault();
+    const paths = selectedPaths.has(change.path) ? selectedPaths : new Set([change.path]);
+    if (!selectedPaths.has(change.path)) setSelectedPaths(paths);
+    setSelectionAnchor(change.path);
+    setFileMenu({ x: event.clientX, y: event.clientY, changes: details.files.filter(file => paths.has(file.path)) });
+  };
 
   return (
     <aside className="details-pane" aria-label="Commit details">
       <section className={`changed-files${showDetails ? '' : ' changed-files-full'}`}>
         <header className="changed-files-toolbar">
           <strong>Changes</strong><span>{details.files.length} files</span><span className="toolbar-spacer" />
-          <button type="button" className="details-action" disabled={selected.length === 0} title="Revert Selected Changes" aria-label="Revert Selected Changes" onClick={() => onRevertChanges?.(selected)}><RevertIcon /></button>
+          <button type="button" className="details-action" disabled={selected.length === 0} title="Revert Selected Changes" aria-label="Revert Selected Changes" onClick={() => onFileAction?.('revertSelected', selected)}><RevertIcon /></button>
           <button type="button" className="details-action" title="View Options" aria-label="View Options" onClick={event => {
             const rect = event.currentTarget.getBoundingClientRect();
             setOptionsMenu({ x: rect.right, y: rect.bottom + 2 });
           }}><EyeIcon /></button>
         </header>
-        <div className="file-tree">
+        <div ref={fileTreeRef} className="file-tree">
           {groupByDirectory
-            ? sortedNodes(tree).map(node => <FileTreeNode key={node.path} node={node} selectedPaths={selectedPaths} onSelect={select} onOpenFile={onOpenFile} />)
-            : details.files.map(change => <FileChangeRow key={change.path} change={change} name={baseName(change.path)} directory={directoryName(change.path)} selected={selectedPaths.has(change.path)} onSelect={select} onOpenFile={onOpenFile} />)}
+            ? sortedNodes(tree).map(node => <FileTreeNode key={node.path} node={node} selectedPaths={selectedPaths} onSelect={select} onOpenFile={onOpenFile} onContextMenu={openFileMenu} />)
+            : details.files.map(change => <FileChangeRow key={change.path} change={change} name={baseName(change.path)} directory={directoryName(change.path)} selected={selectedPaths.has(change.path)} onSelect={select} onOpenFile={onOpenFile} onContextMenu={openFileMenu} />)}
         </div>
+        <OverlayScrollbar targetRef={fileTreeRef} />
       </section>
       {showDetails && <CommitInformation details={details} />}
       {optionsMenu && <DetailsOptionsMenu x={optionsMenu.x} y={optionsMenu.y} groupByDirectory={groupByDirectory} showDetails={showDetails} onClose={() => setOptionsMenu(null)} onChange={updateOptions} />}
+      {fileMenu && <ContextMenu x={fileMenu.x} y={fileMenu.y} items={buildCommitFileMenu(fileMenu.changes, details.parents.length > 1)} onClose={() => setFileMenu(null)} onSelect={action => onFileAction?.(action as CommitFileAction, fileMenu.changes)} />}
     </aside>
   );
 }
 
 function CommitInformation({ details }: { details: CommitDetails }) {
-  return <section className="commit-details">
+  const detailsRef = useRef<HTMLElement>(null);
+  return <div className="commit-details-wrap"><section ref={detailsRef} className="commit-details">
     <h2>{details.subject}</h2>
     <div className="commit-meta"><code title={details.hash}>{details.hash.slice(0, 10)}</code><span>{details.authorName} &lt;{details.authorEmail}&gt;</span><time>{new Date(details.authorTime * 1000).toLocaleString()}</time></div>
     {details.committerName !== details.authorName && <div className="commit-secondary">Committed by {details.committerName} &lt;{details.committerEmail}&gt;</div>}
@@ -98,34 +117,60 @@ function CommitInformation({ details }: { details: CommitDetails }) {
     <pre>{details.message}</pre>
     {details.containingBranches.length > 0 && <div className="containing-branches"><strong>In {details.containingBranches.length} branches:</strong> {details.containingBranches.join(', ')}</div>}
     {details.parents.length > 1 && <div className="merge-note">Changes are shown against the first parent {details.parents[0]?.slice(0, 8)}.</div>}
-  </section>;
+  </section><OverlayScrollbar targetRef={detailsRef} /></div>;
 }
 
-function FileTreeNode({ node, selectedPaths, onSelect, onOpenFile }: {
+function FileTreeNode({ node, selectedPaths, onSelect, onOpenFile, onContextMenu }: {
   node: FileNode;
   selectedPaths: ReadonlySet<string>;
   onSelect: (change: CommitFileChange, event: MouseEvent) => void;
   onOpenFile?: ((change: CommitFileChange) => void) | undefined;
+  onContextMenu: (change: CommitFileChange, event: MouseEvent) => void;
 }) {
-  if (node.change) return <FileChangeRow change={node.change} name={node.name} selected={selectedPaths.has(node.path)} onSelect={onSelect} onOpenFile={onOpenFile} />;
+  if (node.change) return <FileChangeRow change={node.change} name={node.name} selected={selectedPaths.has(node.path)} onSelect={onSelect} onOpenFile={onOpenFile} onContextMenu={onContextMenu} />;
   const compact = compactDirectory(node);
+  const count = fileCount(compact.node);
   return <details className="file-folder" open>
-    <summary title={compact.node.path}><FolderIcon />{compact.label}</summary>
-    <div>{sortedNodes(compact.node).map(child => <FileTreeNode key={child.path} node={child} selectedPaths={selectedPaths} onSelect={onSelect} onOpenFile={onOpenFile} />)}</div>
+    <summary title={compact.node.path}><FolderIcon />{compact.label}<span className="folder-file-count">{count} {count === 1 ? 'file' : 'files'}</span></summary>
+    <div>{sortedNodes(compact.node).map(child => <FileTreeNode key={child.path} node={child} selectedPaths={selectedPaths} onSelect={onSelect} onOpenFile={onOpenFile} onContextMenu={onContextMenu} />)}</div>
   </details>;
 }
 
-function FileChangeRow({ change, name, directory, selected, onSelect, onOpenFile }: {
+function FileChangeRow({ change, name, directory, selected, onSelect, onOpenFile, onContextMenu }: {
   change: CommitFileChange;
   name: string;
   directory?: string | undefined;
   selected: boolean;
   onSelect: (change: CommitFileChange, event: MouseEvent) => void;
   onOpenFile?: ((change: CommitFileChange) => void) | undefined;
+  onContextMenu: (change: CommitFileChange, event: MouseEvent) => void;
 }) {
-  return <button type="button" className={`file-change${selected ? ' selected' : ''}`} title={change.originalPath ? `${change.originalPath} → ${change.path}` : change.path} onClick={event => onSelect(change, event)} onDoubleClick={() => onOpenFile?.(change)}>
+  return <button type="button" className={`file-change${selected ? ' selected' : ''}`} title={change.originalPath ? `${change.originalPath} → ${change.path}` : change.path} onClick={event => onSelect(change, event)} onDoubleClick={() => onOpenFile?.(change)} onContextMenu={event => onContextMenu(change, event)}>
     <span className={`file-status file-status-${change.status}`}>{statusLetter[change.status]}</span><span className="file-change-name">{name}</span>{directory && <span className="file-change-directory">{directory}</span>}
   </button>;
+}
+
+export function buildCommitFileMenu(changes: readonly CommitFileChange[], multipleParents: boolean): ContextMenuItem[] {
+  const single = changes.length === 1;
+  const deleted = single && changes[0]?.status === 'deleted';
+  return [
+    { id: 'showDiff', label: 'Show Diff', disabled: !single },
+    { id: 'showDiffNewTab', label: 'Show Diff in a New Tab', disabled: !single },
+    { id: 'separator-view-1', separator: true },
+    { id: 'compareLocal', label: 'Compare with Local', disabled: !single },
+    { id: 'compareBeforeLocal', label: 'Compare Before with Local', disabled: !single },
+    { id: 'editSource', label: 'Edit Source', disabled: !single },
+    { id: 'openRepositoryVersion', label: 'Open Repository Version', disabled: !single || deleted },
+    { id: 'separator-apply', separator: true },
+    { id: 'revertSelected', label: 'Revert Selected Changes…' },
+    { id: 'cherryPickSelected', label: 'Cherry-Pick Selected Changes…' },
+    { id: 'createPatch', label: 'Create Patch…' },
+    { id: 'getFromRevision', label: 'Get from Revision…' },
+    { id: 'separator-history', separator: true },
+    { id: 'historyUpToHere', label: 'History Up to Here' },
+    ...(multipleParents ? [{ id: 'showChangesToParent', label: 'Show Changes to Parent…', disabled: !single }] : []),
+    { id: 'copyPath', label: changes.length === 1 ? 'Copy Path' : 'Copy Paths' }
+  ];
 }
 
 function DetailsOptionsMenu({ x, y, groupByDirectory, showDetails, onChange, onClose }: {
@@ -166,6 +211,11 @@ function compactDirectory(start: FileNode): { label: string; node: FileNode } {
     node = child;
   }
   return { label, node };
+}
+
+function fileCount(node: FileNode): number {
+  if (node.change) return 1;
+  return [...node.children.values()].reduce((count, child) => count + fileCount(child), 0);
 }
 
 function baseName(path: string): string {

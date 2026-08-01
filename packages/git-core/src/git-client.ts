@@ -1,4 +1,4 @@
-import { access, readFile, writeFile } from 'node:fs/promises';
+import { access, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { CommitDetails, CommitFileChange, CommitPage, CommitSummary, GitChange, LogQuery, MergeConflict, RepositoryPhase, RepositoryStatus } from '@git4vsc/shared-types';
 import { CommandRunner } from './command-runner.js';
@@ -8,6 +8,23 @@ export interface RepositoryLocation {
   root: string;
   gitDir: string;
 }
+
+export interface CommitContextFile {
+  path: string;
+  originalPath?: string;
+  status: 'added' | 'modified' | 'deleted' | 'renamed';
+  diff: string;
+  truncated: boolean;
+}
+
+export interface CommitMessageContext {
+  files: CommitContextFile[];
+  recentRepositoryMessages: string[];
+  recentUserMessages: string[];
+}
+
+const maxUntrackedFileSize = 1024 * 1024;
+const maxDiffSize = 100_000;
 
 async function exists(path: string): Promise<boolean> {
   try {
@@ -28,6 +45,17 @@ async function readPhase(gitDir: string, branch: string | null): Promise<Reposit
 
 function parseVisibleRefs(output: string) {
   return parseRefs(output).filter(ref => ref.type !== 'remote-branch' || !ref.name.endsWith('/HEAD'));
+}
+
+function commitContextStatus(change: GitChange): CommitContextFile['status'] {
+  if (change.index === 'renamed' || change.workingTree === 'renamed') return 'renamed';
+  if (change.index === 'deleted' || change.workingTree === 'deleted') return 'deleted';
+  if (change.index === 'added' || change.workingTree === 'added' || change.workingTree === 'untracked') return 'added';
+  return 'modified';
+}
+
+function commitChangePaths(changes: readonly CommitFileChange[]): string[] {
+  return [...new Set(changes.flatMap(change => [change.originalPath, change.path].filter((path): path is string => Boolean(path))))];
 }
 
 export class GitClient {
@@ -94,6 +122,11 @@ export class GitClient {
     return parseLog(result.stdout);
   }
 
+  async commitCount(location: RepositoryLocation, range: string): Promise<number> {
+    const result = await this.runner.run(['-C', location.root, 'rev-list', '--count', range]);
+    return Number(result.stdout.trim());
+  }
+
   async commitDetails(location: RepositoryLocation, hash: string): Promise<CommitDetails> {
     const metadata = await this.runner.run([
       '-C', location.root, 'show', '--no-patch',
@@ -155,10 +188,23 @@ export class GitClient {
   }
 
   async revertCommitChanges(location: RepositoryLocation, parent: string | null, hash: string, changes: readonly CommitFileChange[]): Promise<void> {
+    const patch = await this.commitPatch(location, parent, hash, changes);
+    if (patch) await this.runner.run(['-C', location.root, 'apply', '--reverse', '--whitespace=nowarn'], { input: patch });
+  }
+
+  async cherryPickCommitChanges(location: RepositoryLocation, parent: string | null, hash: string, changes: readonly CommitFileChange[]): Promise<void> {
+    const patch = await this.commitPatch(location, parent, hash, changes);
+    if (patch) await this.runner.run(['-C', location.root, 'apply', '--3way', '--whitespace=nowarn'], { input: patch });
+  }
+
+  async getChangesFromRevision(location: RepositoryLocation, hash: string, changes: readonly CommitFileChange[]): Promise<void> {
+    await this.runner.run(['-C', location.root, 'restore', `--source=${hash}`, '--worktree', '--', ...commitChangePaths(changes)]);
+  }
+
+  async commitPatch(location: RepositoryLocation, parent: string | null, hash: string, changes: readonly CommitFileChange[]): Promise<string> {
     const base = parent ?? (await this.runner.run(['-C', location.root, 'hash-object', '-t', 'tree', '--stdin'], { input: '' })).stdout.trim();
-    const paths = [...new Set(changes.flatMap(change => [change.originalPath, change.path].filter((path): path is string => Boolean(path))))];
-    const patch = await this.runner.run(['-C', location.root, 'diff', '--binary', '--full-index', base, hash, '--', ...paths]);
-    await this.runner.run(['-C', location.root, 'apply', '--reverse', '--whitespace=nowarn'], { input: patch.stdout });
+    const patch = await this.runner.run(['-C', location.root, 'diff', '--binary', '--full-index', base, hash, '--', ...commitChangePaths(changes)]);
+    return patch.stdout;
   }
 
   async commit(location: RepositoryLocation, message: string, all = false): Promise<void> {
@@ -171,10 +217,52 @@ export class GitClient {
     await this.runner.run(['-C', location.root, 'commit', '--only', '--file=-', '--', ...paths], { input: message });
   }
 
+  async commitMessageContext(location: RepositoryLocation, head: string | null, changes: readonly GitChange[]): Promise<CommitMessageContext> {
+    const base = head ?? (await this.runner.run(['-C', location.root, 'hash-object', '-t', 'tree', '--stdin'], { input: '' })).stdout.trim();
+    const files: CommitContextFile[] = [];
+    for (const change of changes) {
+      const diff = change.index === null && change.workingTree === 'untracked'
+        ? await this.untrackedPatch(location, change.path)
+        : (await this.runner.run([
+          '-C', location.root, 'diff', '--no-ext-diff', '--no-textconv', '--no-color', '--find-renames', base, '--',
+          ...[change.originalPath, change.path].filter((path): path is string => Boolean(path))
+        ])).stdout;
+      files.push({
+        path: change.path,
+        ...(change.originalPath ? { originalPath: change.originalPath } : {}),
+        status: commitContextStatus(change),
+        diff: diff.length > maxDiffSize ? `${diff.slice(0, maxDiffSize)}\n... [diff truncated]\n` : diff,
+        truncated: diff.length > maxDiffSize
+      });
+    }
+
+    const recentRepositoryMessages = head ? (await this.log(location, 0, 5, { ref: 'HEAD' })).commits.map(commit => commit.subject) : [];
+    let recentUserMessages: string[] = [];
+    try {
+      const author = (await this.runner.run(['-C', location.root, 'config', '--get', 'user.name'])).stdout.trim();
+      if (head && author) recentUserMessages = (await this.log(location, 0, 5, { ref: 'HEAD', author })).commits.map(commit => commit.subject);
+    } catch { /* Git user.name is optional. */ }
+    return { files, recentRepositoryMessages, recentUserMessages };
+  }
+
   async show(location: RepositoryLocation, path: string, revision: string): Promise<string> {
     const resolvedSpec = revision === 'index' ? `:${path}` : `${revision}:${path}`;
     const result = await this.runner.run(['-C', location.root, 'show', resolvedSpec]);
     return result.stdout;
+  }
+
+  private async untrackedPatch(location: RepositoryLocation, path: string): Promise<string> {
+    const file = join(location.root, path);
+    const size = (await stat(file)).size;
+    const header = [`diff --git a/${path} b/${path}`, 'new file mode 100644', '--- /dev/null', `+++ b/${path}`];
+    if (size > maxUntrackedFileSize) return `${header.join('\n')}\n\\ File too large to include (${Math.ceil(size / 1024)} KB)\n`;
+    const content = await readFile(file);
+    if (content.includes(0)) return `${header.join('\n')}\nBinary file omitted\n`;
+    const text = content.toString('utf8');
+    if (!text) return `${header.join('\n')}\n`;
+    const lines = text.split(/\r?\n/);
+    if (text.endsWith('\n')) lines.pop();
+    return `${header.join('\n')}\n@@ -0,0 +1,${lines.length} @@\n${lines.map(line => `+${line}`).join('\n')}\n${text.endsWith('\n') ? '' : '\\ No newline at end of file\n'}`;
   }
 
   async conflicts(location: RepositoryLocation): Promise<MergeConflict[]> {

@@ -144,11 +144,26 @@ export interface PushPreviewDialogRequest {
   commits: PushPreviewCommit[];
 }
 
-export type WebviewDialogRequest = ListDialogRequest | PushPreviewDialogRequest;
+export interface PathTreeEntry {
+  name: string;
+  path: string;
+  directory: boolean;
+  children?: PathTreeEntry[];
+}
+
+export interface PathTreeDialogRequest {
+  id: number;
+  kind: 'path-tree';
+  title: string;
+  entries: PathTreeEntry[];
+  selectedPaths: string[];
+}
+
+export type WebviewDialogRequest = ListDialogRequest | PushPreviewDialogRequest | PathTreeDialogRequest;
 
 export interface WebviewDialogResult {
   id: number;
-  value: string | null;
+  value: string | string[] | null;
 }
 
 export type RepositoryInvalidation = 'status' | 'log' | 'refs';

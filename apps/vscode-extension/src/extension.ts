@@ -6,6 +6,9 @@ import { ConflictResolver } from './conflict-resolver.js';
 import { ConflictTree } from './conflict-tree.js';
 import { CommitView, stagedChanges } from './commit-view.js';
 import { LogPanel } from './log-panel.js';
+import { notifyCommitResult } from './operation-notifications.js';
+import { operationActivity } from './repository-status.js';
+import { SettingsPanel } from './settings-panel.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const manager = new RepositoryManager();
@@ -33,14 +36,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await vscode.window.withProgress({ location: vscode.ProgressLocation.SourceControl, title: 'Committing…' }, () => paths
       ? repository.commitPaths(message.trim(), paths)
       : repository.commit(message.trim(), all));
+    notifyCommitResult(repository.snapshot.status?.head ?? null, message.trim());
     const adapter = adapters.find(candidate => candidate.repository === repository);
     if (adapter) adapter.sourceControl.inputBox.value = '';
     return true;
   };
   const commitView = new CommitView(context, () => manager.all, { commit: (repository, message, paths) => commitRepository(repository, message, false, paths) });
   const logPanel = new LogPanel(context, () => manager.all[0]);
+  const settingsPanel = new SettingsPanel(context);
   const branchMenu = new BranchMenu((repository, branch, remote, upstream) => logPanel.previewPush(repository, branch, remote, upstream));
-  context.subscriptions.push(commitView, vscode.window.registerWebviewViewProvider('git4vsc.repositories', commitView, { webviewOptions: { retainContextWhenHidden: true } }));
+  context.subscriptions.push(commitView, settingsPanel, vscode.window.registerWebviewViewProvider('git4vsc.repositories', commitView, { webviewOptions: { retainContextWhenHidden: true } }));
   context.subscriptions.push(conflictResolver, vscode.window.registerTreeDataProvider('git4vsc.conflicts', conflictTree));
   context.subscriptions.push(logPanel, vscode.window.registerWebviewViewProvider('git4vsc.logView', logPanel, { webviewOptions: { retainContextWhenHidden: true } }));
   context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider('git4vsc', new GitContentProvider(() => manager.all)));
@@ -56,6 +61,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         conflictTree.refresh();
         void vscode.commands.executeCommand('setContext', 'git4vsc.hasConflicts', manager.all.some(candidate => candidate.snapshot.status?.changes.some(change => change.conflict)));
         void vscode.commands.executeCommand('setContext', 'git4vsc.operationInProgress', manager.all.some(candidate => candidate.snapshot.status?.phase !== 'normal' && candidate.snapshot.status?.phase !== 'detached'));
+        void vscode.commands.executeCommand('setContext', 'git4vsc.busy', manager.all.some(candidate => operationActivity(candidate.snapshot.operation) !== null));
       };
       watchRepository(context, repository, sync);
       const unsubscribe = repository.onDidChange(sync);
@@ -68,7 +74,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   conflictTree.refresh();
   void vscode.commands.executeCommand('setContext', 'git4vsc.hasConflicts', manager.all.some(repository => repository.snapshot.status?.changes.some(change => change.conflict)));
   void vscode.commands.executeCommand('setContext', 'git4vsc.operationInProgress', manager.all.some(repository => repository.snapshot.status?.phase !== 'normal' && repository.snapshot.status?.phase !== 'detached'));
+  void vscode.commands.executeCommand('setContext', 'git4vsc.busy', manager.all.some(repository => operationActivity(repository.snapshot.operation) !== null));
   logPanel.initialize(manager.all[0]);
+  context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
+    if (!event.affectsConfiguration('git4vsc')) return;
+    commitView.refresh();
+    logPanel.refresh();
+  }));
 
   const selectedRepository = (value?: unknown): RepositoryController | undefined => {
     if (value && typeof value === 'object' && 'location' in value) return value as RepositoryController;
@@ -147,11 +159,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const repository = selectedRepository(value);
       if (repository) await logPanel.show(repository);
     }),
+    vscode.commands.registerCommand('git4vsc.openSettings', (section?: string) => settingsPanel.show(section === 'ai' ? 'ai' : 'general')),
     vscode.commands.registerCommand('git4vsc.toggleLog', (value?: RepositoryController | GitResourceState) => {
       const repository = selectedRepository(value);
       if (repository) logPanel.toggle(repository);
     }),
     vscode.commands.registerCommand('git4vsc.justifyPanel', () => vscode.commands.executeCommand('workbench.action.alignPanelJustify')),
+    vscode.commands.registerCommand('git4vsc.operationStatus', () => undefined),
     vscode.commands.registerCommand('git4vsc.resolveConflicts', async (value?: unknown) => {
       const repository = selectedOperationRepository(value);
       if (repository) await conflictResolver.start(repository, selectedPath(value));

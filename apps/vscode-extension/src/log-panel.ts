@@ -1,12 +1,21 @@
-import { basename, isAbsolute, join, relative } from 'node:path';
+import { readdir, writeFile } from 'node:fs/promises';
+import { basename, join, resolve, sep } from 'node:path';
 import * as vscode from 'vscode';
-import type { CommitDetails, CommitFileChange, CommitSummary, DialogListItem, GitRef, LogFilters } from '@git4vsc/shared-types';
+import type { CommitDetails, CommitFileChange, CommitSummary, DialogListItem, GitRef, LogFilters, PathTreeEntry } from '@git4vsc/shared-types';
 import type { RepositoryController } from '@git4vsc/repo-state';
 import { emptyLogFilters, logQueryFromFilters, logUsers } from './log-filters.js';
 import { selectionAfterLogReload } from './log-selection.js';
 import { WebviewDialogController } from './webview-dialog-controller.js';
+import { notifyFetchResult, notifyPushResult, notifyUpdateResult, resultNotificationsEnabled } from './operation-notifications.js';
+import { operationActivity } from './repository-status.js';
+import { readGeneralSettings } from './settings.js';
+import { configuredUpdateStrategy } from './update-strategy.js';
 
 type CommitAction = 'copyRevision' | 'copySubject' | 'createBranch' | 'createTag' | 'checkout' | 'compareLocal' | 'cherryPick' | 'revert' | 'reset';
+type CommitFileAction =
+  | 'showDiff' | 'showDiffNewTab' | 'compareLocal' | 'compareBeforeLocal'
+  | 'editSource' | 'openRepositoryVersion' | 'revertSelected' | 'cherryPickSelected'
+  | 'createPatch' | 'getFromRevision' | 'historyUpToHere' | 'showChangesToParent' | 'copyPath';
 type RefAction =
   | 'copy' | 'toggleFavorite'
   | 'checkout' | 'checkoutUpdate' | 'checkoutRebase' | 'checkoutNew' | 'createBranch' | 'createTag' | 'newWorktree'
@@ -68,6 +77,10 @@ export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
     this.attach();
   }
 
+  refresh(): void {
+    this.session?.refresh();
+  }
+
   dispose(): void {
     this.session?.dispose();
     this.session = null;
@@ -125,6 +138,10 @@ class LogSession implements vscode.Disposable {
     void this.loadLog(true);
   }
 
+  refresh(): void {
+    this.postSnapshot();
+  }
+
   dispose(): void {
     this.logRequest += 1;
     this.detailsRequest += 1;
@@ -136,7 +153,7 @@ class LogSession implements vscode.Disposable {
   async previewPush(branch: string, remote: string, upstream?: string): Promise<void> {
     const commits = await this.repository.git.outgoingCommits(this.repository.location, branch, remote, upstream);
     if (!commits.length) {
-      void vscode.window.showInformationMessage(`${branch} is up to date with ${remote}.`);
+      if (resultNotificationsEnabled()) void vscode.window.showInformationMessage('Everything is up to date.');
       return;
     }
     const preview = await Promise.all(commits.map(async commit => ({ commit, files: (await this.repository.git.commitDetails(this.repository.location, commit.hash)).files })));
@@ -147,7 +164,10 @@ class LogSession implements vscode.Disposable {
       target: `${remote}/${branch}`,
       commits: preview
     });
-    if (action === 'push') await this.repository.pushBranch(branch, remote);
+    if (action === 'push') {
+      await this.repository.pushBranch(branch, remote);
+      notifyPushResult(commits.length, `${remote}/${branch}`);
+    }
   }
 
   private async handleMessage(message: unknown): Promise<void> {
@@ -164,9 +184,10 @@ class LogSession implements vscode.Disposable {
         case 'selectRef': await this.selectRef(request.ref); break;
         case 'filters': await this.setFilters(request.filters); break;
         case 'pickPaths': await this.pickPaths(request.kind); break;
+        case 'dialog:pathChildren': await this.pathChildren(request.id, request.path); break;
         case 'selectCommit': await this.selectCommit(request.hash); break;
         case 'openCommitDiff': await this.openCommitDiff(request.hash, request.change); break;
-        case 'revertCommitChanges': await this.revertCommitChanges(request.hash, request.paths); break;
+        case 'commitFileAction': await this.commitFileAction(request.action, request.hash, request.paths); break;
         case 'commitAction': await this.commitAction(request.action, request.hash); break;
         case 'refAction': await this.refAction(request.action, request.fullName); break;
         case 'remoteAction': await this.remoteAction(request.action, request.remote); break;
@@ -193,18 +214,34 @@ class LogSession implements vscode.Disposable {
   }
 
   private async pickPaths(value: unknown): Promise<void> {
-    if (value !== 'files' && value !== 'folder') return;
-    const picked = await vscode.window.showOpenDialog({
-      title: value === 'files' ? 'Select Files to Filter Git Log' : 'Select Folder to Filter Git Log',
-      defaultUri: vscode.Uri.file(this.repository.root),
-      canSelectFiles: value === 'files',
-      canSelectFolders: value === 'folder',
-      canSelectMany: true,
-      openLabel: 'Filter'
+    if (value !== 'paths') return;
+    const picked = await this.dialogs.show({
+      kind: 'path-tree',
+      title: 'Select Paths to Filter by',
+      entries: await this.readPathEntries(''),
+      selectedPaths: this.filters.path.split(',').map(path => path.trim()).filter(Boolean)
     });
-    if (!picked?.length) return;
-    const paths = picked.map(uri => relative(this.repository.root, uri.fsPath)).filter(path => !path.startsWith('..') && !isAbsolute(path)).map(path => (path || '.').replaceAll('\\', '/'));
-    if (paths.length) await this.setFilters({ ...this.filters, path: [...new Set(paths)].join(', ') });
+    if (picked?.length) await this.setFilters({ ...this.filters, path: [...new Set(picked)].join(', ') });
+  }
+
+  private async pathChildren(id: unknown, value: unknown): Promise<void> {
+    if (!this.dialogs.isActive(id) || typeof value !== 'string') return;
+    const entries = await this.readPathEntries(value);
+    void this.view.webview.postMessage({ type: 'dialog:pathChildren', id, path: value, entries });
+  }
+
+  private async readPathEntries(path: string): Promise<PathTreeEntry[]> {
+    const root = resolve(this.repository.root);
+    const target = resolve(root, ...path.split('/'));
+    const normalizedRoot = root.toLocaleLowerCase();
+    const normalizedTarget = target.toLocaleLowerCase();
+    if (normalizedTarget !== normalizedRoot && !normalizedTarget.startsWith(`${normalizedRoot}${sep}`)) return [];
+    const entries = await readdir(target, { withFileTypes: true });
+    return entries.filter(entry => entry.name !== '.git').map(entry => ({
+      name: entry.name,
+      path: path ? `${path}/${entry.name}` : entry.name,
+      directory: entry.isDirectory()
+    })).sort((left, right) => Number(right.directory) - Number(left.directory) || left.name.localeCompare(right.name));
   }
 
   private async loadLog(reset: boolean): Promise<void> {
@@ -269,7 +306,7 @@ class LogSession implements vscode.Disposable {
     }
   }
 
-  private async openCommitDiff(hashValue: unknown, changeValue: unknown): Promise<void> {
+  private async openCommitDiff(hashValue: unknown, changeValue: unknown, preview = true): Promise<void> {
     if (typeof hashValue !== 'string' || hashValue !== this.details?.hash || !changeValue || typeof changeValue !== 'object') return;
     const requested = changeValue as CommitFileChange;
     const change = this.details.files.find(file => file.path === requested.path && file.status === requested.status);
@@ -278,7 +315,121 @@ class LogSession implements vscode.Disposable {
     const leftPath = change.originalPath ?? change.path;
     const left = revisionUri(this.repository, leftPath, change.status === 'added' ? null : parent);
     const right = revisionUri(this.repository, change.path, change.status === 'deleted' ? null : this.details.hash);
-    await vscode.commands.executeCommand('vscode.diff', left, right, `${change.path} (${this.details.hash.slice(0, 8)})`);
+    await vscode.commands.executeCommand('vscode.diff', left, right, `${change.path} (${this.details.hash.slice(0, 8)})`, { preview });
+  }
+
+  private async commitFileAction(actionValue: unknown, hashValue: unknown, pathsValue: unknown): Promise<void> {
+    if (typeof actionValue !== 'string' || typeof hashValue !== 'string' || hashValue !== this.details?.hash || !Array.isArray(pathsValue)) return;
+    const paths = new Set(pathsValue.filter((path): path is string => typeof path === 'string'));
+    const changes = this.details.files.filter(change => paths.has(change.path));
+    if (!changes.length) return;
+    const action = actionValue as CommitFileAction;
+    const change = changes.length === 1 ? changes[0]! : null;
+
+    if (action === 'showDiff' && change) return this.openCommitDiff(hashValue, change);
+    if (action === 'showDiffNewTab' && change) return this.openCommitDiff(hashValue, change, false);
+    if (action === 'compareLocal' && change) return this.compareFileWithLocal(change, false);
+    if (action === 'compareBeforeLocal' && change) return this.compareFileWithLocal(change, true);
+    if (action === 'editSource' && change) return this.editSource(change.path);
+    if (action === 'openRepositoryVersion' && change && change.status !== 'deleted') {
+      await vscode.commands.executeCommand('vscode.open', revisionUri(this.repository, change.path, this.details.hash), { preview: false });
+      return;
+    }
+    if (action === 'revertSelected') return this.revertCommitChanges(hashValue, [...paths]);
+    if (action === 'cherryPickSelected') return this.cherryPickCommitChanges(changes);
+    if (action === 'createPatch') return this.createPatch(changes);
+    if (action === 'getFromRevision') return this.getFromRevision(changes);
+    if (action === 'historyUpToHere') {
+      await this.setFilters({ ...this.filters, path: changes.map(file => file.path).join(', ') });
+      return;
+    }
+    if (action === 'showChangesToParent' && change) return this.showChangesToParent(change);
+    if (action === 'copyPath') await vscode.env.clipboard.writeText(changes.map(file => file.path).join('\n'));
+  }
+
+  private async compareFileWithLocal(change: CommitFileChange, before: boolean): Promise<void> {
+    if (!this.details) return;
+    const revision = before ? this.details.parents[0] ?? null : this.details.hash;
+    const leftPath = before ? change.originalPath ?? change.path : change.path;
+    const empty = before ? change.status === 'added' : change.status === 'deleted';
+    const left = revisionUri(this.repository, leftPath, empty ? null : revision);
+    const right = await this.localOrEmpty(change.path);
+    const label = before ? 'Before ↔ Local' : 'Revision ↔ Local';
+    await vscode.commands.executeCommand('vscode.diff', left, right, `${change.path} (${label})`, { preview: false });
+  }
+
+  private async editSource(path: string): Promise<void> {
+    const uri = vscode.Uri.file(join(this.repository.root, path));
+    try {
+      await vscode.workspace.fs.stat(uri);
+      await vscode.window.showTextDocument(uri, { preview: false });
+    } catch {
+      void vscode.window.showInformationMessage(`${path} does not exist in the local working tree.`);
+    }
+  }
+
+  private async localOrEmpty(path: string): Promise<vscode.Uri> {
+    const uri = vscode.Uri.file(join(this.repository.root, path));
+    try {
+      await vscode.workspace.fs.stat(uri);
+      return uri;
+    } catch {
+      return revisionUri(this.repository, path, null);
+    }
+  }
+
+  private async cherryPickCommitChanges(changes: readonly CommitFileChange[]): Promise<void> {
+    if (!this.details) return;
+    const confirmed = await vscode.window.showWarningMessage(
+      `Cherry-pick ${changes.length} selected change${changes.length === 1 ? '' : 's'} from ${this.details.hash.slice(0, 8)}?`,
+      { modal: true, detail: 'The selected patch will be applied to the current working tree.' },
+      'Cherry-Pick Changes'
+    );
+    if (!confirmed) return;
+    await this.repository.cherryPickCommitChanges(this.details.parents[0] ?? null, this.details.hash, changes);
+    await this.resolveConflictsIfNeeded();
+  }
+
+  private async createPatch(changes: readonly CommitFileChange[]): Promise<void> {
+    if (!this.details) return;
+    const target = await vscode.window.showSaveDialog({
+      title: 'Create Patch from Selected Changes',
+      defaultUri: vscode.Uri.file(join(this.repository.root, `${this.details.hash.slice(0, 8)}.patch`)),
+      filters: { Patch: ['patch', 'diff'], 'All Files': ['*'] }
+    });
+    if (!target) return;
+    const patch = await this.repository.git.commitPatch(this.repository.location, this.details.parents[0] ?? null, this.details.hash, changes);
+    await writeFile(target.fsPath, patch, 'utf8');
+    void vscode.window.showInformationMessage(`Patch saved to ${target.fsPath}.`);
+  }
+
+  private async getFromRevision(changes: readonly CommitFileChange[]): Promise<void> {
+    if (!this.details) return;
+    const confirmed = await vscode.window.showWarningMessage(
+      `Get ${changes.length} selected file${changes.length === 1 ? '' : 's'} from ${this.details.hash.slice(0, 8)}?`,
+      { modal: true, detail: 'The selected revision will be applied to the working tree without creating a commit.' },
+      'Get from Revision'
+    );
+    if (confirmed) await this.repository.getChangesFromRevision(this.details.hash, changes);
+  }
+
+  private async showChangesToParent(change: CommitFileChange): Promise<void> {
+    if (!this.details || this.details.parents.length < 2) return;
+    const parent = await this.dialogs.show({
+      kind: 'list',
+      title: `Show ${change.path} Changes to Parent`,
+      items: this.details.parents.map((hash, index) => ({ id: hash, label: `Parent ${index + 1}`, description: hash.slice(0, 12) }))
+    });
+    if (typeof parent !== 'string') return;
+    const parentChanges = await this.repository.git.changedFiles(this.repository.location, parent, this.details.hash);
+    const parentChange = parentChanges.find(file => file.path === change.path || file.originalPath === change.path);
+    if (!parentChange) {
+      void vscode.window.showInformationMessage(`${change.path} has no changes relative to that parent.`);
+      return;
+    }
+    const left = revisionUri(this.repository, parentChange.originalPath ?? parentChange.path, parentChange.status === 'added' ? null : parent);
+    const right = revisionUri(this.repository, parentChange.path, parentChange.status === 'deleted' ? null : this.details.hash);
+    await vscode.commands.executeCommand('vscode.diff', left, right, `${parentChange.path} (${parent.slice(0, 8)} ↔ ${this.details.hash.slice(0, 8)})`, { preview: false });
   }
 
   private async revertCommitChanges(hashValue: unknown, pathsValue: unknown): Promise<void> {
@@ -415,7 +566,9 @@ class LogSession implements vscode.Disposable {
         void vscode.window.showWarningMessage(`${ref.name} has no tracked branch.`);
         return;
       }
+      const before = ref.hash;
       await this.repository.checkoutAndUpdate(ref.name, upstream);
+      await notifyUpdateResult(this.repository, before, upstream);
       return;
     }
     if (action === 'checkoutRebase') {
@@ -533,16 +686,20 @@ class LogSession implements vscode.Disposable {
       void vscode.window.showWarningMessage(`${ref.name} has no tracked branch. Use “Set Tracked Branch” first.`);
       return;
     }
+    const before = ref.hash;
     if (ref.name === this.repository.snapshot.status?.branch) {
       const [remote, branch] = splitRemoteBranch(upstream);
-      const strategy = await this.dialogs.show({ kind: 'list', title: 'Update Project', items: [
+      const configured = configuredUpdateStrategy();
+      const strategy = configured === 'ask' ? await this.dialogs.show({ kind: 'list', title: 'Update Project', items: [
         { id: 'merge', label: 'Merge incoming changes into the current branch', description: 'Default' },
         { id: 'rebase', label: 'Rebase the current branch on top of incoming changes' }
-      ], acceptLabel: 'Update' });
+      ], acceptLabel: 'Update' }) : configured;
       if (strategy !== 'merge' && strategy !== 'rebase') return;
       await this.repository.pullBranch(remote, branch, strategy === 'rebase');
     }
     else await this.repository.updateBranch(ref.name, upstream);
+    const after = this.repository.snapshot.status?.refs.find(candidate => candidate.type === 'local-branch' && candidate.name === ref.name)?.hash ?? null;
+    await notifyUpdateResult(this.repository, before, upstream, after);
   }
 
   private async pushRef(ref: GitRef): Promise<void> {
@@ -550,7 +707,10 @@ class LogSession implements vscode.Disposable {
     const preferredRemote = upstream?.split('/', 1)[0];
     const remote = await this.pickRemote(ref.type === 'tag' ? `Push Tag ${ref.name}` : `Push Branch ${ref.name}`, preferredRemote);
     if (!remote) return;
-    if (ref.type === 'tag') await this.repository.pushTag(ref.name, remote);
+    if (ref.type === 'tag') {
+      await this.repository.pushTag(ref.name, remote);
+      if (resultNotificationsEnabled()) void vscode.window.showInformationMessage(`Pushed tag ${ref.name} to ${remote}.`);
+    }
     else if (ref.type === 'local-branch') await this.previewPush(ref.name, remote, upstream ?? undefined);
   }
 
@@ -568,8 +728,9 @@ class LogSession implements vscode.Disposable {
     const method = rebase ? 'rebase' : 'merge';
     const confirmed = await vscode.window.showWarningMessage(`Pull ${ref.name} into ${this.repository.snapshot.status?.branch ?? 'HEAD'} using ${method}?`, { modal: true }, 'Pull');
     if (confirmed) {
+      const before = this.repository.snapshot.status?.head ?? null;
       await this.repository.pullBranch(remote, branch, rebase);
-      await this.resolveConflictsIfNeeded();
+      await notifyUpdateResult(this.repository, before, ref.name);
     }
   }
 
@@ -636,6 +797,7 @@ class LogSession implements vscode.Disposable {
     const remote = typeof remoteValue === 'string' ? remoteValue : null;
     if (action === 'fetch') {
       await this.repository.fetchRemote(remote ?? undefined);
+      notifyFetchResult(remote ?? undefined);
       return;
     }
     if (action === 'add') {
@@ -672,6 +834,7 @@ class LogSession implements vscode.Disposable {
 
   private postSnapshot(): void {
     const snapshot = this.repository.snapshot;
+    const settings = readGeneralSettings();
     void this.view.webview.postMessage({
       type: 'snapshot',
       state: {
@@ -685,6 +848,7 @@ class LogSession implements vscode.Disposable {
         details: this.details,
         hasMore: this.hasMore,
         loading: this.logLoading || snapshot.loading.size > 0 || snapshot.operation !== null,
+        activity: settings.showOperationProgress ? (snapshot.operation ? operationActivity(snapshot.operation) : this.logLoading || snapshot.loading.size > 0 ? 'Refreshing…' : null) : null,
         detailsLoading: this.detailsLoading,
         error: this.localError ?? snapshot.error
       }

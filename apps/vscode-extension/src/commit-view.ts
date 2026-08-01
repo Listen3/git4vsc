@@ -2,14 +2,17 @@ import path from 'node:path';
 import * as vscode from 'vscode';
 import type { GitChange } from '@git4vsc/shared-types';
 import type { RepositoryController } from '@git4vsc/repo-state';
+import { AiRequestCancelledError, aiIsConfigured, generateAiCommitMessage, onDidChangeAiSettings } from './ai-settings.js';
 import { gitResourceUri } from './git-uri.js';
+import { operationActivity } from './repository-status.js';
+import { readGeneralSettings } from './settings.js';
 
 interface CommitViewActions {
   commit(repository: RepositoryController, message: string, paths: readonly string[]): Promise<boolean>;
 }
 
 interface CommitViewMessage {
-  type: 'ready' | 'selectRepository' | 'message' | 'select' | 'replaceSelection' | 'openChange' | 'resolveConflict' | 'rollback' | 'rollbackFile' | 'deleteFile' | 'jumpToSource' | 'addToVcs' | 'addToIgnore' | 'commit';
+  type: 'ready' | 'selectRepository' | 'message' | 'select' | 'replaceSelection' | 'openChange' | 'resolveConflict' | 'rollback' | 'rollbackFile' | 'deleteFile' | 'jumpToSource' | 'addToVcs' | 'addToIgnore' | 'openAiSettings' | 'generateCommitMessage' | 'cancelCommitMessage' | 'commit';
   root?: string;
   message?: string;
   paths?: string[];
@@ -23,6 +26,8 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
   private activeRoot: string | null;
   private readonly messages = new Map<string, string>();
   private readonly selections = new Map<string, Set<string>>();
+  private readonly aiRequests = new Map<string, AbortController>();
+  private readonly aiSettingsSubscription: vscode.Disposable;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -30,6 +35,7 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
     private readonly actions: CommitViewActions
   ) {
     this.activeRoot = context.workspaceState.get<string>('git4vsc.commit.activeRoot') ?? null;
+    this.aiSettingsSubscription = onDidChangeAiSettings(() => this.refresh());
   }
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -45,6 +51,12 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
   }
 
   refresh(): void {
+    void this.postSnapshot();
+  }
+
+  private async postSnapshot(): Promise<void> {
+    if (!this.view) return;
+    const aiConfigured = await aiIsConfigured(this.context);
     if (!this.view) return;
     const repositories = this.repositories();
     const repository = repositories.find(candidate => candidate.root === this.activeRoot) ?? repositories[0];
@@ -53,6 +65,9 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
       this.messages.set(repository.root, this.context.workspaceState.get<string>(this.messageKey(repository.root)) ?? '');
     }
     const selection = repository ? this.selection(repository) : new Set<string>();
+    const operation = repository?.snapshot.operation ?? null;
+    const loading = repository?.snapshot.loading.has('status') ?? false;
+    const showOperationProgress = readGeneralSettings().showOperationProgress;
     this.view.title = repository ? `Commit — ${repository.snapshot.status?.branch ?? 'HEAD'}` : 'Commit';
     void this.view.webview.postMessage({
       type: 'commitSnapshot',
@@ -67,9 +82,12 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
         status: repository?.snapshot.status ?? null,
         selectedPaths: [...selection],
         message: repository ? this.messages.get(repository.root) ?? '' : '',
-        loading: repository?.snapshot.loading.has('status') ?? false,
-        operation: repository?.snapshot.operation ?? null,
-        error: repository?.snapshot.error ?? null
+        loading,
+        operation,
+        activity: showOperationProgress ? (operation ? operationActivity(operation) : loading ? 'Refreshing…' : null) : null,
+        error: repository?.snapshot.error ?? null,
+        aiConfigured,
+        aiGenerating: repository ? this.aiRequests.has(repository.root) : false
       }
     });
   }
@@ -83,6 +101,9 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
   }
 
   dispose(): void {
+    this.aiSettingsSubscription.dispose();
+    for (const request of this.aiRequests.values()) request.abort();
+    this.aiRequests.clear();
     this.view = null;
   }
 
@@ -92,6 +113,10 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
       this.activeRoot = message.root;
       await this.context.workspaceState.update('git4vsc.commit.activeRoot', message.root);
       return this.refresh();
+    }
+    if (message.type === 'openAiSettings') {
+      await vscode.commands.executeCommand('git4vsc.openSettings', 'ai');
+      return;
     }
 
     const repository = this.activeRepository();
@@ -156,6 +181,13 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
       this.selection(repository).delete(message.path);
       return this.refresh();
     }
+    if (message.type === 'generateCommitMessage') {
+      return this.generateCommitMessage(repository);
+    }
+    if (message.type === 'cancelCommitMessage') {
+      this.cancelCommitMessage(repository);
+      return;
+    }
     if (message.type === 'commit') {
       const value = (message.message ?? this.messages.get(repository.root) ?? '').trim();
       const selected = this.selection(repository);
@@ -169,6 +201,39 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
         this.refresh();
       }
     }
+  }
+
+  private async generateCommitMessage(repository: RepositoryController): Promise<void> {
+    if (this.aiRequests.has(repository.root)) return;
+    const selectedPaths = new Set(this.selection(repository));
+    const request = new AbortController();
+    this.aiRequests.set(repository.root, request);
+    this.refresh();
+    try {
+      if (!await aiIsConfigured(this.context)) throw new Error('Configure Base URL, API key and model in Git4VSC Settings → AI.');
+      const status = await repository.git.status(repository.location);
+      const changes = status.changes.filter(change => selectedPaths.has(change.path));
+      if (!changes.length) throw new Error('Select at least one changed file.');
+      if (changes.some(change => change.conflict)) throw new Error('Resolve merge conflicts before generating a commit message.');
+      const context = await repository.git.commitMessageContext(repository.location, status.head, changes);
+      const message = await generateAiCommitMessage(this.context, path.basename(repository.root), status.branch ?? 'HEAD', context, request.signal);
+      if (request.signal.aborted) throw new AiRequestCancelledError();
+      this.messages.set(repository.root, message);
+      await this.context.workspaceState.update(this.messageKey(repository.root), message);
+    } catch (error) {
+      if (!(error instanceof AiRequestCancelledError)) void vscode.window.showErrorMessage(`Unable to generate commit message: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      if (this.aiRequests.get(repository.root) === request) this.aiRequests.delete(repository.root);
+      this.refresh();
+    }
+  }
+
+  private cancelCommitMessage(repository: RepositoryController): void {
+    const request = this.aiRequests.get(repository.root);
+    if (!request) return;
+    this.aiRequests.delete(repository.root);
+    request.abort();
+    this.refresh();
   }
 
   private activeRepository(): RepositoryController | undefined {

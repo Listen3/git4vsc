@@ -7,11 +7,23 @@ export interface CommitColumnWidths {
 
 export type CommitColumn = keyof CommitColumnWidths;
 
+export interface CommitColumnVisibility {
+  author: boolean;
+  date: boolean;
+  hash: boolean;
+}
+
 export const defaultCommitColumnWidths: CommitColumnWidths = {
   commit: 440,
   author: 110,
   date: 132,
   hash: 64
+};
+
+export const defaultCommitColumnVisibility: CommitColumnVisibility = {
+  author: true,
+  date: true,
+  hash: true
 };
 
 const limits: Record<CommitColumn, readonly [number, number]> = {
@@ -28,4 +40,12 @@ export function normalizeCommitColumnWidths(value?: Partial<CommitColumnWidths>)
     const width = value?.[column] ?? fallback;
     return [column, Math.round(Math.max(min, Math.min(max, width)))];
   })) as unknown as CommitColumnWidths;
+}
+
+export function normalizeCommitColumnVisibility(value?: Partial<CommitColumnVisibility>): CommitColumnVisibility {
+  return {
+    author: value?.author ?? true,
+    date: value?.date ?? true,
+    hash: value?.hash ?? true
+  };
 }

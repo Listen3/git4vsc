@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type UIEvent } from 'react';
 import { layoutCommits } from '@git4vsc/git-graph';
 import type { CommitSummary } from '@git4vsc/shared-types';
-import { defaultCommitColumnWidths, normalizeCommitColumnWidths, type CommitColumn, type CommitColumnWidths } from './commit-columns.js';
+import { defaultCommitColumnWidths, normalizeCommitColumnVisibility, normalizeCommitColumnWidths, type CommitColumn, type CommitColumnVisibility, type CommitColumnWidths } from './commit-columns.js';
 import { formatCommitTime, formatExactCommitTime } from './commit-date.js';
 import { CommitGraph, type FilteredConnection } from './CommitGraph.js';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu.js';
+import { OverlayScrollbar } from './OverlayScrollbar.js';
 
 export type CommitAction = 'copyRevision' | 'copySubject' | 'createBranch' | 'createTag' | 'checkout' | 'compareLocal' | 'cherryPick' | 'revert' | 'reset';
 
@@ -15,6 +16,7 @@ export interface CommitLogProps {
   loading?: boolean | undefined;
   filtered?: boolean | undefined;
   columnWidths?: CommitColumnWidths | undefined;
+  visibleColumns?: CommitColumnVisibility | undefined;
   onLoadMore?: (() => void) | undefined;
   onSelectCommit?: ((commit: CommitSummary) => void) | undefined;
   onCommitAction?: ((action: CommitAction, commit: CommitSummary) => void) | undefined;
@@ -24,7 +26,7 @@ export interface CommitLogProps {
 const rowHeight = 25;
 const overscan = 10;
 
-export function CommitLog({ commits, selectedHash, hasMore = false, loading = false, filtered = false, columnWidths: initialColumnWidths, onLoadMore, onSelectCommit, onCommitAction, onColumnWidthsChange }: CommitLogProps) {
+export function CommitLog({ commits, selectedHash, hasMore = false, loading = false, filtered = false, columnWidths: initialColumnWidths, visibleColumns: initialVisibleColumns, onLoadMore, onSelectCommit, onCommitAction, onColumnWidthsChange }: CommitLogProps) {
   const graph = useMemo(() => layoutCommits(commits), [commits]);
   const container = useRef<HTMLDivElement>(null);
   const previousCommits = useRef(commits);
@@ -40,8 +42,10 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
   const last = Math.min(commits.length, Math.ceil((scrollTop + height) / rowHeight) + overscan);
   const graphWidth = filtered ? 28 : Math.max(32, graph.maxLaneCount * 16 + 8);
   const commitWidth = Math.max(columnWidths.commit, graphWidth + 80);
-  const rowTemplate = `${graphWidth}px ${commitWidth - graphWidth}px ${columnWidths.author}px ${columnWidths.date}px ${columnWidths.hash}px`;
-  const tableWidth = commitWidth + columnWidths.author + columnWidths.date + columnWidths.hash + 6;
+  const visibleColumns = normalizeCommitColumnVisibility(initialVisibleColumns);
+  const optionalColumns = (['author', 'date', 'hash'] as const).filter(column => visibleColumns[column]);
+  const rowTemplate = [`${graphWidth}px`, `${commitWidth - graphWidth}px`, ...optionalColumns.map(column => `${columnWidths[column]}px`)].join(' ');
+  const tableWidth = commitWidth + optionalColumns.reduce((width, column) => width + columnWidths[column], 0) + 6;
 
   useEffect(() => {
     if (!container.current) return;
@@ -110,12 +114,12 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
     onColumnWidthsChange?.(next);
   }
 
-  const resizers: readonly [CommitColumn, string, number][] = [
-    ['commit', 'Commit', commitWidth],
-    ['author', 'Author', commitWidth + columnWidths.author],
-    ['date', 'Date', commitWidth + columnWidths.author + columnWidths.date],
-    ['hash', 'Hash', commitWidth + columnWidths.author + columnWidths.date + columnWidths.hash]
-  ];
+  let resizerLeft = commitWidth;
+  const resizers: [CommitColumn, string, number][] = [['commit', 'Commit', resizerLeft]];
+  for (const column of optionalColumns) {
+    resizerLeft += columnWidths[column];
+    resizers.push([column, column[0]!.toUpperCase() + column.slice(1), resizerLeft]);
+  }
 
   function navigate(event: KeyboardEvent, index: number) {
     const next = event.key === 'ArrowUp' ? index - 1 : event.key === 'ArrowDown' ? index + 1 : -1;
@@ -166,9 +170,9 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
               >
                 <CommitGraph row={row} width={graphWidth} {...(filtered ? { filtered: filteredConnections(commits, index) } : {})} />
                 <span className="commit-main"><span className="commit-subject">{commit.subject}</span><span className="commit-refs">{commit.refs.map(ref => <span className={`commit-ref commit-ref-${ref.type}`} key={ref.fullName}>{ref.name}</span>)}</span></span>
-                <span className="commit-author">{commit.authorName}</span>
-                <time title={formatExactCommitTime(commit.authorTime)}>{formatCommitTime(commit.authorTime, clock)}</time>
-                <code>{commit.hash.slice(0, 8)}</code>
+                {visibleColumns.author && <span className="commit-author">{commit.authorName}</span>}
+                {visibleColumns.date && <time title={formatExactCommitTime(commit.authorTime)}>{formatCommitTime(commit.authorTime, clock)}</time>}
+                {visibleColumns.hash && <code>{commit.hash.slice(0, 8)}</code>}
               </button>
             );
           })}
@@ -176,6 +180,7 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
         {loading && commits.length === 0 && <div className="commit-loading">Loading…</div>}
         {!loading && commits.length === 0 && <div className="commit-empty">No commits match the current filters.</div>}
       </div>
+      <OverlayScrollbar targetRef={container} />
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} onSelect={id => onCommitAction?.(id as CommitAction, menu.commit)} />}
     </div>
   );

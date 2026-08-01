@@ -1,6 +1,7 @@
-import { useMemo, useState, type MouseEvent } from 'react';
+import { useMemo, useRef, useState, type MouseEvent } from 'react';
 import type { GitRef, RepositoryStatus } from '@git4vsc/shared-types';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu.js';
+import { OverlayScrollbar } from './OverlayScrollbar.js';
 
 export type RefAction =
   | 'copy' | 'toggleFavorite'
@@ -21,6 +22,7 @@ export function BranchSidebar({ status, activeRef, favoriteRefs = [], onSelectRe
   const [query, setQuery] = useState('');
   const [menu, setMenu] = useState<{ x: number; y: number; ref: GitRef | null } | null>(null);
   const [remoteMenu, setRemoteMenu] = useState<{ x: number; y: number; remote: string | null } | null>(null);
+  const treeRef = useRef<HTMLElement>(null);
   const refs = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
     const filtered = needle ? status?.refs.filter(ref => ref.name.toLocaleLowerCase().includes(needle)) ?? [] : status?.refs ?? [];
@@ -50,7 +52,7 @@ export function BranchSidebar({ status, activeRef, favoriteRefs = [], onSelectRe
   return (
     <aside className="branch-sidebar" aria-label="Branches and tags">
       <div className="sidebar-search"><span className="sidebar-search-icon" aria-hidden="true" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Branch or tag" /></div>
-      <nav className="branch-tree">
+      <nav ref={treeRef} className="branch-tree">
         <BranchItem label="All" active={activeRef === null} icon="◎" onClick={() => onSelectRef?.(null)} />
         <BranchItem label={status?.branch ? `HEAD (${status.branch})` : 'HEAD (Detached)'} active={activeRef === 'HEAD'} icon="◆" onClick={() => onSelectRef?.('HEAD')} onContextMenu={event => openMenu(event, currentRef)} />
         <BranchGroup label="Local" count={local.length} onContextMenu={event => openMenu(event, null)}>
@@ -67,6 +69,7 @@ export function BranchSidebar({ status, activeRef, favoriteRefs = [], onSelectRe
           {tags.map(ref => <BranchItem key={ref.fullName} label={ref.name} active={activeRef === ref.fullName} icon="◆" onClick={() => onSelectRef?.(ref.fullName)} onContextMenu={event => openMenu(event, ref)} />)}
         </BranchGroup>}
       </nav>
+      <OverlayScrollbar targetRef={treeRef} />
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} onSelect={id => onRefAction?.(id as RefAction, menu.ref)} />}
       {remoteMenu && <ContextMenu x={remoteMenu.x} y={remoteMenu.y} items={remoteMenu.remote ? [
         { id: 'fetch', label: `Fetch ${remoteMenu.remote}` },

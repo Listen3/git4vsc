@@ -63,6 +63,7 @@ describe('GitClient against generated repositories', () => {
     const location = await client.discover(fixtures.history);
     const commits = await client.outgoingCommits(location, 'rebased', 'origin', 'origin/main');
     expect(commits.map(commit => commit.subject)).toContain('before rebase');
+    expect(await client.commitCount(location, 'origin/main..rebased')).toBe(1);
   });
 
   it('manages local branch and tag refs', async () => {
@@ -138,6 +139,26 @@ describe('GitClient against generated repositories', () => {
     expect((await client.status(location)).changes).toContainEqual({ path: 'left-staged.txt', index: 'added', workingTree: null, conflict: false });
   });
 
+  it('builds AI context from the selected files current commit contents', async () => {
+    const location = await client.discover(fixtures.history);
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(`${location.root}/base.txt`, 'staged context\n');
+    await client.stage(location, ['base.txt']);
+    await writeFile(`${location.root}/base.txt`, 'working context\n');
+    await writeFile(`${location.root}/context-new.txt`, 'new context\n');
+
+    const status = await client.status(location);
+    const selected = status.changes.filter(change => change.path === 'base.txt' || change.path === 'context-new.txt');
+    const context = await client.commitMessageContext(location, status.head, selected);
+
+    expect(context.files.map(file => file.path)).toEqual(['base.txt', 'context-new.txt']);
+    expect(context.files.find(file => file.path === 'base.txt')?.diff).toContain('+working context');
+    expect(context.files.find(file => file.path === 'base.txt')?.diff).not.toContain('+staged context');
+    expect(context.files.find(file => file.path === 'context-new.txt')?.diff).toContain('+new context');
+    expect(context.recentRepositoryMessages.length).toBeGreaterThan(0);
+    expect(context.recentUserMessages.length).toBeGreaterThan(0);
+  });
+
   it('rolls back tracked changes without deleting added or unversioned files', async () => {
     const location = await client.discover(fixtures.history);
     const { writeFile } = await import('node:fs/promises');
@@ -167,6 +188,20 @@ describe('GitClient against generated repositories', () => {
 
     await expect(readFile(join(location.root, 'feature.txt'), 'utf8')).rejects.toThrow();
     expect((await client.status(location)).changes).toContainEqual({ path: 'feature.txt', index: null, workingTree: 'deleted', conflict: false });
+  });
+
+  it('exports selected changes as a patch and restores a file from a revision', async () => {
+    const location = await client.discover(fixtures.history);
+    const commit = (await client.log(location, 0, 100, { text: 'feature commit' })).commits[0]!;
+    const details = await client.commitDetails(location, commit.hash);
+    const change = details.files.find(file => file.path === 'feature.txt')!;
+
+    const patch = await client.commitPatch(location, details.parents[0] ?? null, details.hash, [change]);
+    expect(patch).toContain('diff --git a/feature.txt b/feature.txt');
+    await client.getChangesFromRevision(location, details.hash, [change]);
+
+    expect(await readFile(join(location.root, 'feature.txt'), 'utf8')).toBe('feature');
+    expect((await client.status(location)).changes.some(file => file.path === 'feature.txt')).toBe(false);
   });
 
   it('adds an unversioned file to the repository ignore file once', async () => {

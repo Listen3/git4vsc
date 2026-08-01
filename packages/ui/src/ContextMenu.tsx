@@ -7,10 +7,11 @@ export interface ContextMenuItem {
   separator?: boolean;
 }
 
-export function ContextMenu({ x, y, items, onSelect, onClose }: {
+export function ContextMenu({ x, y, items, dismissOnSelect = true, onSelect, onClose }: {
   x: number;
   y: number;
   items: readonly ContextMenuItem[];
+  dismissOnSelect?: boolean | undefined;
   onSelect: (id: string) => void;
   onClose: () => void;
 }) {
@@ -34,7 +35,7 @@ export function ContextMenu({ x, y, items, onSelect, onClose }: {
     <div className="context-menu" style={{ left: Math.max(8, left), top: Math.max(8, top) }} onPointerDown={event => event.stopPropagation()}>
       {items.map((item, index) => item.separator
         ? <div className="context-menu-separator" key={`separator-${index}`} />
-        : <button key={item.id} type="button" disabled={item.disabled} onClick={() => { onSelect(item.id); onClose(); }}>{item.label}</button>)}
+        : <button key={item.id} type="button" disabled={item.disabled} onClick={() => { onSelect(item.id); if (dismissOnSelect) onClose(); }}>{item.label}</button>)}
     </div>
   );
 }

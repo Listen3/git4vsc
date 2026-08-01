@@ -1,10 +1,11 @@
 import { useEffect, useState, type PointerEvent } from 'react';
 import type { CommitDetails, CommitFileChange, CommitSummary, GitRef, LogDateFilter, LogFilters, RepositoryStatus } from '@git4vsc/shared-types';
 import { BranchSidebar, type RefAction, type RemoteAction } from './BranchSidebar.js';
-import { CommitDetailsPane } from './CommitDetailsPane.js';
+import { CommitDetailsPane, type CommitFileAction } from './CommitDetailsPane.js';
 import { CommitLog, type CommitAction } from './CommitLog.js';
-import type { CommitColumnWidths } from './commit-columns.js';
+import { normalizeCommitColumnVisibility, type CommitColumnVisibility, type CommitColumnWidths } from './commit-columns.js';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu.js';
+import { OperationActivity } from './OperationActivity.js';
 
 export interface LogViewOptions {
   groupByDirectory: boolean;
@@ -23,22 +24,25 @@ export interface RepositoryPanelProps {
   viewOptions?: LogViewOptions | undefined;
   hasMore?: boolean | undefined;
   loading?: boolean | undefined;
+  activity?: string | null | undefined;
   detailsLoading?: boolean | undefined;
   error?: string | null | undefined;
   commitColumnWidths?: CommitColumnWidths | undefined;
+  commitColumnVisibility?: CommitColumnVisibility | undefined;
   onRefresh?: (() => void) | undefined;
   onLoadMore?: (() => void) | undefined;
   onSelectRef?: ((ref: string | null) => void) | undefined;
   onFiltersChange?: ((filters: LogFilters) => void) | undefined;
-  onPickPaths?: ((kind: 'files' | 'folder') => void) | undefined;
+  onPickPaths?: (() => void) | undefined;
   onSelectCommit?: ((commit: CommitSummary) => void) | undefined;
   onOpenFile?: ((change: CommitFileChange) => void) | undefined;
-  onRevertChanges?: ((changes: readonly CommitFileChange[]) => void) | undefined;
+  onFileAction?: ((action: CommitFileAction, changes: readonly CommitFileChange[]) => void) | undefined;
   onViewOptionsChange?: ((options: LogViewOptions) => void) | undefined;
   onCommitAction?: ((action: CommitAction, commit: CommitSummary) => void) | undefined;
   onRefAction?: ((action: RefAction, ref: GitRef | null) => void) | undefined;
   onRemoteAction?: ((action: RemoteAction, remote: string | null) => void) | undefined;
   onCommitColumnWidthsChange?: ((widths: CommitColumnWidths) => void) | undefined;
+  onCommitColumnVisibilityChange?: ((visibility: CommitColumnVisibility) => void) | undefined;
 }
 
 type FilterMenu = { type: 'branch' | 'user' | 'date' | 'paths'; x: number; y: number };
@@ -48,6 +52,7 @@ export function RepositoryPanel(props: RepositoryPanelProps) {
   const viewOptions = props.viewOptions ?? { groupByDirectory: true, showDetails: true };
   const [searchDraft, setSearchDraft] = useState(filters.text);
   const [filterMenu, setFilterMenu] = useState<FilterMenu | null>(null);
+  const [columnMenu, setColumnMenu] = useState<{ x: number; y: number } | null>(null);
   const [pathEditor, setPathEditor] = useState<{ x: number; y: number } | null>(null);
   const [leftWidth, setLeftWidth] = useState(210);
   const [rightWidth, setRightWidth] = useState(330);
@@ -94,11 +99,15 @@ export function RepositoryPanel(props: RepositoryPanelProps) {
   ];
   const dateItems: ContextMenuItem[] = dateFilters.map(item => ({ id: item.id, label: `${filters.date === item.id ? '✓ ' : ''}${item.label}` }));
   const pathItems: ContextMenuItem[] = [
-    { id: 'files', label: 'Select Files…' },
-    { id: 'folder', label: 'Select Folder…' },
+    { id: 'select', label: 'Select…' },
     { id: 'manual', label: 'Enter Paths…' },
     ...(filters.path ? [{ id: 'clear-separator', separator: true }, { id: 'clear', label: 'Clear Paths Filter' }] : [])
   ];
+  const columnVisibility = normalizeCommitColumnVisibility(props.commitColumnVisibility);
+  const columnItems: ContextMenuItem[] = (['author', 'date', 'hash'] as const).map(column => ({
+    id: column,
+    label: `${columnVisibility[column] ? '✓ ' : '  '}${column[0]!.toUpperCase()}${column.slice(1)}`
+  }));
   const dateLabel = dateFilters.find(item => item.id === filters.date)?.label ?? 'Any time';
 
   return (
@@ -106,6 +115,7 @@ export function RepositoryPanel(props: RepositoryPanelProps) {
       <BranchSidebar status={status} activeRef={activeRef} favoriteRefs={favoriteRefs} onSelectRef={props.onSelectRef} onRefAction={props.onRefAction} onRemoteAction={props.onRemoteAction} />
       <div className="splitter" onPointerDown={event => startResize('left', event)} onDoubleClick={() => setLeftWidth(210)} />
       <section className="log-pane">
+        <OperationActivity label={props.activity} />
         <header className="log-toolbar">
           <div className="log-search"><span className="sidebar-search-icon" /><input value={searchDraft} onChange={event => setSearchDraft(event.target.value)} placeholder="Text or hash" /></div>
           <div className="log-filter-strip">
@@ -115,20 +125,25 @@ export function RepositoryPanel(props: RepositoryPanelProps) {
             <FilterControl label="Paths" detail={filters.path} title={filters.path || 'All paths'} onOpen={element => openFilter('paths', element)} onClear={() => updateFilters({ path: '' })} />
           </div>
           <span className="toolbar-spacer" />
+          <button type="button" className="icon-button" title="Choose Columns" aria-label="Choose Columns" onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); setColumnMenu({ x: rect.right - 245, y: rect.bottom + 2 }); }}><EyeIcon /></button>
           <button type="button" className="icon-button refresh-log" title="Refresh Log" aria-label="Refresh Log" onClick={props.onRefresh} disabled={loading}><RefreshIcon /></button>
         </header>
         {error && <div className="repository-error">{error}</div>}
-        <CommitLog commits={commits} selectedHash={selectedHash} hasMore={hasMore} loading={loading} filtered={Boolean(filters.text || filters.user || filters.date !== 'all' || filters.path)} columnWidths={props.commitColumnWidths} onLoadMore={props.onLoadMore} onSelectCommit={props.onSelectCommit} onCommitAction={props.onCommitAction} onColumnWidthsChange={props.onCommitColumnWidthsChange} />
+        <CommitLog commits={commits} selectedHash={selectedHash} hasMore={hasMore} loading={loading} filtered={Boolean(filters.text || filters.user || filters.date !== 'all' || filters.path)} columnWidths={props.commitColumnWidths} visibleColumns={columnVisibility} onLoadMore={props.onLoadMore} onSelectCommit={props.onSelectCommit} onCommitAction={props.onCommitAction} onColumnWidthsChange={props.onCommitColumnWidthsChange} />
       </section>
       <div className="splitter" onPointerDown={event => startResize('right', event)} onDoubleClick={() => setRightWidth(330)} />
-      <CommitDetailsPane details={details} loading={detailsLoading} groupByDirectory={viewOptions.groupByDirectory} showDetails={viewOptions.showDetails} onOptionsChange={props.onViewOptionsChange} onOpenFile={props.onOpenFile} onRevertChanges={props.onRevertChanges} />
+      <CommitDetailsPane details={details} loading={detailsLoading} groupByDirectory={viewOptions.groupByDirectory} showDetails={viewOptions.showDetails} onOptionsChange={props.onViewOptionsChange} onOpenFile={props.onOpenFile} onFileAction={props.onFileAction} />
       {filterMenu?.type === 'branch' && <ContextMenu x={filterMenu.x} y={filterMenu.y} items={branchItems} onClose={() => setFilterMenu(null)} onSelect={id => props.onSelectRef?.(id || null)} />}
       {filterMenu?.type === 'user' && <ContextMenu x={filterMenu.x} y={filterMenu.y} items={userItems} onClose={() => setFilterMenu(null)} onSelect={user => updateFilters({ user })} />}
       {filterMenu?.type === 'date' && <ContextMenu x={filterMenu.x} y={filterMenu.y} items={dateItems} onClose={() => setFilterMenu(null)} onSelect={date => updateFilters({ date: date as LogDateFilter })} />}
       {filterMenu?.type === 'paths' && <ContextMenu x={filterMenu.x} y={filterMenu.y} items={pathItems} onClose={() => setFilterMenu(null)} onSelect={id => {
-        if (id === 'files' || id === 'folder') props.onPickPaths?.(id);
+        if (id === 'select') props.onPickPaths?.();
         else if (id === 'manual') setPathEditor({ x: filterMenu.x, y: filterMenu.y });
         else if (id === 'clear') updateFilters({ path: '' });
+      }} />}
+      {columnMenu && <ContextMenu x={columnMenu.x} y={columnMenu.y} items={columnItems} dismissOnSelect={false} onClose={() => setColumnMenu(null)} onSelect={id => {
+        const column = id as keyof CommitColumnVisibility;
+        props.onCommitColumnVisibilityChange?.({ ...columnVisibility, [column]: !columnVisibility[column] });
       }} />}
       {pathEditor && <PathFilter x={pathEditor.x} y={pathEditor.y} value={filters.path} onClose={() => setPathEditor(null)} onApply={path => updateFilters({ path })} />}
     </main>
@@ -173,4 +188,8 @@ function PathFilter({ x, y, value, onApply, onClose }: { x: number; y: number; v
 
 function RefreshIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.2 5.7A5.5 5.5 0 0 0 3.7 3.8L2.3 5.2M2.8 10.3a5.5 5.5 0 0 0 9.5 1.9l1.4-1.4M2.3 2.5v2.7H5M13.7 13.5v-2.7H11" /></svg>;
+}
+
+function EyeIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8s2.4-4 6.5-4 6.5 4 6.5 4-2.4 4-6.5 4-6.5-4-6.5-4Z" /><circle cx="8" cy="8" r="1.8" /></svg>;
 }

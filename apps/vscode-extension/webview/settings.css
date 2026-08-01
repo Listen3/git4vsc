@@ -1,0 +1,76 @@
+.settings-page { width: 100%; height: 100%; min-width: 540px; position: relative; display: grid; grid-template-columns: 148px minmax(392px, 1fr); color: var(--vscode-foreground); background: var(--vscode-editor-background); }
+.settings-sidebar { min-width: 0; padding: 7px 6px; border-right: 1px solid var(--vscode-panel-border); display: flex; flex-direction: column; background: var(--vscode-sideBar-background); }
+.settings-product { height: 32px; padding: 0 5px; display: flex; align-items: center; gap: 7px; }
+.settings-product-mark { width: 24px; height: 24px; border-radius: 4px; display: grid; place-items: center; color: var(--vscode-button-foreground); background: var(--vscode-button-background); font-weight: 700; }
+.settings-product > div { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.settings-product strong { font-size: 13px; }
+.settings-product small { color: var(--vscode-descriptionForeground); font-size: 11px; }
+.settings-sidebar nav { margin-top: 6px; display: flex; flex-direction: column; gap: 1px; }
+.settings-sidebar nav button { width: 100%; height: 26px; padding: 0 6px; border: 0; border-radius: 3px; display: flex; align-items: center; gap: 7px; color: var(--vscode-descriptionForeground); background: transparent; text-align: left; }
+.settings-sidebar nav button:hover { color: var(--vscode-foreground); background: var(--vscode-list-hoverBackground); }
+.settings-sidebar nav button.active { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
+.settings-sidebar nav svg { width: 16px; height: 16px; flex: 0 0 16px; fill: none; stroke: currentColor; stroke-width: 1.25; stroke-linecap: round; stroke-linejoin: round; }
+.settings-sidebar nav small { margin-left: auto; opacity: .65; font-size: 10px; }
+.native-settings-link { margin-top: auto; height: 25px; padding: 0 6px; border: 0; border-radius: 3px; color: var(--vscode-textLink-foreground); background: transparent; font-size: 11px; text-align: left; white-space: nowrap; }
+.native-settings-link:hover { background: var(--vscode-list-hoverBackground); }
+.settings-content { min-width: 0; height: 100%; padding: 10px 18px 20px; overflow: auto; }
+.settings-content > * { width: min(760px, 100%); margin-right: auto; }
+.settings-heading { min-height: 38px; margin-bottom: 9px; padding-bottom: 7px; border-bottom: 1px solid var(--vscode-panel-border); display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.settings-heading h1 { margin: 0; font-size: 16px; font-weight: 500; }
+.settings-heading p { margin: 3px 0 0; color: var(--vscode-descriptionForeground); font-size: 11px; line-height: 1.35; }
+.settings-heading button { height: 27px; padding: 0 10px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 3px; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); white-space: nowrap; }
+.settings-heading button:hover { background: var(--vscode-button-secondaryHoverBackground); }
+.settings-group { margin-bottom: 9px; }
+.settings-group h2 { margin: 0; padding: 0 3px 4px; color: var(--vscode-descriptionForeground); font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.setting-row { min-height: 50px; padding: 7px 9px; border-top: 1px solid color-mix(in srgb, var(--vscode-panel-border) 62%, transparent); display: grid; grid-template-columns: minmax(250px, 1fr) auto; align-items: center; gap: 20px; }
+.setting-row:last-child { border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 62%, transparent); }
+.setting-row:hover { background: color-mix(in srgb, var(--vscode-list-hoverBackground) 55%, transparent); }
+.setting-row strong { font-weight: 500; }
+.setting-row p { margin: 4px 0 0; max-width: 560px; color: var(--vscode-descriptionForeground); font-size: 11px; line-height: 1.4; }
+.setting-control { min-width: 150px; display: flex; justify-content: flex-end; }
+.setting-control select { width: 170px; height: 27px; padding: 0 27px 0 8px; border: 1px solid var(--vscode-dropdown-border); border-radius: 2px; outline: 0; color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background); }
+.setting-control select:focus { border-color: var(--vscode-focusBorder); }
+.settings-toggle { width: 32px; height: 18px; position: relative; display: block; }
+.settings-toggle input { position: absolute; opacity: 0; }
+.settings-toggle span { position: absolute; inset: 0; border: 1px solid var(--vscode-checkbox-border, transparent); border-radius: 9px; background: var(--vscode-input-background); transition: background 80ms; }
+.settings-toggle span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--vscode-descriptionForeground); transition: transform 80ms, background 80ms; }
+.settings-toggle input:checked + span { background: var(--vscode-button-background); }
+.settings-toggle input:checked + span::after { background: var(--vscode-button-foreground); transform: translateX(14px); }
+.settings-toggle input:focus-visible + span { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.ai-field { min-height: 44px; padding: 4px 7px; border-top: 1px solid color-mix(in srgb, var(--vscode-panel-border) 62%, transparent); display: grid; grid-template-columns: 290px minmax(260px, 1fr); align-items: center; gap: 12px; }
+.ai-field:last-child { border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 62%, transparent); }
+.ai-field:hover { background: color-mix(in srgb, var(--vscode-list-hoverBackground) 55%, transparent); }
+.ai-field > span { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ai-field strong { font-size: 12px; font-weight: 500; line-height: 1.25; }
+.ai-field small { overflow: hidden; color: var(--vscode-descriptionForeground); font-size: 10px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.ai-field input, .ai-field select, .ai-field textarea { box-sizing: border-box; width: 100%; border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; outline: 0; color: var(--vscode-input-foreground); background: var(--vscode-input-background); font: inherit; font-size: 12px; }
+.ai-field input, .ai-field select { height: 25px; padding: 0 7px; }
+.ai-field select { color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background); }
+.ai-field textarea { min-height: 54px; padding: 5px 7px; resize: vertical; line-height: 1.35; }
+.ai-field input:focus, .ai-field select:focus, .ai-field textarea:focus { border-color: var(--vscode-focusBorder); }
+.ai-inline { display: flex; align-items: center; gap: 7px; }
+.ai-inline input { min-width: 0; flex: 1; }
+.ai-inline button { flex: 0 0 auto; }
+.ai-model-picker { min-width: 0; position: relative; flex: 1; }
+.ai-model-picker > input { padding-right: 26px; }
+.ai-model-picker .ai-model-toggle { width: 25px; height: 23px; padding: 0; position: absolute; top: 1px; right: 1px; border: 0; color: var(--vscode-descriptionForeground); background: transparent; display: grid; place-items: center; }
+.ai-model-toggle:hover:not(:disabled) { color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground); }
+.ai-model-toggle svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.ai-model-options { max-height: 180px; position: absolute; z-index: 20; top: calc(100% + 2px); right: 0; left: 0; padding: 3px; overflow-y: auto; border: 1px solid var(--vscode-widget-border); border-radius: 3px; color: var(--vscode-quickInput-foreground, var(--vscode-foreground)); background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background)); box-shadow: 0 4px 12px var(--vscode-widget-shadow); }
+.ai-field .ai-model-options button { width: 100%; height: 25px; padding: 0 7px; border: 0; border-radius: 2px; color: inherit; background: transparent; text-align: left; }
+.ai-field .ai-model-options button:hover, .ai-field .ai-model-options button[aria-selected='true'] { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
+.ai-model-options > span { height: 25px; padding: 0 7px; display: flex; align-items: center; color: var(--vscode-descriptionForeground); }
+.ai-footer { padding: 1px 7px; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.ai-footer > p { margin: 0; max-width: 440px; overflow: hidden; color: var(--vscode-descriptionForeground); font-size: 10px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.ai-footer > div { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+.ai-footer button, .ai-field button { height: 25px; padding: 0 9px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 2px; white-space: nowrap; }
+button.primary { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+button.primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
+button.secondary { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
+button.secondary:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground); }
+button:disabled { opacity: .55; }
+.settings-toast { max-width: 360px; min-height: 30px; padding: 0 10px; position: fixed; z-index: 100; top: 12px; right: 16px; border: 1px solid var(--vscode-notifications-border, var(--vscode-widget-border)); border-radius: 3px; display: flex; align-items: center; gap: 7px; color: var(--vscode-notifications-foreground, var(--vscode-foreground)); background: var(--vscode-notifications-background, var(--vscode-editorWidget-background)); box-shadow: 0 4px 12px var(--vscode-widget-shadow); }
+.settings-toast > span { width: 15px; height: 15px; border-radius: 50%; display: grid; place-items: center; color: var(--vscode-editor-background); font-size: 10px; font-weight: 700; }
+.settings-toast.success > span { background: var(--vscode-testing-iconPassed); }
+.settings-toast.error > span { background: var(--vscode-errorForeground); }
+@media (max-width: 680px) { .settings-page { min-width: 460px; grid-template-columns: 132px minmax(328px, 1fr); } .settings-content { padding: 10px 13px; } .setting-row, .ai-field { grid-template-columns: 1fr; gap: 5px; } .setting-control { justify-content: flex-start; } .ai-footer { align-items: flex-start; flex-direction: column; } }

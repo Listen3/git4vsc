@@ -7,6 +7,7 @@ body[data-view='commit'] {
   height: 100%;
   min-width: 220px;
   display: flex;
+  position: relative;
   flex-direction: column;
   color: var(--vscode-sideBar-foreground, var(--vscode-foreground));
   background: var(--vscode-sideBar-background, #181818);
@@ -113,23 +114,8 @@ button:disabled { opacity: .45; }
   min-height: 90px;
   flex: 1;
   overflow-x: hidden;
-  overflow-y: scroll;
-  margin-right: -9px;
-  padding-right: 9px;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--vscode-scrollbarSlider-background, #79797966) 72%, transparent) transparent;
+  overflow-y: auto;
 }
-
-.commit-changes::-webkit-scrollbar { width: 9px; }
-.commit-changes::-webkit-scrollbar-track { background: transparent; }
-.commit-changes::-webkit-scrollbar-thumb {
-  border: 2px solid transparent;
-  border-radius: 10px;
-  background: var(--vscode-scrollbarSlider-background, #79797966);
-  background-clip: content-box;
-}
-.commit-changes::-webkit-scrollbar-thumb:hover { background-color: var(--vscode-scrollbarSlider-hoverBackground, #646464b3); }
-.commit-changes::-webkit-scrollbar-thumb:active { background-color: var(--vscode-scrollbarSlider-activeBackground, #bfbfbf66); }
 
 .commit-change-group > summary {
   height: 22px;
@@ -292,17 +278,29 @@ button:disabled { opacity: .45; }
 
 .commit-message-area textarea:focus { border-color: var(--vscode-focusBorder, #007fd4); }
 .commit-message-area textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
-.commit-actions { display: flex; align-items: center; }
+.commit-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
 .commit-actions button {
   height: 26px;
-  margin-left: auto;
   border: 1px solid var(--vscode-button-border, transparent);
   border-radius: 2px;
+}
+.commit-primary-action {
   padding: 0 16px;
   color: var(--vscode-button-foreground, #fff);
   background: var(--vscode-button-background, #0e639c);
 }
-.commit-actions button:not(:disabled):hover { background: var(--vscode-button-hoverBackground, #1177bb); }
+.commit-primary-action:not(:disabled):hover { background: var(--vscode-button-hoverBackground, #1177bb); }
+.ai-commit-action { width: 27px; height: 26px; display: block; }
+.commit-actions .ai-commit-button { width: 27px; position: relative; padding: 0; display: grid; place-items: center; color: var(--vscode-textLink-foreground, #4daafc); background: color-mix(in srgb, var(--vscode-button-secondaryBackground, transparent) 72%, transparent); }
+.commit-actions .ai-commit-button:disabled { color: var(--vscode-disabledForeground, var(--vscode-descriptionForeground)); background: transparent; }
+.commit-actions .ai-commit-button:not(:disabled):hover { color: var(--vscode-textLink-activeForeground, #75beff); background: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground)); }
+.commit-actions .ai-commit-button.unconfigured { color: var(--vscode-disabledForeground, var(--vscode-descriptionForeground)); background: transparent; opacity: .55; }
+.commit-actions .ai-commit-button.unconfigured:hover { color: var(--vscode-descriptionForeground); opacity: .82; }
+.commit-actions .ai-commit-button.generating { opacity: 1; color: var(--vscode-errorForeground, #f48771); }
+.commit-actions .ai-commit-button.generating::before { content: ''; width: 19px; height: 19px; position: absolute; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); border-top-color: currentColor; border-radius: 50%; animation: ai-commit-spin .8s linear infinite; }
+.ai-commit-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.15; stroke-linecap: round; stroke-linejoin: round; }
+.ai-commit-button svg.stop { width: 13px; height: 13px; fill: currentColor; stroke: none; }
+@keyframes ai-commit-spin { to { transform: rotate(360deg); } }
 
 .commit-no-changes, .commit-empty-state { color: var(--vscode-descriptionForeground); }
 .commit-no-changes { padding: 28px 12px; text-align: center; }

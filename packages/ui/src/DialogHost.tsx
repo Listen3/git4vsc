@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import type { CommitFileChange, DialogListItem, WebviewDialogRequest } from '@git4vsc/shared-types';
+import type { CommitFileChange, DialogListItem, PathTreeDialogRequest, PathTreeEntry, WebviewDialogRequest } from '@git4vsc/shared-types';
 import { formatCommitTime } from './commit-date.js';
 
-export function DialogHost({ dialog, onResolve }: { dialog: WebviewDialogRequest | null; onResolve(value: string | null): void }) {
+export function DialogHost({ dialog, onResolve, onExpandPath }: {
+  dialog: WebviewDialogRequest | null;
+  onResolve(value: string | string[] | null): void;
+  onExpandPath?(dialogId: number, path: string): void;
+}) {
   const frame = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -59,9 +63,101 @@ export function DialogHost({ dialog, onResolve }: { dialog: WebviewDialogRequest
           </div>
           <footer className="dialog-footer"><button type="button" onClick={() => onResolve(null)}>Cancel</button><button type="button" className="dialog-primary" disabled={!selectedId} onClick={() => onResolve(selectedId)}>{dialog.acceptLabel ?? 'Select'}</button></footer>
         </>
-        : <PushPreview dialog={dialog} selectedHash={selectedHash} onSelect={setSelectedHash} onCancel={() => onResolve(null)} onPush={() => onResolve('push')} />}
+        : dialog.kind === 'path-tree'
+          ? <PathTreeDialog dialog={dialog} onExpandPath={onExpandPath} onCancel={() => onResolve(null)} onAccept={paths => onResolve(paths)} />
+          : <PushPreview dialog={dialog} selectedHash={selectedHash} onSelect={setSelectedHash} onCancel={() => onResolve(null)} onPush={() => onResolve('push')} />}
     </div>
   </div>;
+}
+
+function PathTreeDialog({ dialog, onExpandPath, onCancel, onAccept }: {
+  dialog: PathTreeDialogRequest;
+  onExpandPath?: ((dialogId: number, path: string) => void) | undefined;
+  onCancel(): void;
+  onAccept(paths: string[]): void;
+}) {
+  const [selected, setSelected] = useState(() => new Set(dialog.selectedPaths));
+  const [expanded, setExpanded] = useState(() => new Set<string>());
+  const [loading, setLoading] = useState(() => new Set<string>());
+
+  useEffect(() => {
+    setLoading(current => {
+      const next = new Set([...current].filter(path => findPathEntry(dialog.entries, path)?.children === undefined));
+      return next.size === current.size ? current : next;
+    });
+  }, [dialog.entries]);
+
+  const toggleSelected = (path: string) => setSelected(current => {
+    const next = new Set(current);
+    if (next.has(path)) next.delete(path); else next.add(path);
+    return next;
+  });
+  const toggleExpanded = (entry: PathTreeEntry) => {
+    setExpanded(current => {
+      const next = new Set(current);
+      if (next.has(entry.path)) next.delete(entry.path);
+      else {
+        next.add(entry.path);
+        if (entry.children === undefined) {
+          setLoading(paths => new Set(paths).add(entry.path));
+          onExpandPath?.(dialog.id, entry.path);
+        }
+      }
+      return next;
+    });
+  };
+
+  return <>
+    <div className="path-tree" role="tree" aria-label="Repository paths">
+      {dialog.entries.map(entry => <PathTreeRow key={entry.path} entry={entry} depth={0} selected={selected} expanded={expanded} loading={loading} onToggleSelected={toggleSelected} onToggleExpanded={toggleExpanded} />)}
+      {!dialog.entries.length && <div className="dialog-empty">No files or folders</div>}
+    </div>
+    <footer className="dialog-footer"><span className="path-selection-count">{selected.size ? `${selected.size} selected` : 'Select files or folders'}</span><button type="button" onClick={onCancel}>Cancel</button><button type="button" className="dialog-primary" disabled={!selected.size} onClick={() => onAccept([...selected])}>OK</button></footer>
+  </>;
+}
+
+function PathTreeRow({ entry, depth, selected, expanded, loading, onToggleSelected, onToggleExpanded }: {
+  entry: PathTreeEntry;
+  depth: number;
+  selected: ReadonlySet<string>;
+  expanded: ReadonlySet<string>;
+  loading: ReadonlySet<string>;
+  onToggleSelected(path: string): void;
+  onToggleExpanded(entry: PathTreeEntry): void;
+}) {
+  const open = expanded.has(entry.path);
+  return <>
+    <div className="path-tree-row" role="treeitem" aria-expanded={entry.directory ? open : undefined} style={{ paddingLeft: 7 + depth * 18 }} title={entry.path}>
+      {entry.directory
+        ? <button type="button" className={`path-tree-chevron${open ? ' open' : ''}`} aria-label={`${open ? 'Collapse' : 'Expand'} ${entry.name}`} onClick={() => onToggleExpanded(entry)}><PathChevronIcon /></button>
+        : <span className="path-tree-chevron" />}
+      <label><input type="checkbox" checked={selected.has(entry.path)} onChange={() => onToggleSelected(entry.path)} /><span className={entry.directory ? 'path-folder-icon' : 'path-file-icon'} /> <span>{entry.name}</span></label>
+      {loading.has(entry.path) && <span className="path-tree-loading">Loading…</span>}
+    </div>
+    {entry.directory && open && <div role="group">
+      {entry.children?.map(child => <PathTreeRow key={child.path} entry={child} depth={depth + 1} selected={selected} expanded={expanded} loading={loading} onToggleSelected={onToggleSelected} onToggleExpanded={onToggleExpanded} />)}
+      {entry.children?.length === 0 && <div className="path-tree-empty" style={{ paddingLeft: 43 + depth * 18 }}>Empty folder</div>}
+    </div>}
+  </>;
+}
+
+function findPathEntry(entries: readonly PathTreeEntry[], path: string): PathTreeEntry | undefined {
+  for (const entry of entries) {
+    if (entry.path === path) return entry;
+    const found = entry.children && findPathEntry(entry.children, path);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+export function updatePathTreeEntries(entries: readonly PathTreeEntry[], path: string, children: PathTreeEntry[]): PathTreeEntry[] {
+  return entries.map(entry => entry.path === path
+    ? { ...entry, children }
+    : entry.children ? { ...entry, children: updatePathTreeEntries(entry.children, path, children) } : entry);
+}
+
+function PathChevronIcon() {
+  return <svg viewBox="0 0 12 12" aria-hidden="true"><path d="m4 2.5 3.5 3.5L4 9.5" /></svg>;
 }
 
 export function filterDialogItems(items: readonly DialogListItem[], query: string): DialogListItem[] {
@@ -136,7 +232,8 @@ function PushFileTree({ changes }: { changes: readonly CommitFileChange[] }) {
 function PushFileNodeView({ node }: { node: PushFileNode }) {
   if (node.change) return <div className={`push-file file-status-${node.change.status}`} title={node.path}><span>{node.name}</span></div>;
   const compact = compactDirectory(node);
-  return <details className="push-folder" open><summary>{compact.label}</summary><div>{sortedChildren(compact.node).map(child => <PushFileNodeView key={child.path} node={child} />)}</div></details>;
+  const count = pushFileCount(compact.node);
+  return <details className="push-folder" open><summary>{compact.label}<span className="folder-file-count">{count} {count === 1 ? 'file' : 'files'}</span></summary><div>{sortedChildren(compact.node).map(child => <PushFileNodeView key={child.path} node={child} />)}</div></details>;
 }
 
 function sortedChildren(node: PushFileNode): PushFileNode[] {
@@ -153,6 +250,11 @@ function compactDirectory(start: PushFileNode): { label: string; node: PushFileN
     node = child;
   }
   return { label, node };
+}
+
+function pushFileCount(node: PushFileNode): number {
+  if (node.change) return 1;
+  return [...node.children.values()].reduce((count, child) => count + pushFileCount(child), 0);
 }
 
 function trapFocus(event: KeyboardEvent, element: HTMLElement | null): void {

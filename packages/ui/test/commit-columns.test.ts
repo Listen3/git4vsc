@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultCommitColumnWidths, normalizeCommitColumnWidths } from '../src/commit-columns.js';
+import { defaultCommitColumnVisibility, defaultCommitColumnWidths, normalizeCommitColumnVisibility, normalizeCommitColumnWidths } from '../src/commit-columns.js';
 
 describe('commit column widths', () => {
   it('uses stable defaults', () => {
@@ -13,5 +13,10 @@ describe('commit column widths', () => {
       date: 141,
       hash: 56
     });
+  });
+
+  it('normalizes persisted column visibility', () => {
+    expect(normalizeCommitColumnVisibility()).toEqual(defaultCommitColumnVisibility);
+    expect(normalizeCommitColumnVisibility({ author: false, hash: false })).toEqual({ author: false, date: true, hash: false });
   });
 });

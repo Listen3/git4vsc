@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GitChange, RepositoryStatus } from '@git4vsc/shared-types';
+import { OperationActivity, OverlayScrollbar } from '@git4vsc/ui';
 import './commit.css';
 
 interface RepositoryChoice {
@@ -17,7 +18,10 @@ interface CommitViewState {
   message: string;
   loading: boolean;
   operation: string | null;
+  activity: string | null;
   error: string | null;
+  aiConfigured: boolean;
+  aiGenerating: boolean;
 }
 
 interface ChangeGroup {
@@ -56,7 +60,10 @@ const initialState: CommitViewState = {
   message: '',
   loading: true,
   operation: null,
-  error: null
+  activity: null,
+  error: null,
+  aiConfigured: false,
+  aiGenerating: false
 };
 
 export function CommitApp({ postMessage }: { postMessage(message: unknown): void }) {
@@ -67,6 +74,7 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
   const [messageHeight, setMessageHeight] = useState(136);
   const messageRef = useRef('');
   const messageInput = useRef<HTMLTextAreaElement>(null);
+  const changesRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const listener = (event: MessageEvent<{ type: string; state: CommitViewState }>) => {
@@ -102,7 +110,16 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
   const selectionSummary = useMemo(() => selectedChangeSummary(state.status?.changes ?? [], selectedPaths), [state.status, selectedPaths]);
   const rollbackCount = (state.status?.changes ?? []).filter(change => selected(change) && !change.conflict && change.workingTree !== 'untracked').length;
   const conflictCount = groups.find(group => group.id === 'conflicts')?.changes.length ?? 0;
-  const busy = state.loading || state.operation !== null;
+  const busy = state.loading || state.operation !== null || state.aiGenerating;
+  const aiTitle = !state.aiConfigured
+    ? 'Configure Base URL, API key and model in Git4VSC Settings → AI'
+    : state.aiGenerating
+      ? 'Stop generating commit message'
+      : selectedCount === 0
+        ? 'Select changed files to generate a commit message'
+        : conflictCount > 0
+          ? 'Resolve conflicts before generating a commit message'
+          : 'Generate commit message with AI';
 
   function setSelected(changes: readonly GitChange[], value: boolean) {
     setState(previous => {
@@ -159,6 +176,7 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
   }
 
   return <main className="commit-view">
+    <OperationActivity label={state.activity} />
     <header className="commit-toolbar">
       {state.repositories.length > 1
         ? <select aria-label="Repository" value={state.activeRoot ?? ''} onChange={event => postMessage({ type: 'selectRepository', root: event.target.value })}>
@@ -180,11 +198,12 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
 
     {state.error && <div className="commit-error">{state.error}</div>}
 
-    <section className="commit-changes" aria-label="Changes">
+    <section ref={changesRef} className="commit-changes" aria-label="Changes">
       {groups.length === 0
         ? <div className="commit-no-changes">No changes</div>
         : groups.map(group => <ChangeGroupView key={group.id} group={group} busy={busy} selected={selected} activePath={activePath} setActivePath={setActivePath} setSelected={setSelected} postMessage={postMessage} openFileMenu={setFileMenu} />)}
     </section>
+    <OverlayScrollbar targetRef={changesRef} />
 
     <footer className="commit-message-area" style={{ height: messageHeight }}>
       <div className="commit-message-resizer" title="Drag to resize Commit Message" onPointerDown={resizeMessageArea} />
@@ -205,13 +224,38 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
         }}
       />
       <div className="commit-actions">
-        <button disabled={!message.trim() || selectedCount === 0 || busy || conflictCount > 0} onClick={commit}>
+        <span className="ai-commit-action" title={aiTitle}>
+          <button
+            type="button"
+            className={`ai-commit-button ${state.aiGenerating ? 'generating' : state.aiConfigured ? 'ready' : 'unconfigured'}`}
+            aria-label={aiTitle}
+            disabled={state.aiConfigured && !state.aiGenerating && (selectedCount === 0 || state.loading || state.operation !== null || conflictCount > 0)}
+            onClick={() => {
+              if (!state.aiConfigured) {
+                postMessage({ type: 'openAiSettings' });
+              } else if (state.aiGenerating) {
+                setState(previous => ({ ...previous, aiGenerating: false }));
+                postMessage({ type: 'cancelCommitMessage' });
+              } else {
+                setState(previous => ({ ...previous, aiGenerating: true }));
+                postMessage({ type: 'generateCommitMessage' });
+              }
+            }}
+          ><AiCommitIcon spinning={state.aiGenerating} /></button>
+        </span>
+        <button className="commit-primary-action" disabled={!message.trim() || selectedCount === 0 || busy || conflictCount > 0} onClick={commit}>
           {state.operation === 'commit' ? 'Committing…' : 'Commit'}
         </button>
       </div>
     </footer>
     {fileMenu && <FileContextMenu menu={fileMenu} busy={busy} run={runFileAction} />}
   </main>;
+}
+
+function AiCommitIcon({ spinning }: { spinning: boolean }) {
+  return spinning
+    ? <svg className="stop" viewBox="0 0 16 16" aria-hidden="true"><rect x="5.25" y="5.25" width="5.5" height="5.5" rx="1" /></svg>
+    : <svg className="spark" viewBox="0 0 16 16" aria-hidden="true"><path d="M7.3 1.6c.3 2.55 1.48 3.74 4.03 4.04-2.55.3-3.73 1.48-4.03 4.03-.3-2.55-1.49-3.73-4.04-4.03C5.81 5.34 7 4.15 7.3 1.6Z" /><path d="M11.8 9c.16 1.37.8 2 2.17 2.17-1.37.16-2.01.8-2.17 2.17-.16-1.37-.8-2.01-2.17-2.17C11 11 11.64 10.37 11.8 9Z" /></svg>;
 }
 
 function RepositorySyncStatus({ status }: { status: RepositoryStatus | null }) {

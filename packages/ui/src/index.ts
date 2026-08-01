@@ -6,4 +6,6 @@ export * from './commit-columns.js';
 export * from './commit-date.js';
 export * from './ContextMenu.js';
 export * from './DialogHost.js';
+export * from './OperationActivity.js';
+export * from './OverlayScrollbar.js';
 export * from './RepositoryPanel.js';
