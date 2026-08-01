@@ -9,6 +9,7 @@ import { LogPanel } from './log-panel.js';
 import { notifyCommitResult } from './operation-notifications.js';
 import { operationActivity } from './repository-status.js';
 import { SettingsPanel } from './settings-panel.js';
+import { PushPreviewPanel } from './push-preview-panel.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const manager = new RepositoryManager();
@@ -42,10 +43,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     return true;
   };
   const commitView = new CommitView(context, () => manager.all, { commit: (repository, message, paths) => commitRepository(repository, message, false, paths) });
-  const logPanel = new LogPanel(context, () => manager.all[0]);
+  const pushPreviewPanel = new PushPreviewPanel(context);
+  const previewPush = (repository: RepositoryController, branch: string, remote: string, upstream?: string) => pushPreviewPanel.show(repository, branch, remote, upstream);
+  const logPanel = new LogPanel(context, () => manager.all[0], previewPush);
   const settingsPanel = new SettingsPanel(context);
-  const branchMenu = new BranchMenu((repository, branch, remote, upstream) => logPanel.previewPush(repository, branch, remote, upstream));
-  context.subscriptions.push(commitView, settingsPanel, vscode.window.registerWebviewViewProvider('git4vsc.repositories', commitView, { webviewOptions: { retainContextWhenHidden: true } }));
+  const branchMenu = new BranchMenu(previewPush);
+  context.subscriptions.push(commitView, settingsPanel, pushPreviewPanel, vscode.window.registerWebviewViewProvider('git4vsc.repositories', commitView, { webviewOptions: { retainContextWhenHidden: true } }));
   context.subscriptions.push(conflictResolver, vscode.window.registerTreeDataProvider('git4vsc.conflicts', conflictTree));
   context.subscriptions.push(logPanel, vscode.window.registerWebviewViewProvider('git4vsc.logView', logPanel, { webviewOptions: { retainContextWhenHidden: true } }));
   context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider('git4vsc', new GitContentProvider(() => manager.all)));

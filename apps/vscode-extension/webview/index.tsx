@@ -94,10 +94,25 @@ function LogApp() {
   }} onExpandPath={(id, path) => vscode.postMessage({ type: 'dialog:pathChildren', id, path })} /></>;
 }
 
+function PushPreviewApp() {
+  const [dialog, setDialog] = useState<Extract<WebviewDialogRequest, { kind: 'push-preview' }> | null>(null);
+  useEffect(() => {
+    const listener = (event: MessageEvent<{ type: string; dialog?: WebviewDialogRequest }>) => {
+      if (event.data.type === 'pushPreview' && event.data.dialog?.kind === 'push-preview') setDialog(event.data.dialog);
+    };
+    window.addEventListener('message', listener);
+    vscode.postMessage({ type: 'ready' });
+    return () => window.removeEventListener('message', listener);
+  }, []);
+  return <DialogHost dialog={dialog} onResolve={value => vscode.postMessage({ type: 'pushPreviewResult', value })} />;
+}
+
 const app = document.body.dataset.view === 'commit'
   ? <CommitApp postMessage={message => vscode.postMessage(message)} />
   : document.body.dataset.view === 'settings'
     ? <SettingsApp postMessage={message => vscode.postMessage(message)} />
-    : <LogApp />;
+    : document.body.dataset.view === 'push-preview'
+      ? <PushPreviewApp />
+      : <LogApp />;
 
 createRoot(document.getElementById('root')!).render(<StrictMode>{app}</StrictMode>);

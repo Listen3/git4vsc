@@ -1,12 +1,12 @@
 import { readdir, writeFile } from 'node:fs/promises';
-import { basename, join, resolve, sep } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import * as vscode from 'vscode';
 import type { CommitDetails, CommitFileChange, CommitSummary, DialogListItem, GitRef, LogFilters, PathTreeEntry } from '@git4vsc/shared-types';
 import type { RepositoryController } from '@git4vsc/repo-state';
 import { emptyLogFilters, logQueryFromFilters, logUsers } from './log-filters.js';
 import { selectionAfterLogReload } from './log-selection.js';
 import { WebviewDialogController } from './webview-dialog-controller.js';
-import { notifyFetchResult, notifyPushResult, notifyUpdateResult, resultNotificationsEnabled } from './operation-notifications.js';
+import { notifyFetchResult, notifyUpdateResult, resultNotificationsEnabled } from './operation-notifications.js';
 import { operationActivity } from './repository-status.js';
 import { readGeneralSettings } from './settings.js';
 import { configuredUpdateStrategy } from './update-strategy.js';
@@ -23,6 +23,7 @@ type RefAction =
   | 'update' | 'push' | 'setUpstream' | 'pullMerge' | 'pullRebase'
   | 'rename' | 'delete';
 type RemoteAction = 'fetch' | 'add' | 'edit' | 'remove';
+type PreviewPush = (repository: RepositoryController, branch: string, remote: string, upstream?: string) => Promise<void>;
 
 export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
   private view: vscode.WebviewView | null = null;
@@ -31,7 +32,8 @@ export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
 
   constructor(
     private readonly context: vscode.ExtensionContext,
-    private readonly defaultRepository: () => RepositoryController | undefined
+    private readonly defaultRepository: () => RepositoryController | undefined,
+    private readonly previewPush: PreviewPush
   ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -65,12 +67,6 @@ export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
     }
   }
 
-  async previewPush(repository: RepositoryController, branch: string, remote: string, upstream?: string): Promise<void> {
-    await this.show(repository);
-    if (!this.session) throw new Error('Git Log view is unavailable.');
-    await this.session.previewPush(branch, remote, upstream);
-  }
-
   initialize(repository: RepositoryController | undefined): void {
     if (this.repository || !repository) return;
     this.repository = repository;
@@ -89,7 +85,7 @@ export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
   private attach(): void {
     if (!this.view || !this.repository) return;
     this.session?.dispose();
-    this.session = new LogSession(this.context, this.repository, this.view);
+    this.session = new LogSession(this.context, this.repository, this.view, this.previewPush);
   }
 }
 
@@ -115,7 +111,8 @@ class LogSession implements vscode.Disposable {
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly repository: RepositoryController,
-    private readonly view: vscode.WebviewView
+    private readonly view: vscode.WebviewView,
+    private readonly previewPush: PreviewPush
   ) {
     this.commits = [...repository.snapshot.commits];
     this.users = logUsers(this.commits);
@@ -148,26 +145,6 @@ class LogSession implements vscode.Disposable {
     this.unsubscribe();
     this.messageSubscription.dispose();
     this.dialogs.cancel();
-  }
-
-  async previewPush(branch: string, remote: string, upstream?: string): Promise<void> {
-    const commits = await this.repository.git.outgoingCommits(this.repository.location, branch, remote, upstream);
-    if (!commits.length) {
-      if (resultNotificationsEnabled()) void vscode.window.showInformationMessage('Everything is up to date.');
-      return;
-    }
-    const preview = await Promise.all(commits.map(async commit => ({ commit, files: (await this.repository.git.commitDetails(this.repository.location, commit.hash)).files })));
-    const action = await this.dialogs.show({
-      kind: 'push-preview',
-      title: `Push Commits to ${basename(this.repository.root)}`,
-      source: branch,
-      target: `${remote}/${branch}`,
-      commits: preview
-    });
-    if (action === 'push') {
-      await this.repository.pushBranch(branch, remote);
-      notifyPushResult(commits.length, `${remote}/${branch}`);
-    }
   }
 
   private async handleMessage(message: unknown): Promise<void> {
@@ -711,7 +688,7 @@ class LogSession implements vscode.Disposable {
       await this.repository.pushTag(ref.name, remote);
       if (resultNotificationsEnabled()) void vscode.window.showInformationMessage(`Pushed tag ${ref.name} to ${remote}.`);
     }
-    else if (ref.type === 'local-branch') await this.previewPush(ref.name, remote, upstream ?? undefined);
+    else if (ref.type === 'local-branch') await this.previewPush(this.repository, ref.name, remote, upstream ?? undefined);
   }
 
   private async setTrackedBranch(ref: GitRef): Promise<void> {
