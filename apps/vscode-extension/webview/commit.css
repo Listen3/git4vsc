@@ -1,5 +1,28 @@
 body[data-view='commit'] {
+  --git4vsc-change-added: #79ad82;
+  --git4vsc-change-modified: #74a2d1;
+  --git4vsc-change-deleted: #c28589;
+  --git4vsc-commit-toolbar-foreground: #a7adb3;
+  --git4vsc-commit-toolbar-hover-foreground: #c2c7cc;
+  --git4vsc-commit-branch-foreground: #9da2a8;
+  --git4vsc-commit-group-foreground: #a5aab0;
+  --git4vsc-checkbox-border: #626970;
+  --git4vsc-checkbox-border-checked: #737a81;
+  --git4vsc-checkbox-mark: #b8bdc2;
   background: var(--vscode-sideBar-background, #181818);
+}
+
+body.vscode-light[data-view='commit'] {
+  --git4vsc-change-added: #397d44;
+  --git4vsc-change-modified: #276fa6;
+  --git4vsc-change-deleted: #a24b50;
+  --git4vsc-commit-toolbar-foreground: var(--vscode-icon-foreground, #4f555b);
+  --git4vsc-commit-toolbar-hover-foreground: var(--vscode-foreground, #2f3337);
+  --git4vsc-commit-branch-foreground: var(--vscode-descriptionForeground, #616161);
+  --git4vsc-commit-group-foreground: var(--vscode-descriptionForeground, #616161);
+  --git4vsc-checkbox-border: var(--vscode-checkbox-border, #8a8a8a);
+  --git4vsc-checkbox-border-checked: var(--vscode-checkbox-border, #707070);
+  --git4vsc-checkbox-mark: var(--vscode-checkbox-foreground, #424242);
 }
 
 .commit-view {
@@ -40,12 +63,12 @@ body[data-view='commit'] {
   flex: 0 0 25px;
   border: 0;
   border-radius: 3px;
-  color: #a7adb3;
+  color: var(--git4vsc-commit-toolbar-foreground);
   background: transparent;
   font-size: 19px;
   line-height: 20px;
 }
-.commit-toolbar-action:not(:disabled):hover { color: #c2c7cc; background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, .28)); }
+.commit-toolbar-action:not(:disabled):hover { color: var(--git4vsc-commit-toolbar-hover-foreground); background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, .28)); }
 
 .commit-repository {
   min-width: 0;
@@ -63,7 +86,7 @@ body[data-view='commit'] {
 }
 
 .commit-repository-name { font-weight: 600; }
-.commit-branch { color: #9da2a8; }
+.commit-branch { color: var(--git4vsc-commit-branch-foreground); }
 
 .commit-row-action {
   border: 0;
@@ -97,7 +120,7 @@ button:disabled { opacity: .45; }
   align-items: center;
   gap: 4px;
   list-style: none;
-  color: #a5aab0;
+  color: var(--git4vsc-commit-group-foreground);
   background: color-mix(in srgb, var(--vscode-sideBarSectionHeader-background, transparent) 45%, transparent);
 }
 
@@ -112,12 +135,12 @@ button:disabled { opacity: .45; }
   margin: 0;
   position: relative;
   appearance: none;
-  border: 1px solid #626970;
+  border: 1px solid var(--git4vsc-checkbox-border);
   border-radius: 2px;
   background: transparent;
 }
 .commit-change-group input:checked, .commit-change-row > input:checked, .commit-change-group input:indeterminate {
-  border-color: #737a81;
+  border-color: var(--git4vsc-checkbox-border-checked);
   background: transparent;
 }
 .commit-change-group input:checked::after, .commit-change-row > input:checked::after {
@@ -128,7 +151,7 @@ button:disabled { opacity: .45; }
   left: 50%;
   width: 5px;
   height: 3px;
-  border: solid #b8bdc2;
+  border: solid var(--git4vsc-checkbox-mark);
   border-width: 0 0 1.4px 1.4px;
   transform: translate(-50%, -50%) rotate(-45deg);
 }
@@ -140,7 +163,7 @@ button:disabled { opacity: .45; }
   left: 50%;
   width: 6px;
   height: 1px;
-  background: #b8bdc2;
+  background: var(--git4vsc-checkbox-mark);
   transform: translate(-50%, -50%);
 }
 
@@ -161,9 +184,9 @@ button:disabled { opacity: .45; }
 .commit-change-row.selected .commit-change-folder { color: var(--vscode-list-activeSelectionForeground, #fff); opacity: .54; }
 .commit-row-action { width: 20px; height: 19px; flex: 0 0 20px; visibility: hidden; font-size: 14px; }
 .commit-change-row:hover .commit-row-action, .commit-row-action:focus { visibility: visible; }
-.change-added { color: #79ad82; }
-.change-modified { color: #74a2d1; }
-.change-deleted, .change-unversioned, .change-conflict { color: #c28589; }
+.change-added { color: var(--git4vsc-change-added); }
+.change-modified { color: var(--git4vsc-change-modified); }
+.change-deleted, .change-unversioned, .change-conflict { color: var(--git4vsc-change-deleted); }
 
 .commit-file-menu {
   position: fixed;
@@ -231,9 +254,9 @@ button:disabled { opacity: .45; }
   font-size: 12px;
 }
 
-.summary-added { color: #79ad82; }
-.summary-modified { color: #74a2d1; }
-.summary-deleted { color: #c28589; }
+.summary-added { color: var(--git4vsc-change-added); }
+.summary-modified { color: var(--git4vsc-change-modified); }
+.summary-deleted { color: var(--git4vsc-change-deleted); }
 .summary-empty { color: var(--vscode-descriptionForeground); }
 
 .commit-message-area textarea {

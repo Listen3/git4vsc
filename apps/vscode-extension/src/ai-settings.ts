@@ -20,6 +20,13 @@ export interface AiSettingsInput {
   apiKey: string;
 }
 
+interface ChatCompletionResponse {
+  choices?: Array<{
+    finish_reason?: unknown;
+    message?: { content?: unknown };
+  }>;
+}
+
 const secretKey = 'git4vsc.ai.apiKey';
 const settingsChanged = new vscode.EventEmitter<void>();
 export const onDidChangeAiSettings = settingsChanged.event;
@@ -84,13 +91,11 @@ export async function generateAiCommitMessage(context: vscode.ExtensionContext, 
       { role: 'system', content: 'You write accurate, concise Git commit messages. Follow the requested repository style and return only the commit message.' },
       { role: 'user', content: buildCommitPrompt({ repository, branch, context: changes, language: aiLanguage(settings.language), instructions: settings.commitPrompt }) }
     ],
-    max_tokens: 500,
+    thinking: { type: 'disabled' },
+    max_tokens: 384_000,
     temperature: 0.2
   }, signal, 60_000);
-  const body = await response.json() as { choices?: Array<{ message?: { content?: unknown } }> };
-  const content = body.choices?.[0]?.message?.content;
-  if (typeof content !== 'string' || !content.trim()) throw new Error('The AI service returned an empty commit message.');
-  return cleanGeneratedCommitMessage(content);
+  return cleanGeneratedCommitMessage(await completionContent(response));
 }
 
 export async function listAiModels(context: vscode.ExtensionContext, input: AiSettingsInput): Promise<string[]> {
@@ -106,12 +111,23 @@ export async function testAiConnection(context: vscode.ExtensionContext, input: 
     await request(aiEndpoint(input.baseUrl, 'models'), apiKey);
     return;
   }
-  await request(aiEndpoint(input.baseUrl, 'chat'), apiKey, {
+  const response = await request(aiEndpoint(input.baseUrl, 'chat'), apiKey, {
     model: input.model.trim(),
     messages: [{ role: 'user', content: 'Reply with OK.' }],
-    max_tokens: 8,
+    thinking: { type: 'disabled' },
+    max_tokens: 128,
     temperature: 0
   });
+  await completionContent(response);
+}
+
+async function completionContent(response: Response): Promise<string> {
+  const body = await response.json() as ChatCompletionResponse;
+  const choice = body.choices?.[0];
+  const content = choice?.message?.content;
+  if (typeof content === 'string' && content.trim()) return content;
+  const reason = typeof choice?.finish_reason === 'string' ? ` (finish reason: ${choice.finish_reason})` : '';
+  throw new Error(`The AI service returned an empty message${reason}.`);
 }
 
 export function aiEndpoint(baseUrl: string, kind: 'chat' | 'models'): string {
