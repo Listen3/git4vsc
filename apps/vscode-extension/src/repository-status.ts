@@ -10,9 +10,7 @@ export function statusBarPresentation(snapshot: RepositorySnapshot): StatusBarPr
   const branch = status?.branch ?? status?.head?.slice(0, 8) ?? 'HEAD';
   const conflicts = status?.changes.filter(change => change.conflict).length ?? 0;
   const operation = snapshot.operation ? operationLabel(snapshot.operation) : null;
-  const sync = status?.upstream
-    ? [status.ahead ? `↑${status.ahead}` : '', status.behind ? `↓${status.behind}` : ''].filter(Boolean).join(' ')
-    : '';
+  const sync = branchTrackingSuffix(status);
 
   let title = sync ? `${branch} ${sync}` : branch;
   if (operation) title = `$(sync~spin) ${operation}`;
@@ -29,6 +27,11 @@ export function statusBarPresentation(snapshot: RepositorySnapshot): StatusBarPr
     'Click to open branches and actions'
   ].filter(Boolean);
   return { title, tooltip: lines.join('\n') };
+}
+
+export function branchTrackingSuffix(status: RepositoryStatus | null | undefined): string {
+  if (!status?.upstream) return '';
+  return [status.behind ? `↙${status.behind}` : '', status.ahead ? `↗${status.ahead}` : ''].filter(Boolean).join(' ');
 }
 
 export function operationLabel(operation: string): string {

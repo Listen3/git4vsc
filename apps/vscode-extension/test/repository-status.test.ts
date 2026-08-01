@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RepositorySnapshot, RepositoryStatus } from '@git4vsc/shared-types';
-import { operationActivity, statusBarPresentation } from '../src/repository-status.js';
+import { branchTrackingSuffix, operationActivity, statusBarPresentation } from '../src/repository-status.js';
 
 const status: RepositoryStatus = {
   root: '/repo',
@@ -23,8 +23,11 @@ function snapshot(patch: Partial<RepositorySnapshot> = {}): RepositorySnapshot {
 describe('repository status bar presentation', () => {
   it('shows tracked branch divergence', () => {
     const presentation = statusBarPresentation(snapshot());
-    expect(presentation.title).toBe('main ↑1 ↓3');
+    expect(presentation.title).toBe('main ↙3 ↗1');
     expect(presentation.tooltip).toContain('Tracks origin/main · ahead 1 · behind 3');
+    expect(branchTrackingSuffix(status)).toBe('↙3 ↗1');
+    expect(branchTrackingSuffix({ ...status, ahead: 0, behind: 0 })).toBe('');
+    expect(branchTrackingSuffix({ ...status, upstream: null })).toBe('');
   });
 
   it('shows the active repository operation', () => {

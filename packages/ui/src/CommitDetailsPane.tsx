@@ -32,10 +32,6 @@ export function fileTree(changes: readonly CommitFileChange[]): FileNode {
   return root;
 }
 
-const statusLetter: Record<CommitFileChange['status'], string> = {
-  added: 'A', modified: 'M', deleted: 'D', renamed: 'R', copied: 'C', 'type-changed': 'T', unmerged: 'U'
-};
-
 export function CommitDetailsPane({ details, loading, groupByDirectory, showDetails, onOptionsChange, onOpenFile, onFileAction }: {
   details: CommitDetails | null;
   loading?: boolean | undefined;
@@ -146,7 +142,7 @@ function FileChangeRow({ change, name, directory, selected, onSelect, onOpenFile
   onContextMenu: (change: CommitFileChange, event: MouseEvent) => void;
 }) {
   return <button type="button" className={`file-change${selected ? ' selected' : ''}`} title={change.originalPath ? `${change.originalPath} → ${change.path}` : change.path} onClick={event => onSelect(change, event)} onDoubleClick={() => onOpenFile?.(change)} onContextMenu={event => onContextMenu(change, event)}>
-    <span className={`file-status file-status-${change.status}`}>{statusLetter[change.status]}</span><span className="file-change-name">{name}</span>{directory && <span className="file-change-directory">{directory}</span>}
+    <span className={`file-change-name file-change-${change.status}`}>{name}</span>{directory && <span className="file-change-directory">{directory}</span>}
   </button>;
 }
 

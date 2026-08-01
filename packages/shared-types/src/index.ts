@@ -140,7 +140,10 @@ export interface PushPreviewDialogRequest {
   kind: 'push-preview';
   title: string;
   source: string;
+  remote: string;
+  targetBranch: string;
   target: string;
+  existingTargetBranches: string[];
   commits: PushPreviewCommit[];
 }
 

@@ -193,8 +193,8 @@ export class RepositoryController {
     return this.runOperation('update-branch', () => this.git.updateBranch(this.location, branch, upstream), ['status', 'log', 'refs']);
   }
 
-  pushBranch(branch: string, remote: string): Promise<void> {
-    return this.runOperation('push-branch', () => this.git.pushBranch(this.location, branch, remote), ['status', 'log', 'refs']);
+  pushBranch(branch: string, remote: string, targetBranch = branch): Promise<void> {
+    return this.runOperation('push-branch', () => this.git.pushBranch(this.location, branch, remote, targetBranch), ['status', 'log', 'refs']);
   }
 
   pullBranch(remote: string, branch: string, rebase: boolean): Promise<void> {

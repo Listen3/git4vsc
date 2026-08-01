@@ -213,7 +213,8 @@ interface PushFileNode {
   change?: CommitFileChange;
 }
 
-function PushFileTree({ changes }: { changes: readonly CommitFileChange[] }) {
+export function PushFileTree({ changes, onOpen, groupByDirectory = true }: { changes: readonly CommitFileChange[]; onOpen?(change: CommitFileChange): void; groupByDirectory?: boolean }) {
+  if (!groupByDirectory) return <>{[...changes].sort((left, right) => left.path.localeCompare(right.path)).map(change => <PushFlatFile key={change.path} change={change} onOpen={onOpen} />)}</>;
   const root: PushFileNode = { name: '', path: '', children: new Map() };
   for (const change of changes) {
     let node = root;
@@ -226,14 +227,25 @@ function PushFileTree({ changes }: { changes: readonly CommitFileChange[] }) {
     });
     node.change = change;
   }
-  return <>{sortedChildren(root).map(node => <PushFileNodeView key={node.path} node={node} />)}</>;
+  return <>{sortedChildren(root).map(node => <PushFileNodeView key={node.path} node={node} onOpen={onOpen} />)}</>;
 }
 
-function PushFileNodeView({ node }: { node: PushFileNode }) {
-  if (node.change) return <div className={`push-file file-status-${node.change.status}`} title={node.path}><span>{node.name}</span></div>;
+function PushFlatFile({ change, onOpen }: { change: CommitFileChange; onOpen?: ((change: CommitFileChange) => void) | undefined }) {
+  const separator = change.path.lastIndexOf('/');
+  const name = separator < 0 ? change.path : change.path.slice(separator + 1);
+  const directory = separator < 0 ? '' : change.path.slice(0, separator);
+  return onOpen
+    ? <button type="button" className={`push-file push-flat-file file-status-${change.status}`} title={`Show diff for ${change.path}`} onClick={() => onOpen(change)}><span>{name}</span>{directory && <small>{directory}</small>}</button>
+    : <div className={`push-file push-flat-file file-status-${change.status}`} title={change.path}><span>{name}</span>{directory && <small>{directory}</small>}</div>;
+}
+
+function PushFileNodeView({ node, onOpen }: { node: PushFileNode; onOpen?: ((change: CommitFileChange) => void) | undefined }) {
+  if (node.change) return onOpen
+    ? <button type="button" className={`push-file file-status-${node.change.status}`} title={`Show diff for ${node.path}`} onClick={() => onOpen(node.change!)}><span>{node.name}</span></button>
+    : <div className={`push-file file-status-${node.change.status}`} title={node.path}><span>{node.name}</span></div>;
   const compact = compactDirectory(node);
   const count = pushFileCount(compact.node);
-  return <details className="push-folder" open><summary>{compact.label}<span className="folder-file-count">{count} {count === 1 ? 'file' : 'files'}</span></summary><div>{sortedChildren(compact.node).map(child => <PushFileNodeView key={child.path} node={child} />)}</div></details>;
+  return <details className="push-folder" open><summary>{compact.label}<span className="folder-file-count">{count} {count === 1 ? 'file' : 'files'}</span></summary><div>{sortedChildren(compact.node).map(child => <PushFileNodeView key={child.path} node={child} onOpen={onOpen} />)}</div></details>;
 }
 
 function sortedChildren(node: PushFileNode): PushFileNode[] {

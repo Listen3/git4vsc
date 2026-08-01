@@ -99,6 +99,10 @@ describe('GitClient against generated repositories', () => {
     await client.addRemote(location, 'client-remote', fixtures.submoduleHost);
     expect(await client.remotes(location)).toContain('client-remote');
     expect(await client.remoteUrl(location, 'client-remote')).toBe(fixtures.submoduleHost);
+    await client.createBranch(location, 'client-push-source', 'HEAD');
+    await client.pushBranch(location, 'client-push-source', 'client-remote', 'published-branch');
+    expect((await client.status(await client.discover(fixtures.submoduleHost))).refs.some(ref => ref.type === 'local-branch' && ref.name === 'published-branch')).toBe(true);
+    await client.deleteBranch(location, 'client-push-source');
     await client.setRemoteUrl(location, 'client-remote', fixtures.shallow);
     expect(await client.remoteUrl(location, 'client-remote')).toBe(fixtures.shallow);
     await client.removeRemote(location, 'client-remote');

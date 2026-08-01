@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { GitChange, RepositoryStatus } from '@git4vsc/shared-types';
-import { OperationActivity, OverlayScrollbar } from '@git4vsc/ui';
+import type { GitChange, PushPreviewDialogRequest, RepositoryStatus } from '@git4vsc/shared-types';
+import { formatCommitTime, OperationActivity, OverlayScrollbar, PushFileTree } from '@git4vsc/ui';
 import './commit.css';
 
 interface RepositoryChoice {
@@ -22,6 +22,7 @@ interface CommitViewState {
   error: string | null;
   aiConfigured: boolean;
   aiGenerating: boolean;
+  pushPreview: PushPreviewDialogRequest | null;
 }
 
 interface ChangeGroup {
@@ -46,12 +47,6 @@ interface SelectionSummary {
   deleted: number;
 }
 
-interface SyncIndicator {
-  kind: 'current' | 'incoming' | 'outgoing';
-  icon: string;
-  label: string;
-}
-
 const initialState: CommitViewState = {
   repositories: [],
   activeRoot: null,
@@ -63,7 +58,8 @@ const initialState: CommitViewState = {
   activity: null,
   error: null,
   aiConfigured: false,
-  aiGenerating: false
+  aiGenerating: false,
+  pushPreview: null
 };
 
 export function CommitApp({ postMessage }: { postMessage(message: unknown): void }) {
@@ -175,6 +171,8 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
     </main>;
   }
 
+  if (state.pushPreview) return <PushPreviewMode preview={state.pushPreview} busy={busy} activity={state.activity} postMessage={postMessage} />;
+
   return <main className="commit-view">
     <OperationActivity label={state.activity} />
     <header className="commit-toolbar">
@@ -186,7 +184,6 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
           <span className="commit-repository-name">{state.repositories[0]?.name}</span>
           <span className="commit-branch">{state.repositories[0]?.branch}</span>
         </div>}
-      <RepositorySyncStatus status={state.status} />
       <button
         className="commit-toolbar-action"
         title="Rollback selected changes…"
@@ -252,35 +249,87 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
   </main>;
 }
 
+function PushPreviewMode({ preview, busy, activity, postMessage }: {
+  preview: PushPreviewDialogRequest;
+  busy: boolean;
+  activity: string | null;
+  postMessage(message: unknown): void;
+}) {
+  const [selectedHash, setSelectedHash] = useState(preview.commits[0]?.commit.hash ?? null);
+  const [groupByDirectory, setGroupByDirectory] = useState(true);
+  const [editingTarget, setEditingTarget] = useState(false);
+  const [targetBranch, setTargetBranch] = useState(preview.targetBranch);
+  const targetInput = useRef<HTMLInputElement>(null);
+  const commitsRef = useRef<HTMLDivElement>(null);
+  const filesRef = useRef<HTMLDivElement>(null);
+  const selected = preview.commits.find(item => item.commit.hash === selectedHash) ?? preview.commits[0];
+  const normalizedTarget = targetBranch.trim();
+  const newTarget = normalizedTarget.length > 0 && !preview.existingTargetBranches.includes(normalizedTarget);
+
+  useEffect(() => { if (editingTarget) targetInput.current?.select(); }, [editingTarget]);
+
+  return <main className="commit-view commit-push-view">
+    <OperationActivity label={activity} />
+    <header className="commit-push-toolbar">
+      <button type="button" aria-label="Back to Commit" title="Back to Commit" onClick={() => postMessage({ type: 'closePushPreview' })}>‹</button>
+      <div>
+        <strong>Push</strong>
+        <span className="commit-push-route" title={`${preview.source} → ${preview.remote}:${normalizedTarget}`}>
+          <span>{preview.source}</span><span>→</span><span>{preview.remote}:</span>
+          {editingTarget
+            ? <input ref={targetInput} aria-label="Target branch" value={targetBranch} onChange={event => setTargetBranch(event.target.value)} onBlur={() => setEditingTarget(false)} onKeyDown={event => {
+              if (event.key === 'Enter') setEditingTarget(false);
+              else if (event.key === 'Escape') { setTargetBranch(preview.targetBranch); setEditingTarget(false); }
+            }} />
+            : <button type="button" title="Edit target branch" onClick={() => setEditingTarget(true)}>{normalizedTarget || 'branch'}</button>}
+          {newTarget && <em>NEW</em>}
+        </span>
+      </div>
+      <small>{preview.commits.length}</small>
+    </header>
+
+    <section className="commit-push-commits" aria-label="Commits to push">
+      <header><strong>Commits</strong><span>{preview.commits.length} to push</span></header>
+      <div ref={commitsRef} className="commit-push-commit-list">
+        {preview.commits.map(item => <button
+          type="button"
+          key={item.commit.hash}
+          className={item.commit.hash === selected?.commit.hash ? 'selected' : ''}
+          onClick={() => setSelectedHash(item.commit.hash)}
+        >
+          <span>{item.commit.subject}</span>
+          <small>{item.commit.authorName} · {formatCommitTime(item.commit.authorTime)}</small>
+        </button>)}
+      </div>
+      <OverlayScrollbar targetRef={commitsRef} />
+    </section>
+
+    <section className="commit-push-files" aria-label="Changes in selected commit">
+      <header><strong>Changes</strong><span>{selected?.files.length ?? 0} files</span><details className="commit-push-options">
+        <summary aria-label="View options" title="View options"><EyeIcon /></summary>
+        <div><button type="button" onClick={() => setGroupByDirectory(value => !value)}><span>{groupByDirectory ? '✓' : ''}</span>Group by Directory</button></div>
+      </details></header>
+      <div ref={filesRef} className="commit-push-file-list">
+        {selected ? <PushFileTree changes={selected.files} groupByDirectory={groupByDirectory} onOpen={change => postMessage({ type: 'openPushPreviewDiff', hash: selected.commit.hash, change })} /> : <div className="commit-push-empty">Select a commit</div>}
+      </div>
+      <OverlayScrollbar targetRef={filesRef} />
+    </section>
+
+    <footer className="commit-push-actions">
+      <button type="button" disabled={busy} onClick={() => postMessage({ type: 'closePushPreview' })}>Cancel</button>
+      <button type="button" className="primary" disabled={busy || !normalizedTarget} onClick={() => postMessage({ type: 'pushPreview', targetBranch: normalizedTarget })}>{busy ? 'Pushing…' : 'Push'}</button>
+    </footer>
+  </main>;
+}
+
+function EyeIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8s2.35-4 6.5-4 6.5 4 6.5 4-2.35 4-6.5 4-6.5-4-6.5-4Z" /><circle cx="8" cy="8" r="2" /></svg>;
+}
+
 function AiCommitIcon({ spinning }: { spinning: boolean }) {
   return spinning
     ? <svg className="stop" viewBox="0 0 16 16" aria-hidden="true"><rect x="5.25" y="5.25" width="5.5" height="5.5" rx="1" /></svg>
     : <svg className="spark" viewBox="0 0 16 16" aria-hidden="true"><path d="M7.3 1.6c.3 2.55 1.48 3.74 4.03 4.04-2.55.3-3.73 1.48-4.03 4.03-.3-2.55-1.49-3.73-4.04-4.03C5.81 5.34 7 4.15 7.3 1.6Z" /><path d="M11.8 9c.16 1.37.8 2 2.17 2.17-1.37.16-2.01.8-2.17 2.17-.16-1.37-.8-2.01-2.17-2.17C11 11 11.64 10.37 11.8 9Z" /></svg>;
-}
-
-function RepositorySyncStatus({ status }: { status: RepositoryStatus | null }) {
-  const indicators = repositorySyncIndicators(status);
-  if (!indicators.length) return null;
-  return <span className="commit-sync-status" aria-label={indicators.map(indicator => indicator.label).join(', ')}>
-    {indicators.map(indicator => <span key={indicator.kind} className={`commit-sync-indicator sync-${indicator.kind}`} title={indicator.label}>{indicator.icon}</span>)}
-  </span>;
-}
-
-export function repositorySyncIndicators(status: RepositoryStatus | null): SyncIndicator[] {
-  if (!status?.upstream) return [];
-  const indicators: SyncIndicator[] = [];
-  if (status.behind) indicators.push({
-    kind: 'incoming',
-    icon: '↙',
-    label: `${status.behind} incoming commit${status.behind === 1 ? '' : 's'} from ${status.upstream}`
-  });
-  if (status.ahead) indicators.push({
-    kind: 'outgoing',
-    icon: '↗',
-    label: `${status.ahead} outgoing commit${status.ahead === 1 ? '' : 's'} to ${status.upstream}`
-  });
-  if (!indicators.length) indicators.push({ kind: 'current', icon: '●', label: `Up to date with ${status.upstream}` });
-  return indicators;
 }
 
 function SelectionSummaryView({ summary }: { summary: SelectionSummary }) {

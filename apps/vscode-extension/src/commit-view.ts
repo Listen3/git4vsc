@@ -1,22 +1,26 @@
 import path from 'node:path';
 import * as vscode from 'vscode';
-import type { GitChange } from '@git4vsc/shared-types';
+import type { CommitFileChange, GitChange, PushPreviewDialogRequest } from '@git4vsc/shared-types';
 import type { RepositoryController } from '@git4vsc/repo-state';
 import { AiRequestCancelledError, aiIsConfigured, generateAiCommitMessage, onDidChangeAiSettings } from './ai-settings.js';
 import { gitResourceUri } from './git-uri.js';
-import { operationActivity } from './repository-status.js';
+import { branchTrackingSuffix, operationActivity } from './repository-status.js';
 import { readGeneralSettings } from './settings.js';
+import { notifyPushResult, resultNotificationsEnabled } from './operation-notifications.js';
 
 interface CommitViewActions {
   commit(repository: RepositoryController, message: string, paths: readonly string[]): Promise<boolean>;
 }
 
 interface CommitViewMessage {
-  type: 'ready' | 'selectRepository' | 'message' | 'select' | 'replaceSelection' | 'openChange' | 'resolveConflict' | 'rollback' | 'rollbackFile' | 'deleteFile' | 'jumpToSource' | 'addToVcs' | 'addToIgnore' | 'openAiSettings' | 'generateCommitMessage' | 'cancelCommitMessage' | 'commit';
+  type: 'ready' | 'selectRepository' | 'message' | 'select' | 'replaceSelection' | 'openChange' | 'resolveConflict' | 'rollback' | 'rollbackFile' | 'deleteFile' | 'jumpToSource' | 'addToVcs' | 'addToIgnore' | 'openAiSettings' | 'generateCommitMessage' | 'cancelCommitMessage' | 'commit' | 'closePushPreview' | 'openPushPreviewDiff' | 'pushPreview';
   root?: string;
   message?: string;
   paths?: string[];
   path?: string;
+  hash?: string;
+  change?: CommitFileChange;
+  targetBranch?: string;
   side?: 'staged' | 'working';
   selected?: boolean;
 }
@@ -28,6 +32,8 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
   private readonly selections = new Map<string, Set<string>>();
   private readonly aiRequests = new Map<string, AbortController>();
   private readonly aiSettingsSubscription: vscode.Disposable;
+  private pushPreview: PushPreviewDialogRequest | null = null;
+  private pushPreviewRemote: string | null = null;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -68,7 +74,9 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
     const operation = repository?.snapshot.operation ?? null;
     const loading = repository?.snapshot.loading.has('status') ?? false;
     const showOperationProgress = readGeneralSettings().showOperationProgress;
-    this.view.title = repository ? `Commit — ${repository.snapshot.status?.branch ?? 'HEAD'}` : 'Commit';
+    const branch = repository?.snapshot.status?.branch ?? repository?.snapshot.status?.head?.slice(0, 8) ?? 'HEAD';
+    const tracking = branchTrackingSuffix(repository?.snapshot.status);
+    this.view.title = repository ? `${this.pushPreview ? 'Push' : 'Commit'} — ${branch}${tracking ? ` ${tracking}` : ''}` : 'Commit';
     void this.view.webview.postMessage({
       type: 'commitSnapshot',
       state: {
@@ -87,9 +95,40 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
         activity: showOperationProgress ? (operation ? operationActivity(operation) : loading ? 'Refreshing…' : null) : null,
         error: repository?.snapshot.error ?? null,
         aiConfigured,
-        aiGenerating: repository ? this.aiRequests.has(repository.root) : false
+        aiGenerating: repository ? this.aiRequests.has(repository.root) : false,
+        pushPreview: repository?.root === this.activeRoot ? this.pushPreview : null
       }
     });
+  }
+
+  async previewPush(repository: RepositoryController, branch: string, remote: string, upstream?: string): Promise<void> {
+    const targetBranch = upstream?.startsWith(`${remote}/`) ? upstream.slice(remote.length + 1) : branch;
+    const preview = await vscode.window.withProgress({ location: vscode.ProgressLocation.SourceControl, title: 'Preparing push preview…' }, async () => {
+      const commits = await repository.git.outgoingCommits(repository.location, branch, remote, upstream);
+      return Promise.all(commits.map(async commit => ({
+        commit,
+        files: (await repository.git.commitDetails(repository.location, commit.hash)).files
+      })));
+    });
+    if (!preview.length) {
+      if (resultNotificationsEnabled()) void vscode.window.showInformationMessage('Everything is up to date.');
+      return;
+    }
+    this.pushPreview = {
+      id: Date.now(),
+      kind: 'push-preview',
+      title: 'Push Preview',
+      source: branch,
+      remote,
+      targetBranch,
+      target: `${remote}/${targetBranch}`,
+      existingTargetBranches: (repository.snapshot.status?.refs ?? [])
+        .filter(ref => ref.type === 'remote-branch' && ref.name.startsWith(`${remote}/`))
+        .map(ref => ref.name.slice(remote.length + 1)),
+      commits: preview
+    };
+    this.pushPreviewRemote = remote;
+    await this.show(repository);
   }
 
   async show(repository: RepositoryController): Promise<void> {
@@ -110,6 +149,8 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
   private async handle(message: CommitViewMessage): Promise<void> {
     if (message.type === 'ready') return this.refresh();
     if (message.type === 'selectRepository' && message.root) {
+      this.pushPreview = null;
+      this.pushPreviewRemote = null;
       this.activeRoot = message.root;
       await this.context.workspaceState.update('git4vsc.commit.activeRoot', message.root);
       return this.refresh();
@@ -121,6 +162,30 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
 
     const repository = this.activeRepository();
     if (!repository) return;
+    if (message.type === 'closePushPreview') {
+      this.pushPreview = null;
+      this.pushPreviewRemote = null;
+      return this.refresh();
+    }
+    if (message.type === 'openPushPreviewDiff' && this.pushPreview && message.hash && message.change) {
+      const item = this.pushPreview.commits.find(candidate => candidate.commit.hash === message.hash);
+      const change = item?.files.find(candidate => candidate.path === message.change?.path && candidate.status === message.change?.status);
+      if (!item || !change) return;
+      const parent = item.commit.parents[0] ?? null;
+      const left = gitResourceUri(repository, change.originalPath ?? change.path, change.status === 'added' ? null : parent);
+      const right = gitResourceUri(repository, change.path, change.status === 'deleted' ? null : item.commit.hash);
+      await vscode.commands.executeCommand('vscode.diff', left, right, `${change.path} (${item.commit.hash.slice(0, 8)})`, { preview: true });
+      return;
+    }
+    if (message.type === 'pushPreview' && this.pushPreview && this.pushPreviewRemote && message.targetBranch?.trim()) {
+      const preview = this.pushPreview;
+      const targetBranch = message.targetBranch.trim();
+      await repository.pushBranch(preview.source, this.pushPreviewRemote, targetBranch);
+      notifyPushResult(preview.commits.length, `${this.pushPreviewRemote}/${targetBranch}`);
+      this.pushPreview = null;
+      this.pushPreviewRemote = null;
+      return this.refresh();
+    }
     if (message.type === 'message') {
       const value = message.message ?? '';
       this.messages.set(repository.root, value);

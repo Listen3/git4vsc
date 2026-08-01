@@ -404,8 +404,8 @@ export class GitClient {
     await this.runner.run(['-C', location.root, 'fetch', remote, `${remoteBranch}:${branch}`]);
   }
 
-  async pushBranch(location: RepositoryLocation, branch: string, remote: string): Promise<void> {
-    await this.runner.run(['-C', location.root, 'push', '--set-upstream', remote, branch]);
+  async pushBranch(location: RepositoryLocation, branch: string, remote: string, targetBranch = branch): Promise<void> {
+    await this.runner.run(['-C', location.root, 'push', '--set-upstream', remote, `${branch}:refs/heads/${targetBranch}`]);
   }
 
   async pullBranch(location: RepositoryLocation, remote: string, branch: string, rebase: boolean): Promise<void> {
