@@ -44,7 +44,7 @@ export function operationLabel(operation: string): string {
   if (operation === 'merge') return 'Merging…';
   if (operation === 'rebase') return 'Rebasing…';
   if (operation === 'cherry-pick') return 'Cherry-picking…';
-  if (operation === 'revert') return 'Reverting…';
+  if (operation === 'revert' || operation === 'revert-changes') return 'Reverting…';
   if (operation === 'reset') return 'Resetting…';
   if (operation === 'continue') return 'Continuing…';
   if (operation === 'abort') return 'Aborting…';

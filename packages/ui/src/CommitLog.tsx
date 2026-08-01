@@ -3,7 +3,7 @@ import { layoutCommits } from '@git4vsc/git-graph';
 import type { CommitSummary } from '@git4vsc/shared-types';
 import { defaultCommitColumnWidths, normalizeCommitColumnWidths, type CommitColumn, type CommitColumnWidths } from './commit-columns.js';
 import { formatCommitTime, formatExactCommitTime } from './commit-date.js';
-import { CommitGraph } from './CommitGraph.js';
+import { CommitGraph, type FilteredConnection } from './CommitGraph.js';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu.js';
 
 export type CommitAction = 'copyRevision' | 'copySubject' | 'createBranch' | 'createTag' | 'checkout' | 'compareLocal' | 'cherryPick' | 'revert' | 'reset';
@@ -13,6 +13,7 @@ export interface CommitLogProps {
   selectedHash?: string | null | undefined;
   hasMore?: boolean | undefined;
   loading?: boolean | undefined;
+  filtered?: boolean | undefined;
   columnWidths?: CommitColumnWidths | undefined;
   onLoadMore?: (() => void) | undefined;
   onSelectCommit?: ((commit: CommitSummary) => void) | undefined;
@@ -23,7 +24,7 @@ export interface CommitLogProps {
 const rowHeight = 25;
 const overscan = 10;
 
-export function CommitLog({ commits, selectedHash, hasMore = false, loading = false, columnWidths: initialColumnWidths, onLoadMore, onSelectCommit, onCommitAction, onColumnWidthsChange }: CommitLogProps) {
+export function CommitLog({ commits, selectedHash, hasMore = false, loading = false, filtered = false, columnWidths: initialColumnWidths, onLoadMore, onSelectCommit, onCommitAction, onColumnWidthsChange }: CommitLogProps) {
   const graph = useMemo(() => layoutCommits(commits), [commits]);
   const container = useRef<HTMLDivElement>(null);
   const previousCommits = useRef(commits);
@@ -37,9 +38,8 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
   const [clock, setClock] = useState(Date.now());
   const first = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
   const last = Math.min(commits.length, Math.ceil((scrollTop + height) / rowHeight) + overscan);
-  const graphWidth = Math.max(32, graph.maxLaneCount * 16 + 8);
+  const graphWidth = filtered ? 28 : Math.max(32, graph.maxLaneCount * 16 + 8);
   const commitWidth = Math.max(columnWidths.commit, graphWidth + 80);
-  const columnTemplate = `${commitWidth}px ${columnWidths.author}px ${columnWidths.date}px ${columnWidths.hash}px`;
   const rowTemplate = `${graphWidth}px ${commitWidth - graphWidth}px ${columnWidths.author}px ${columnWidths.date}px ${columnWidths.hash}px`;
   const tableWidth = commitWidth + columnWidths.author + columnWidths.date + columnWidths.hash + 6;
 
@@ -110,7 +110,12 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
     onColumnWidthsChange?.(next);
   }
 
-  const headers: readonly [CommitColumn, string][] = [['commit', 'Commit'], ['author', 'Author'], ['date', 'Date'], ['hash', 'Hash']];
+  const resizers: readonly [CommitColumn, string, number][] = [
+    ['commit', 'Commit', commitWidth],
+    ['author', 'Author', commitWidth + columnWidths.author],
+    ['date', 'Date', commitWidth + columnWidths.author + columnWidths.date],
+    ['hash', 'Hash', commitWidth + columnWidths.author + columnWidths.date + columnWidths.hash]
+  ];
 
   function navigate(event: KeyboardEvent, index: number) {
     const next = event.key === 'ArrowUp' ? index - 1 : event.key === 'ArrowDown' ? index + 1 : -1;
@@ -138,8 +143,8 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
 
   return (
     <div className="commit-table">
-      <div className="commit-columns" style={{ gridTemplateColumns: columnTemplate, minWidth: tableWidth, transform: `translateX(${-scrollLeft}px)` }}>
-        {headers.map(([column, label]) => <div className="commit-column" key={column}><span>{label}</span><span className="commit-column-resizer" title={`Resize ${label} column; double-click to reset`} onPointerDown={event => startColumnResize(column, event)} onDoubleClick={() => resetColumn(column)} /></div>)}
+      <div className="commit-column-guides">
+        {resizers.map(([column, label, left]) => <span className="commit-column-resizer" key={column} style={{ left: left - scrollLeft - 3 }} title={`Resize ${label} column; double-click to reset`} onPointerDown={event => startColumnResize(column, event)} onDoubleClick={() => resetColumn(column)} />)}
       </div>
       <div ref={container} className="commit-log" onScroll={handleScroll} role="table" aria-label="Git commit log">
         <div className="commit-log-spacer" style={{ height: commits.length * rowHeight, minWidth: tableWidth }}>
@@ -159,7 +164,7 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
                 onContextMenu={event => { event.preventDefault(); onSelectCommit?.(commit); setMenu({ x: event.clientX, y: event.clientY, commit }); }}
                 onKeyDown={event => navigate(event, index)}
               >
-                <CommitGraph row={row} width={graphWidth} />
+                <CommitGraph row={row} width={graphWidth} {...(filtered ? { filtered: filteredConnections(commits, index) } : {})} />
                 <span className="commit-main"><span className="commit-subject">{commit.subject}</span><span className="commit-refs">{commit.refs.map(ref => <span className={`commit-ref commit-ref-${ref.type}`} key={ref.fullName}>{ref.name}</span>)}</span></span>
                 <span className="commit-author">{commit.authorName}</span>
                 <time title={formatExactCommitTime(commit.authorTime)}>{formatCommitTime(commit.authorTime, clock)}</time>
@@ -174,4 +179,14 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} onSelect={id => onCommitAction?.(id as CommitAction, menu.commit)} />}
     </div>
   );
+}
+
+export function filteredConnections(commits: readonly CommitSummary[], index: number): { top: FilteredConnection; bottom: FilteredConnection } {
+  const current = commits[index];
+  const previous = commits[index - 1];
+  const next = commits[index + 1];
+  return {
+    top: previous ? previous.parents.includes(current?.hash ?? '') ? 'solid' : 'dashed' : 'none',
+    bottom: next ? current?.parents.includes(next.hash) ? 'solid' : 'dashed' : 'none'
+  };
 }

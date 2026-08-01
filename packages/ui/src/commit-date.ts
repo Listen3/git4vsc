@@ -1,15 +1,17 @@
-const minute = 60;
-const hour = 60 * minute;
-const day = 24 * hour;
-
 export function formatCommitTime(timestamp: number, now = Date.now()): string {
-  const elapsed = Math.max(0, Math.floor(now / 1000) - timestamp);
-  const relative = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
-
-  if (elapsed < minute) return relative.format(0, 'second');
-  if (elapsed < hour) return relative.format(-Math.floor(elapsed / minute), 'minute');
-  if (elapsed < day) return relative.format(-Math.floor(elapsed / hour), 'hour');
+  const date = new Date(timestamp * 1000);
+  const current = new Date(now);
+  const days = calendarDay(current) - calendarDay(date);
+  if (days === 0 || days === 1) {
+    const label = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(-days, 'day');
+    const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `${label.charAt(0).toLocaleUpperCase()}${label.slice(1)} ${time}`;
+  }
   return formatExactCommitTime(timestamp);
+}
+
+function calendarDay(date: Date): number {
+  return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000);
 }
 
 export function formatExactCommitTime(timestamp: number): string {

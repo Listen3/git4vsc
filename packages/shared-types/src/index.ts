@@ -84,6 +84,19 @@ export interface CommitPage {
 export interface LogQuery {
   ref?: string;
   text?: string;
+  author?: string;
+  since?: string;
+  until?: string;
+  paths?: string[];
+}
+
+export type LogDateFilter = 'all' | 'today' | 'yesterday' | 'week' | 'month';
+
+export interface LogFilters {
+  text: string;
+  user: string;
+  date: LogDateFilter;
+  path: string;
 }
 
 export interface CommitFileChange {

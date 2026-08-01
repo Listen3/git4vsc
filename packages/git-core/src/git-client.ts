@@ -75,7 +75,11 @@ export class GitClient {
     if (resolvedHash) args.push('--no-walk', resolvedHash);
     else {
       if (query.text) args.push('--regexp-ignore-case', `--grep=${query.text}`);
+      if (query.author) args.push('--regexp-ignore-case', `--author=${escapeRegExp(query.author)}`);
+      if (query.since) args.push(`--since=${query.since}`);
+      if (query.until) args.push(`--until=${query.until}`);
       args.push(query.ref ?? '--all');
+      if (query.paths?.length) args.push('--', ...query.paths);
     }
     const result = await this.runner.run(args);
     const commits = parseLog(result.stdout);
@@ -140,6 +144,13 @@ export class GitClient {
     });
     if (unstage.length) await this.runner.run(['-C', location.root, 'rm', '--cached', '-f', '--', ...unstage]);
     if (restore.length) await this.runner.run(['-C', location.root, 'restore', '--source=HEAD', '--staged', '--worktree', '--', ...restore]);
+  }
+
+  async revertCommitChanges(location: RepositoryLocation, parent: string | null, hash: string, changes: readonly CommitFileChange[]): Promise<void> {
+    const base = parent ?? (await this.runner.run(['-C', location.root, 'hash-object', '-t', 'tree', '--stdin'], { input: '' })).stdout.trim();
+    const paths = [...new Set(changes.flatMap(change => [change.originalPath, change.path].filter((path): path is string => Boolean(path))))];
+    const patch = await this.runner.run(['-C', location.root, 'diff', '--binary', '--full-index', base, hash, '--', ...paths]);
+    await this.runner.run(['-C', location.root, 'apply', '--reverse', '--whitespace=nowarn'], { input: patch.stdout });
   }
 
   async commit(location: RepositoryLocation, message: string, all = false): Promise<void> {
@@ -324,6 +335,11 @@ export class GitClient {
   async reset(location: RepositoryLocation, hash: string, mode: 'soft' | 'mixed' | 'hard'): Promise<void> {
     await this.runner.run(['-C', location.root, 'reset', `--${mode}`, hash]);
   }
+}
+
+function escapeRegExp(value: string): string {
+  const special = new Set(['\\', '.', '[', ']', '*', '^', '$']);
+  return [...value].map(character => special.has(character) ? `\\${character}` : character).join('');
 }
 
 function splitRemoteBranch(value: string): [string, string] {

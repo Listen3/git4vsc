@@ -47,6 +47,9 @@ describe('GitClient against generated repositories', () => {
     expect(details.message).toContain('feature commit');
     expect(details.files).toContainEqual({ path: 'feature.txt', status: 'added' });
     expect(details.containingBranches.length).toBeGreaterThan(0);
+    expect((await client.log(location, 0, 100, { author: 'Git4VSC Test' })).commits.length).toBeGreaterThan(0);
+    expect((await client.log(location, 0, 100, { paths: ['feature.txt'] })).commits.map(commit => commit.subject)).toContain('feature commit');
+    expect((await client.log(location, 0, 100, { since: '2030-01-01T00:00:00.000Z' })).commits).toEqual([]);
   });
 
   it('compares changed files between revisions', async () => {
@@ -146,6 +149,18 @@ describe('GitClient against generated repositories', () => {
     const changes = (await client.status(location)).changes;
     expect(changes).toContainEqual({ path: 'rollback-added.txt', index: null, workingTree: 'untracked', conflict: false });
     expect(changes).toContainEqual({ path: 'rollback-unversioned.txt', index: null, workingTree: 'untracked', conflict: false });
+  });
+
+  it('reverts selected files from a commit into the working tree', async () => {
+    const location = await client.discover(fixtures.history);
+    const commit = (await client.log(location, 0, 100, { text: 'feature commit' })).commits[0]!;
+    const details = await client.commitDetails(location, commit.hash);
+    const change = details.files.find(file => file.path === 'feature.txt')!;
+
+    await client.revertCommitChanges(location, details.parents[0] ?? null, details.hash, [change]);
+
+    await expect(readFile(join(location.root, 'feature.txt'), 'utf8')).rejects.toThrow();
+    expect((await client.status(location)).changes).toContainEqual({ path: 'feature.txt', index: null, workingTree: 'deleted', conflict: false });
   });
 
   it('adds an unversioned file to the repository ignore file once', async () => {

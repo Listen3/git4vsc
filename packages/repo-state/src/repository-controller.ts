@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import type { GitClient, RepositoryLocation } from '@git4vsc/git-core';
-import type { GitChange, RepositoryInvalidation, RepositorySnapshot } from '@git4vsc/shared-types';
+import type { CommitFileChange, GitChange, RepositoryInvalidation, RepositorySnapshot } from '@git4vsc/shared-types';
 
 class OperationQueue {
   private tail = Promise.resolve();
@@ -89,6 +89,10 @@ export class RepositoryController {
 
   rollbackChanges(changes: readonly GitChange[]): Promise<void> {
     return this.runOperation('rollback', () => this.git.rollbackChanges(this.location, changes), ['status']);
+  }
+
+  revertCommitChanges(parent: string | null, hash: string, changes: readonly CommitFileChange[]): Promise<void> {
+    return this.runOperation('revert-changes', () => this.git.revertCommitChanges(this.location, parent, hash, changes), ['status']);
   }
 
   commit(message: string, all = false): Promise<void> {

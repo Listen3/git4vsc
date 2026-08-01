@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import type { GitRef, RepositoryStatus } from '@git4vsc/shared-types';
 import type { RepositoryController } from '@git4vsc/repo-state';
 import { operationLabel } from './repository-status.js';
+import { pickUpdateStrategy } from './update-strategy.js';
 
 type MenuAction = 'update' | 'commit' | 'push' | 'log' | 'newBranch' | 'checkoutRevision' | 'resolve';
 type RefAction = 'checkout' | 'checkoutUpdate' | 'update' | 'push' | 'log';
@@ -38,7 +39,9 @@ export class BranchMenu {
       return;
     }
     const [remote, branch] = splitRemoteBranch(status.upstream);
-    await repository.pullBranch(remote, branch, false);
+    const rebase = await pickUpdateStrategy();
+    if (rebase === undefined) return;
+    await repository.pullBranch(remote, branch, rebase);
   }
 
   private items(status: RepositoryStatus, operation: string | null): MenuItem[] {

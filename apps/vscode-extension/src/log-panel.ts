@@ -1,8 +1,10 @@
-import { join } from 'node:path';
+import { isAbsolute, join, relative } from 'node:path';
 import * as vscode from 'vscode';
-import type { CommitDetails, CommitFileChange, CommitSummary, GitRef } from '@git4vsc/shared-types';
+import type { CommitDetails, CommitFileChange, CommitSummary, GitRef, LogFilters } from '@git4vsc/shared-types';
 import type { RepositoryController } from '@git4vsc/repo-state';
+import { emptyLogFilters, logQueryFromFilters, logUsers } from './log-filters.js';
 import { selectionAfterLogReload } from './log-selection.js';
+import { pickUpdateStrategy } from './update-strategy.js';
 
 type CommitAction = 'copyRevision' | 'copySubject' | 'createBranch' | 'createTag' | 'checkout' | 'compareLocal' | 'cherryPick' | 'revert' | 'reset';
 type RefAction =
@@ -75,7 +77,8 @@ class LogSession implements vscode.Disposable {
   private readonly messageSubscription: vscode.Disposable;
   private commits: CommitSummary[];
   private activeRef: string | null = null;
-  private search = '';
+  private filters: LogFilters = { ...emptyLogFilters };
+  private users: string[];
   private selectedHash: string | null = null;
   private details: CommitDetails | null = null;
   private hasMore = false;
@@ -93,6 +96,7 @@ class LogSession implements vscode.Disposable {
     private readonly view: vscode.WebviewView
   ) {
     this.commits = [...repository.snapshot.commits];
+    this.users = logUsers(this.commits);
     this.repositoryVersion = repository.snapshot.version;
     this.favoriteRefs = new Set(context.workspaceState.get<string[]>(this.favoriteKey(), []));
     view.title = `Git Log — ${repository.snapshot.status?.branch ?? 'HEAD'}`;
@@ -101,6 +105,7 @@ class LogSession implements vscode.Disposable {
       view.title = `Git Log — ${snapshot.status?.branch ?? 'HEAD'}`;
       if (snapshot.version !== this.repositoryVersion) {
         this.repositoryVersion = snapshot.version;
+        this.users = logUsers(snapshot.commits, this.users);
         void this.loadLog(true);
       } else {
         this.postSnapshot();
@@ -129,9 +134,11 @@ class LogSession implements vscode.Disposable {
           break;
         case 'loadMore': await this.loadLog(false); break;
         case 'selectRef': await this.selectRef(request.ref); break;
-        case 'search': await this.setSearch(request.text); break;
+        case 'filters': await this.setFilters(request.filters); break;
+        case 'pickPaths': await this.pickPaths(request.kind); break;
         case 'selectCommit': await this.selectCommit(request.hash); break;
         case 'openCommitDiff': await this.openCommitDiff(request.hash, request.change); break;
+        case 'revertCommitChanges': await this.revertCommitChanges(request.hash, request.paths); break;
         case 'commitAction': await this.commitAction(request.action, request.hash); break;
         case 'refAction': await this.refAction(request.action, request.fullName); break;
         case 'remoteAction': await this.remoteAction(request.action, request.remote); break;
@@ -150,10 +157,25 @@ class LogSession implements vscode.Disposable {
     await this.loadLog(true);
   }
 
-  private async setSearch(value: unknown): Promise<void> {
-    if (typeof value !== 'string' || value === this.search) return;
-    this.search = value;
+  private async setFilters(value: unknown): Promise<void> {
+    if (!isLogFilters(value) || JSON.stringify(value) === JSON.stringify(this.filters)) return;
+    this.filters = value;
     await this.loadLog(true);
+  }
+
+  private async pickPaths(value: unknown): Promise<void> {
+    if (value !== 'files' && value !== 'folder') return;
+    const picked = await vscode.window.showOpenDialog({
+      title: value === 'files' ? 'Select Files to Filter Git Log' : 'Select Folder to Filter Git Log',
+      defaultUri: vscode.Uri.file(this.repository.root),
+      canSelectFiles: value === 'files',
+      canSelectFolders: value === 'folder',
+      canSelectMany: true,
+      openLabel: 'Filter'
+    });
+    if (!picked?.length) return;
+    const paths = picked.map(uri => relative(this.repository.root, uri.fsPath)).filter(path => !path.startsWith('..') && !isAbsolute(path)).map(path => (path || '.').replaceAll('\\', '/'));
+    if (paths.length) await this.setFilters({ ...this.filters, path: [...new Set(paths)].join(', ') });
   }
 
   private async loadLog(reset: boolean): Promise<void> {
@@ -164,13 +186,11 @@ class LogSession implements vscode.Disposable {
     this.localError = null;
     this.postSnapshot();
     try {
-      const page = await this.repository.git.log(this.repository.location, reset ? 0 : this.commits.length, limit, {
-        ...(this.activeRef ? { ref: this.activeRef } : {}),
-        ...(this.search ? { text: this.search } : {})
-      });
+      const page = await this.repository.git.log(this.repository.location, reset ? 0 : this.commits.length, limit, logQueryFromFilters(this.filters, this.activeRef));
       if (request !== this.logRequest) return;
       const next = reset ? page.commits : [...this.commits, ...page.commits.filter(commit => !this.commits.some(existing => existing.hash === commit.hash))];
       this.commits = next;
+      this.users = logUsers(next, this.users);
       this.hasMore = page.hasMore;
       this.logLoading = false;
       if (!reset) {
@@ -230,6 +250,19 @@ class LogSession implements vscode.Disposable {
     const left = revisionUri(this.repository, leftPath, change.status === 'added' ? null : parent);
     const right = revisionUri(this.repository, change.path, change.status === 'deleted' ? null : this.details.hash);
     await vscode.commands.executeCommand('vscode.diff', left, right, `${change.path} (${this.details.hash.slice(0, 8)})`);
+  }
+
+  private async revertCommitChanges(hashValue: unknown, pathsValue: unknown): Promise<void> {
+    if (typeof hashValue !== 'string' || hashValue !== this.details?.hash || !Array.isArray(pathsValue)) return;
+    const paths = new Set(pathsValue.filter((path): path is string => typeof path === 'string'));
+    const changes = this.details.files.filter(change => paths.has(change.path));
+    if (!changes.length) return;
+    const confirmed = await vscode.window.showWarningMessage(
+      `Revert ${changes.length} selected change${changes.length === 1 ? '' : 's'} from ${this.details.hash.slice(0, 8)}?`,
+      { modal: true, detail: 'The inverse changes will be applied to the working tree without creating a commit.' },
+      'Revert Changes'
+    );
+    if (confirmed) await this.repository.revertCommitChanges(this.details.parents[0] ?? null, this.details.hash, changes);
   }
 
   private async commitAction(actionValue: unknown, hashValue: unknown): Promise<void> {
@@ -475,7 +508,9 @@ class LogSession implements vscode.Disposable {
     }
     if (ref.name === this.repository.snapshot.status?.branch) {
       const [remote, branch] = splitRemoteBranch(upstream);
-      await this.repository.pullBranch(remote, branch, false);
+      const rebase = await pickUpdateStrategy();
+      if (rebase === undefined) return;
+      await this.repository.pullBranch(remote, branch, rebase);
     }
     else await this.repository.updateBranch(ref.name, upstream);
   }
@@ -613,7 +648,8 @@ class LogSession implements vscode.Disposable {
         commits: this.commits,
         activeRef: this.activeRef,
         favoriteRefs: [...this.favoriteRefs],
-        search: this.search,
+        filters: this.filters,
+        users: this.users,
         selectedHash: this.selectedHash,
         details: this.details,
         hasMore: this.hasMore,
@@ -647,4 +683,11 @@ function splitRemoteBranch(value: string): [string, string] {
   const separator = value.indexOf('/');
   if (separator < 1) throw new Error(`Invalid remote branch: ${value}`);
   return [value.slice(0, separator), value.slice(separator + 1)];
+}
+
+function isLogFilters(value: unknown): value is LogFilters {
+  if (!value || typeof value !== 'object') return false;
+  const filters = value as Record<string, unknown>;
+  return typeof filters.text === 'string' && typeof filters.user === 'string' && typeof filters.path === 'string'
+    && ['all', 'today', 'yesterday', 'week', 'month'].includes(String(filters.date));
 }
