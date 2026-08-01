@@ -18,6 +18,8 @@ interface RefMenuItem extends vscode.QuickPickItem {
 }
 
 export class BranchMenu {
+  constructor(private readonly previewPush: (repository: RepositoryController, branch: string, remote: string, upstream?: string) => Promise<void>) {}
+
   async show(repository: RepositoryController): Promise<void> {
     const status = repository.snapshot.status;
     if (!status) return;
@@ -139,7 +141,7 @@ export class BranchMenu {
       void vscode.window.showWarningMessage('This repository has no configured remote.');
       return;
     }
-    await repository.pushBranch(branch, remote);
+    await this.previewPush(repository, branch, remote, upstream ?? undefined);
   }
 
   private async checkout(repository: RepositoryController, ref: GitRef): Promise<void> {

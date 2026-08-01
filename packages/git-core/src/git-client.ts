@@ -1,6 +1,6 @@
 import { access, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { CommitDetails, CommitFileChange, CommitPage, GitChange, LogQuery, MergeConflict, RepositoryPhase, RepositoryStatus } from '@git4vsc/shared-types';
+import type { CommitDetails, CommitFileChange, CommitPage, CommitSummary, GitChange, LogQuery, MergeConflict, RepositoryPhase, RepositoryStatus } from '@git4vsc/shared-types';
 import { CommandRunner } from './command-runner.js';
 import { parseLog, parseNameStatus, parsePorcelainV2, parseRefs, parseUnmergedIndex } from './parsers.js';
 
@@ -84,6 +84,14 @@ export class GitClient {
     const result = await this.runner.run(args);
     const commits = parseLog(result.stdout);
     return { commits: commits.slice(0, limit), offset, hasMore: commits.length > limit };
+  }
+
+  async outgoingCommits(location: RepositoryLocation, branch: string, remote: string, upstream?: string, limit = 100): Promise<CommitSummary[]> {
+    const result = await this.runner.run([
+      '-C', location.root, 'log', '--topo-order', '--date-order', '--parents', '--decorate=full', '-z', `--max-count=${limit}`,
+      '--format=%H%x00%P%x00%an%x00%ae%x00%at%x00%ct%x00%s%x00%D', branch, '--not', upstream ?? `--remotes=${remote}`
+    ]);
+    return parseLog(result.stdout);
   }
 
   async commitDetails(location: RepositoryLocation, hash: string): Promise<CommitDetails> {

@@ -1,10 +1,10 @@
-import { isAbsolute, join, relative } from 'node:path';
+import { basename, isAbsolute, join, relative } from 'node:path';
 import * as vscode from 'vscode';
-import type { CommitDetails, CommitFileChange, CommitSummary, GitRef, LogFilters } from '@git4vsc/shared-types';
+import type { CommitDetails, CommitFileChange, CommitSummary, DialogListItem, GitRef, LogFilters } from '@git4vsc/shared-types';
 import type { RepositoryController } from '@git4vsc/repo-state';
 import { emptyLogFilters, logQueryFromFilters, logUsers } from './log-filters.js';
 import { selectionAfterLogReload } from './log-selection.js';
-import { pickUpdateStrategy } from './update-strategy.js';
+import { WebviewDialogController } from './webview-dialog-controller.js';
 
 type CommitAction = 'copyRevision' | 'copySubject' | 'createBranch' | 'createTag' | 'checkout' | 'compareLocal' | 'cherryPick' | 'revert' | 'reset';
 type RefAction =
@@ -40,18 +40,26 @@ export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
     this.attach();
   }
 
-  show(repository: RepositoryController): void {
+  async show(repository: RepositoryController): Promise<void> {
     this.repository = repository;
     this.attach();
-    void vscode.commands.executeCommand('git4vsc.logView.focus').then(() => this.view?.show(true));
+    await vscode.commands.executeCommand('git4vsc.logView.focus');
+    this.view?.show(true);
+    if (!this.session) this.attach();
   }
 
   toggle(repository: RepositoryController): void {
     if (this.view?.visible && this.repository === repository) {
       void vscode.commands.executeCommand('workbench.action.closePanel');
     } else {
-      this.show(repository);
+      void this.show(repository);
     }
+  }
+
+  async previewPush(repository: RepositoryController, branch: string, remote: string, upstream?: string): Promise<void> {
+    await this.show(repository);
+    if (!this.session) throw new Error('Git Log view is unavailable.');
+    await this.session.previewPush(branch, remote, upstream);
   }
 
   initialize(repository: RepositoryController | undefined): void {
@@ -89,6 +97,7 @@ class LogSession implements vscode.Disposable {
   private detailsRequest = 0;
   private repositoryVersion: number;
   private readonly favoriteRefs: Set<string>;
+  private readonly dialogs: WebviewDialogController;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -99,6 +108,7 @@ class LogSession implements vscode.Disposable {
     this.users = logUsers(this.commits);
     this.repositoryVersion = repository.snapshot.version;
     this.favoriteRefs = new Set(context.workspaceState.get<string[]>(this.favoriteKey(), []));
+    this.dialogs = new WebviewDialogController(message => view.webview.postMessage(message));
     view.title = `Git Log — ${repository.snapshot.status?.branch ?? 'HEAD'}`;
     view.webview.html = this.html(context, view.webview);
     this.unsubscribe = repository.onDidChange(snapshot => {
@@ -120,6 +130,24 @@ class LogSession implements vscode.Disposable {
     this.detailsRequest += 1;
     this.unsubscribe();
     this.messageSubscription.dispose();
+    this.dialogs.cancel();
+  }
+
+  async previewPush(branch: string, remote: string, upstream?: string): Promise<void> {
+    const commits = await this.repository.git.outgoingCommits(this.repository.location, branch, remote, upstream);
+    if (!commits.length) {
+      void vscode.window.showInformationMessage(`${branch} is up to date with ${remote}.`);
+      return;
+    }
+    const preview = await Promise.all(commits.map(async commit => ({ commit, files: (await this.repository.git.commitDetails(this.repository.location, commit.hash)).files })));
+    const action = await this.dialogs.show({
+      kind: 'push-preview',
+      title: `Push Commits to ${basename(this.repository.root)}`,
+      source: branch,
+      target: `${remote}/${branch}`,
+      commits: preview
+    });
+    if (action === 'push') await this.repository.pushBranch(branch, remote);
   }
 
   private async handleMessage(message: unknown): Promise<void> {
@@ -142,6 +170,7 @@ class LogSession implements vscode.Disposable {
         case 'commitAction': await this.commitAction(request.action, request.hash); break;
         case 'refAction': await this.refAction(request.action, request.fullName); break;
         case 'remoteAction': await this.remoteAction(request.action, request.remote); break;
+        case 'dialog:result': this.dialogs.resolve(request.id, request.value); break;
       }
     } catch (error) {
       this.localError = error instanceof Error ? error.message : String(error);
@@ -316,13 +345,12 @@ class LogSession implements vscode.Disposable {
       void vscode.window.showInformationMessage(`${commit.hash.slice(0, 8)} has no file differences from the local working tree.`);
       return;
     }
-    const picked = await vscode.window.showQuickPick(files.map(change => ({
-      label: change.path,
-      description: change.status,
-      change
-    })), { title: `${commit.hash.slice(0, 8)} ↔ Local (${files.length} files)`, placeHolder: 'Select a file to open its diff' });
-    if (!picked) return;
-    const change = picked.change;
+    const path = await this.dialogs.show({
+      kind: 'list', title: `${commit.hash.slice(0, 8)} ↔ Local (${files.length} files)`, placeholder: 'Select a file to open its diff',
+      items: files.map(change => ({ id: change.path, label: change.path, description: change.status }))
+    });
+    const change = files.find(file => file.path === path);
+    if (!change) return;
     const leftPath = change.originalPath ?? change.path;
     const left = revisionUri(this.repository, leftPath, change.status === 'added' ? null : commit.hash);
     const right = change.status === 'deleted' ? revisionUri(this.repository, change.path, null) : vscode.Uri.file(join(this.repository.root, change.path));
@@ -330,17 +358,17 @@ class LogSession implements vscode.Disposable {
   }
 
   private async resetTo(hash: string): Promise<void> {
-    const choice = await vscode.window.showQuickPick([
-      { label: 'Soft', description: 'Move HEAD; keep index and working tree', mode: 'soft' as const },
-      { label: 'Mixed', description: 'Move HEAD and reset index; keep working tree', mode: 'mixed' as const },
-      { label: 'Hard', description: 'Discard index and working tree changes', mode: 'hard' as const }
-    ], { title: `Reset current branch to ${hash.slice(0, 8)}` });
-    if (!choice) return;
-    if (choice.mode === 'hard') {
+    const mode = await this.dialogs.show({ kind: 'list', title: `Reset current branch to ${hash.slice(0, 8)}`, items: [
+      { id: 'soft', label: 'Soft', description: 'Move HEAD; keep index and working tree' },
+      { id: 'mixed', label: 'Mixed', description: 'Move HEAD and reset index; keep working tree' },
+      { id: 'hard', label: 'Hard', description: 'Discard index and working tree changes' }
+    ], acceptLabel: 'Reset' });
+    if (mode !== 'soft' && mode !== 'mixed' && mode !== 'hard') return;
+    if (mode === 'hard') {
       const confirmed = await vscode.window.showWarningMessage('Hard reset permanently discards tracked working tree changes.', { modal: true }, 'Reset Hard');
       if (!confirmed) return;
     }
-    await this.repository.reset(hash, choice.mode);
+    await this.repository.reset(hash, mode);
   }
 
   private async refAction(actionValue: unknown, fullNameValue: unknown): Promise<void> {
@@ -457,18 +485,18 @@ class LogSession implements vscode.Disposable {
       this.repository.git.log(this.repository.location, 0, 100, { ref: `HEAD..${ref.fullName}` }),
       this.repository.git.log(this.repository.location, 0, 100, { ref: `${ref.fullName}..HEAD` })
     ]);
-    const items: Array<vscode.QuickPickItem & { hash?: string }> = [
-      { label: `${ref.name} only`, kind: vscode.QuickPickItemKind.Separator },
-      ...selectedOnly.commits.map(commit => ({ label: commit.subject, description: commit.hash.slice(0, 8), detail: commit.authorName, hash: commit.hash })),
-      { label: `${this.repository.snapshot.status?.branch ?? 'HEAD'} only`, kind: vscode.QuickPickItemKind.Separator },
-      ...currentOnly.commits.map(commit => ({ label: commit.subject, description: commit.hash.slice(0, 8), detail: commit.authorName, hash: commit.hash }))
+    const items: DialogListItem[] = [
+      { id: 'selected-only', label: `${ref.name} only`, separator: true },
+      ...selectedOnly.commits.map(commit => ({ id: commit.hash, label: commit.subject, description: commit.hash.slice(0, 8), detail: commit.authorName })),
+      { id: 'current-only', label: `${this.repository.snapshot.status?.branch ?? 'HEAD'} only`, separator: true },
+      ...currentOnly.commits.map(commit => ({ id: commit.hash, label: commit.subject, description: commit.hash.slice(0, 8), detail: commit.authorName }))
     ];
     if (selectedOnly.commits.length + currentOnly.commits.length === 0) {
       void vscode.window.showInformationMessage(`${ref.name} and the current branch contain the same commits.`);
       return;
     }
-    const picked = await vscode.window.showQuickPick(items, { title: `Compare ${ref.name} with ${this.repository.snapshot.status?.branch ?? 'HEAD'}`, placeHolder: 'Select a commit to show its details' });
-    if (picked?.hash) await this.loadDetails(picked.hash);
+    const hash = await this.dialogs.show({ kind: 'list', title: `Compare ${ref.name} with ${this.repository.snapshot.status?.branch ?? 'HEAD'}`, placeholder: 'Select a commit to show its details', items });
+    if (hash && [...selectedOnly.commits, ...currentOnly.commits].some(commit => commit.hash === hash)) await this.loadDetails(hash);
   }
 
   private async showDiffWithCurrent(ref: GitRef): Promise<void> {
@@ -477,13 +505,12 @@ class LogSession implements vscode.Disposable {
       void vscode.window.showInformationMessage(`${ref.name} has no file differences from the local working tree.`);
       return;
     }
-    const picked = await vscode.window.showQuickPick(files.map(change => ({
-      label: change.path,
-      description: change.status,
-      change
-    })), { title: `${ref.name} ↔ Local (${files.length} files)`, placeHolder: 'Select a file to open its diff' });
-    if (!picked) return;
-    const change = picked.change;
+    const path = await this.dialogs.show({
+      kind: 'list', title: `${ref.name} ↔ Local (${files.length} files)`, placeholder: 'Select a file to open its diff',
+      items: files.map(change => ({ id: change.path, label: change.path, description: change.status }))
+    });
+    const change = files.find(file => file.path === path);
+    if (!change) return;
     const leftPath = change.originalPath ?? change.path;
     const left = revisionUri(this.repository, leftPath, change.status === 'added' ? null : ref.fullName);
     const right = change.status === 'deleted' ? revisionUri(this.repository, change.path, null) : vscode.Uri.file(join(this.repository.root, change.path));
@@ -508,9 +535,12 @@ class LogSession implements vscode.Disposable {
     }
     if (ref.name === this.repository.snapshot.status?.branch) {
       const [remote, branch] = splitRemoteBranch(upstream);
-      const rebase = await pickUpdateStrategy();
-      if (rebase === undefined) return;
-      await this.repository.pullBranch(remote, branch, rebase);
+      const strategy = await this.dialogs.show({ kind: 'list', title: 'Update Project', items: [
+        { id: 'merge', label: 'Merge incoming changes into the current branch', description: 'Default' },
+        { id: 'rebase', label: 'Rebase the current branch on top of incoming changes' }
+      ], acceptLabel: 'Update' });
+      if (strategy !== 'merge' && strategy !== 'rebase') return;
+      await this.repository.pullBranch(remote, branch, strategy === 'rebase');
     }
     else await this.repository.updateBranch(ref.name, upstream);
   }
@@ -521,14 +551,15 @@ class LogSession implements vscode.Disposable {
     const remote = await this.pickRemote(ref.type === 'tag' ? `Push Tag ${ref.name}` : `Push Branch ${ref.name}`, preferredRemote);
     if (!remote) return;
     if (ref.type === 'tag') await this.repository.pushTag(ref.name, remote);
-    else if (ref.type === 'local-branch') await this.repository.pushBranch(ref.name, remote);
+    else if (ref.type === 'local-branch') await this.previewPush(ref.name, remote, upstream ?? undefined);
   }
 
   private async setTrackedBranch(ref: GitRef): Promise<void> {
     if (ref.type !== 'local-branch') return;
     const choices = this.repository.snapshot.status?.refs.filter(candidate => candidate.type === 'remote-branch') ?? [];
-    const picked = await vscode.window.showQuickPick(choices.map(candidate => ({ label: candidate.name, ref: candidate })), { title: `Tracked Branch for ${ref.name}` });
-    if (picked) await this.repository.setUpstream(ref.name, picked.ref.name);
+    const fullName = await this.dialogs.show({ kind: 'list', title: `Tracked Branch for ${ref.name}`, placeholder: 'Search remote branches', items: choices.map(candidate => ({ id: candidate.fullName, label: candidate.name, ...(candidate.remote ? { description: candidate.remote } : {}) })) });
+    const picked = choices.find(candidate => candidate.fullName === fullName);
+    if (picked) await this.repository.setUpstream(ref.name, picked.name);
   }
 
   private async pullRemoteBranch(ref: GitRef, rebase: boolean): Promise<void> {
@@ -571,13 +602,13 @@ class LogSession implements vscode.Disposable {
   }
 
   private async newWorktree(ref: GitRef | null): Promise<void> {
-    const mode = await vscode.window.showQuickPick([
-      { label: 'Create New Branch', description: 'Create and check out a new branch in the worktree', branch: true },
-      { label: 'Detached HEAD', description: 'Open the selected revision without owning a branch', branch: false }
-    ], { title: `New Worktree for ${ref?.name ?? 'HEAD'}` });
-    if (!mode) return;
-    const newBranch = mode.branch ? await this.branchName('New Worktree Branch') : undefined;
-    if (mode.branch && !newBranch) return;
+    const mode = await this.dialogs.show({ kind: 'list', title: `New Worktree for ${ref?.name ?? 'HEAD'}`, items: [
+      { id: 'branch', label: 'Create New Branch', description: 'Create and check out a new branch in the worktree' },
+      { id: 'detached', label: 'Detached HEAD', description: 'Open the selected revision without owning a branch' }
+    ], acceptLabel: 'Continue' });
+    if (mode !== 'branch' && mode !== 'detached') return;
+    const newBranch = mode === 'branch' ? await this.branchName('New Worktree Branch') : undefined;
+    if (mode === 'branch' && !newBranch) return;
     const target = await vscode.window.showOpenDialog({ title: `New Worktree for ${ref?.name ?? 'HEAD'}`, canSelectFiles: false, canSelectFolders: true, canSelectMany: false, openLabel: 'Use Empty Folder' });
     const path = target?.[0]?.fsPath;
     if (path) await this.repository.addWorktree(path, ref?.fullName ?? 'HEAD', newBranch);
@@ -595,8 +626,8 @@ class LogSession implements vscode.Disposable {
       return undefined;
     }
     if (remotes.length === 1) return remotes[0];
-    const items: vscode.QuickPickItem[] = remotes.map(remote => ({ label: remote, ...(remote === preferred ? { description: 'current upstream' } : {}) }));
-    return vscode.window.showQuickPick(items, { title }).then(item => item?.label);
+    const selected = await this.dialogs.show({ kind: 'list', title, items: remotes.map(remote => ({ id: remote, label: remote, ...(remote === preferred ? { description: 'current upstream' } : {}) })) });
+    return remotes.includes(selected ?? '') ? selected ?? undefined : undefined;
   }
 
   private async remoteAction(actionValue: unknown, remoteValue: unknown): Promise<void> {

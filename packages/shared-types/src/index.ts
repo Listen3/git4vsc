@@ -113,6 +113,44 @@ export interface CommitDetails extends CommitSummary {
   containingBranches: string[];
 }
 
+export interface DialogListItem {
+  id: string;
+  label?: string;
+  description?: string;
+  detail?: string;
+  separator?: boolean;
+}
+
+export interface ListDialogRequest {
+  id: number;
+  kind: 'list';
+  title: string;
+  placeholder?: string;
+  acceptLabel?: string;
+  items: DialogListItem[];
+}
+
+export interface PushPreviewCommit {
+  commit: CommitSummary;
+  files: CommitFileChange[];
+}
+
+export interface PushPreviewDialogRequest {
+  id: number;
+  kind: 'push-preview';
+  title: string;
+  source: string;
+  target: string;
+  commits: PushPreviewCommit[];
+}
+
+export type WebviewDialogRequest = ListDialogRequest | PushPreviewDialogRequest;
+
+export interface WebviewDialogResult {
+  id: number;
+  value: string | null;
+}
+
 export type RepositoryInvalidation = 'status' | 'log' | 'refs';
 
 export interface RepositorySnapshot {

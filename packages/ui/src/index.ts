@@ -5,4 +5,5 @@ export * from './CommitLog.js';
 export * from './commit-columns.js';
 export * from './commit-date.js';
 export * from './ContextMenu.js';
+export * from './DialogHost.js';
 export * from './RepositoryPanel.js';

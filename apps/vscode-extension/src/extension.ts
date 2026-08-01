@@ -10,7 +10,6 @@ import { LogPanel } from './log-panel.js';
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const manager = new RepositoryManager();
   const adapters: ScmRepositoryAdapter[] = [];
-  const branchMenu = new BranchMenu();
   const conflictTree = new ConflictTree(() => manager.all);
   const conflictResolver = new ConflictResolver(() => conflictTree.refresh());
   const commitRepository = async (repository: RepositoryController | undefined, message: string | undefined, all = false, paths?: readonly string[]): Promise<boolean> => {
@@ -40,6 +39,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   };
   const commitView = new CommitView(context, () => manager.all, { commit: (repository, message, paths) => commitRepository(repository, message, false, paths) });
   const logPanel = new LogPanel(context, () => manager.all[0]);
+  const branchMenu = new BranchMenu((repository, branch, remote, upstream) => logPanel.previewPush(repository, branch, remote, upstream));
   context.subscriptions.push(commitView, vscode.window.registerWebviewViewProvider('git4vsc.repositories', commitView, { webviewOptions: { retainContextWhenHidden: true } }));
   context.subscriptions.push(conflictResolver, vscode.window.registerTreeDataProvider('git4vsc.conflicts', conflictTree));
   context.subscriptions.push(logPanel, vscode.window.registerWebviewViewProvider('git4vsc.logView', logPanel, { webviewOptions: { retainContextWhenHidden: true } }));
@@ -143,9 +143,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const repository = selectedRepository(value);
       if (repository) await branchMenu.pushCurrent(repository);
     }),
-    vscode.commands.registerCommand('git4vsc.openLog', (value?: RepositoryController | GitResourceState) => {
+    vscode.commands.registerCommand('git4vsc.openLog', async (value?: RepositoryController | GitResourceState) => {
       const repository = selectedRepository(value);
-      if (repository) logPanel.show(repository);
+      if (repository) await logPanel.show(repository);
     }),
     vscode.commands.registerCommand('git4vsc.toggleLog', (value?: RepositoryController | GitResourceState) => {
       const repository = selectedRepository(value);

@@ -1,8 +1,8 @@
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { RepositoryPanel } from '@git4vsc/ui';
+import { DialogHost, RepositoryPanel } from '@git4vsc/ui';
 import '@git4vsc/ui/styles.css';
-import type { CommitDetails, CommitFileChange, CommitSummary, GitRef, LogFilters, RepositoryStatus } from '@git4vsc/shared-types';
+import type { CommitDetails, CommitFileChange, CommitSummary, GitRef, LogFilters, RepositoryStatus, WebviewDialogRequest } from '@git4vsc/shared-types';
 import type { CommitAction, CommitColumnWidths, LogViewOptions, RefAction, RemoteAction } from '@git4vsc/ui';
 import { CommitApp } from './commit-app.js';
 
@@ -38,9 +38,11 @@ function LogApp() {
   const [state, setState] = useState<ViewState>({ status: null, commits: [], activeRef: null, favoriteRefs: [], filters: { text: '', user: '', date: 'all', path: '' }, users: [], selectedHash: null, details: null, hasMore: false, loading: true, detailsLoading: false, error: null });
   const [commitColumnWidths, setCommitColumnWidths] = useState(restoredState?.commitColumnWidths);
   const [viewOptions, setViewOptions] = useState<LogViewOptions>(restoredState?.viewOptions ?? { groupByDirectory: true, showDetails: true });
+  const [dialog, setDialog] = useState<WebviewDialogRequest | null>(null);
   useEffect(() => {
-    const listener = (event: MessageEvent<{ type: string; state: ViewState }>) => {
+    const listener = (event: MessageEvent<{ type: string; state: ViewState; dialog?: WebviewDialogRequest }>) => {
       if (event.data.type === 'snapshot') setState(event.data.state);
+      else if (event.data.type === 'dialog:open' && event.data.dialog) setDialog(event.data.dialog);
     };
     window.addEventListener('message', listener);
     vscode.postMessage({ type: 'ready' });
@@ -54,7 +56,7 @@ function LogApp() {
     setViewOptions(options);
     vscode.setState({ ...vscode.getState(), viewOptions: options });
   }
-  return <RepositoryPanel
+  return <><RepositoryPanel
     {...state}
     commitColumnWidths={commitColumnWidths}
     viewOptions={viewOptions}
@@ -71,7 +73,10 @@ function LogApp() {
     onRefAction={(action: RefAction, ref: GitRef | null) => vscode.postMessage({ type: 'refAction', action, fullName: ref?.fullName ?? null })}
     onRemoteAction={(action: RemoteAction, remote: string | null) => vscode.postMessage({ type: 'remoteAction', action, remote })}
     onCommitColumnWidthsChange={saveCommitColumnWidths}
-  />;
+  /><DialogHost dialog={dialog} onResolve={value => {
+    if (dialog) vscode.postMessage({ type: 'dialog:result', id: dialog.id, value });
+    setDialog(null);
+  }} /></>;
 }
 
 const app = document.body.dataset.view === 'commit'

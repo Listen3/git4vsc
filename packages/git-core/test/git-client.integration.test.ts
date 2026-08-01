@@ -59,6 +59,12 @@ describe('GitClient against generated repositories', () => {
     expect(files).toContainEqual({ path: 'feature.txt', status: 'added' });
   });
 
+  it('lists commits that are ready to push', async () => {
+    const location = await client.discover(fixtures.history);
+    const commits = await client.outgoingCommits(location, 'rebased', 'origin', 'origin/main');
+    expect(commits.map(commit => commit.subject)).toContain('before rebase');
+  });
+
   it('manages local branch and tag refs', async () => {
     const location = await client.discover(fixtures.history);
     await client.addRemote(location, 'origin', location.root);
