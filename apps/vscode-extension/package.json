@@ -20,8 +20,10 @@
     "rebase",
     "cherry pick",
     "push preview",
+    "force push",
     "pull",
     "diff",
+    "git blame",
     "ai commit message"
   ],
   "icon": "media/git4vsc-marketplace.png",
@@ -65,6 +67,7 @@
   "contributes": {
     "commands": [
       { "command": "git4vsc.refresh", "title": "Refresh", "category": "Git4VSC", "icon": "$(refresh)" },
+      { "command": "git4vsc.toggleBlameAnnotations", "title": "Annotate with Git Blame", "category": "Git4VSC" },
       { "command": "git4vsc.stage", "title": "Stage Changes", "category": "Git4VSC", "icon": "$(add)" },
       { "command": "git4vsc.unstage", "title": "Unstage Changes", "category": "Git4VSC", "icon": "$(remove)" },
       { "command": "git4vsc.commit", "title": "Commit Staged Changes", "category": "Git4VSC", "icon": "$(check)" },
@@ -176,6 +179,9 @@
       ]
     },
     "menus": {
+      "editor/lineNumber/context": [
+        { "command": "git4vsc.toggleBlameAnnotations", "when": "resourceScheme == file", "group": "navigation@-100", "toggled": "git4vsc.blameVisible" }
+      ],
       "scm/title": [
         { "command": "git4vsc.showBranchMenu", "when": "scmProvider == git4vsc", "group": "navigation@5" },
         { "command": "git4vsc.openLog", "when": "scmProvider == git4vsc", "group": "navigation@10" },
@@ -220,6 +226,38 @@
         { "command": "git4vsc.acceptIncoming", "when": "view == git4vsc.conflicts && viewItem == git4vsc.conflict", "group": "conflict@20" },
         { "command": "git4vsc.restartConflict", "when": "view == git4vsc.conflicts && viewItem == git4vsc.conflict", "group": "conflict@30" }
       ]
-    }
+    },
+    "colors": [
+      {
+        "id": "git4vsc.blame.foreground",
+        "description": "Git blame annotation foreground.",
+        "defaults": { "dark": "#D2D4D6", "light": "#505357", "highContrast": "#FFFFFF", "highContrastLight": "#000000" }
+      },
+      {
+        "id": "git4vsc.blame.newestBackground",
+        "description": "Git blame annotation background for the newest changes.",
+        "defaults": { "dark": "#415548", "light": "#DCE9DF", "highContrast": "#31523B", "highContrastLight": "#D5EAD9" }
+      },
+      {
+        "id": "git4vsc.blame.newerBackground",
+        "description": "Git blame annotation background for newer changes.",
+        "defaults": { "dark": "#43525A", "light": "#DCE6EB", "highContrast": "#304E5C", "highContrastLight": "#D4E7EF" }
+      },
+      {
+        "id": "git4vsc.blame.middleBackground",
+        "description": "Git blame annotation background for changes in the middle of the file history.",
+        "defaults": { "dark": "#4E4B58", "light": "#E5E0EA", "highContrast": "#4A405A", "highContrastLight": "#E7DDEF" }
+      },
+      {
+        "id": "git4vsc.blame.olderBackground",
+        "description": "Git blame annotation background for older changes.",
+        "defaults": { "dark": "#55494B", "light": "#EADDDD", "highContrast": "#5B3F43", "highContrastLight": "#F0DADC" }
+      },
+      {
+        "id": "git4vsc.blame.oldestBackground",
+        "description": "Git blame annotation background for the oldest changes.",
+        "defaults": { "dark": "#49464A", "light": "#E2DFE2", "highContrast": "#484248", "highContrastLight": "#E7E1E7" }
+      }
+    ]
   }
 }

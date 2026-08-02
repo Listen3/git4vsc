@@ -151,6 +151,15 @@ export interface PushPreviewDialogRequest {
   commits: PushPreviewCommit[];
 }
 
+export interface GitBlameLine {
+  hash: string;
+  line: number;
+  authorName: string;
+  authorEmail: string;
+  authorTime: number;
+  summary: string;
+}
+
 export interface PathTreeEntry {
   name: string;
   path: string;

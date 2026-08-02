@@ -81,6 +81,10 @@ export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
     this.session?.refresh();
   }
 
+  revealCommit(repository: RepositoryController, hash: string): void {
+    if (this.repository === repository) this.session?.revealCommit(hash);
+  }
+
   dispose(): void {
     this.session?.dispose();
     this.session = null;
@@ -109,7 +113,10 @@ class LogSession implements vscode.Disposable {
   private localError: string | null = null;
   private logRequest = 0;
   private detailsRequest = 0;
+  private preferredSelection: string | null = null;
   private repositoryVersion: number;
+  private readonly detailsCache = new Map<string, CommitDetails>();
+  private readonly detailsLoads = new Map<string, Promise<CommitDetails>>();
   private readonly favoriteRefs: Set<string>;
   private readonly dialogs: WebviewDialogController;
 
@@ -146,6 +153,11 @@ class LogSession implements vscode.Disposable {
 
   refresh(): void {
     this.postSnapshot();
+  }
+
+  revealCommit(hash: string): void {
+    this.preferredSelection = hash;
+    void this.loadLog(true);
   }
 
   dispose(): void {
@@ -260,7 +272,8 @@ class LogSession implements vscode.Disposable {
         this.postSnapshot();
         return;
       }
-      const nextSelection = selectionAfterLogReload(next, this.selectedHash);
+      const nextSelection = selectionAfterLogReload(next, this.selectedHash, this.preferredSelection);
+      if (nextSelection === this.preferredSelection) this.preferredSelection = null;
       if (!nextSelection) {
         this.detailsRequest += 1;
         this.selectedHash = null;
@@ -287,15 +300,25 @@ class LogSession implements vscode.Disposable {
   private async loadDetails(hash: string): Promise<void> {
     const request = ++this.detailsRequest;
     this.selectedHash = hash;
+    const cached = this.detailsCache.get(hash);
+    if (cached) {
+      this.details = cached;
+      this.detailsLoading = false;
+      this.postSnapshot();
+      this.prefetchAround(hash);
+      return;
+    }
     this.detailsLoading = true;
     this.details = null;
     this.postSnapshot();
     try {
-      const details = await this.repository.git.commitDetails(this.repository.location, hash);
+      const commit = this.findCommit(hash);
+      const details = await this.requestDetails(hash, commit?.parents);
       if (request !== this.detailsRequest) return;
       this.details = details;
       this.detailsLoading = false;
       this.postSnapshot();
+      this.prefetchAround(hash);
     } catch (error) {
       if (request !== this.detailsRequest) return;
       this.detailsLoading = false;
@@ -819,6 +842,33 @@ class LogSession implements vscode.Disposable {
 
   private favoriteKey(): string {
     return `git4vsc.favoriteRefs:${this.repository.root}`;
+  }
+
+  private prefetchAround(hash: string): void {
+    const index = this.commits.findIndex(commit => commit.hash === hash);
+    for (const commit of this.commits.slice(Math.max(0, index - 1), index + 3)) {
+      if (commit.hash === hash || this.detailsCache.has(commit.hash) || this.detailsLoads.has(commit.hash)) continue;
+      void this.requestDetails(commit.hash, commit.parents).catch(() => undefined);
+    }
+  }
+
+  private requestDetails(hash: string, parents?: readonly string[]): Promise<CommitDetails> {
+    const existing = this.detailsLoads.get(hash);
+    if (existing) return existing;
+    const request = this.repository.git.commitDetails(this.repository.location, hash, parents)
+      .then(details => {
+        this.cacheDetails(details);
+        return details;
+      })
+      .finally(() => this.detailsLoads.delete(hash));
+    this.detailsLoads.set(hash, request);
+    return request;
+  }
+
+  private cacheDetails(details: CommitDetails): void {
+    this.detailsCache.delete(details.hash);
+    this.detailsCache.set(details.hash, details);
+    if (this.detailsCache.size > 80) this.detailsCache.delete(this.detailsCache.keys().next().value!);
   }
 
   private stateKey(): string {

@@ -48,7 +48,7 @@ export function CommitDetailsPane({ details, loading, groupByDirectory, showDeta
   const fileTreeRef = useRef<HTMLDivElement>(null);
   const tree = useMemo(() => fileTree(details?.files ?? []), [details]);
   useEffect(() => { setSelectedPaths(new Set()); setSelectionAnchor(null); setFileMenu(null); }, [details?.hash]);
-  if (loading) return <aside className="details-pane details-empty">Loading commit details…</aside>;
+  if (loading) return <aside className="details-pane details-loading"><span className="details-loading-spinner" /><span>Loading changes…</span></aside>;
   if (!details) return <aside className="details-pane details-empty">Select a commit to view its details and changed files.</aside>;
 
   const displayedChanges = groupByDirectory ? [...details.files].sort((left, right) => left.path.localeCompare(right.path)) : details.files;

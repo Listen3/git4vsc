@@ -1,5 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { parseLog, parseNameStatus, parsePorcelainV2, parseRefs, parseUnmergedIndex } from '../src/parsers.js';
+import { parseBlame, parseLog, parseNameStatus, parsePorcelainV2, parseRefs, parseUnmergedIndex } from '../src/parsers.js';
+
+describe('parseBlame', () => {
+  it('parses line porcelain metadata', () => {
+    const output = [
+      '0123456789abcdef0123456789abcdef01234567 4 7 1',
+      'author Ada Lovelace',
+      'author-mail <ada@example.com>',
+      'author-time 1234567890',
+      'summary explain the line',
+      'filename src/main.ts',
+      '\tconst answer = 42;',
+      ''
+    ].join('\n');
+    expect(parseBlame(output)).toEqual([{
+      hash: '0123456789abcdef0123456789abcdef01234567',
+      line: 7,
+      authorName: 'Ada Lovelace',
+      authorEmail: 'ada@example.com',
+      authorTime: 1234567890,
+      summary: 'explain the line'
+    }]);
+  });
+});
 
 describe('parsePorcelainV2', () => {
   it('parses branch metadata and every change class', () => {

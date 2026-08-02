@@ -139,6 +139,10 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
     postMessage({ type: 'commit', message: messageRef.current });
   }
 
+  function commitAndPush() {
+    postMessage({ type: 'commitAndPush', message: messageRef.current });
+  }
+
   function runFileAction(action: FileAction, change: GitChange) {
     setFileMenu(null);
     if (action === 'commitFile') {
@@ -242,6 +246,9 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
         </span>
         <button className="commit-primary-action" disabled={!message.trim() || selectedCount === 0 || busy || conflictCount > 0} onClick={commit}>
           {state.operation === 'commit' ? 'Committing…' : 'Commit'}
+        </button>
+        <button className="commit-and-push-action" disabled={!message.trim() || selectedCount === 0 || busy || conflictCount > 0} onClick={commitAndPush}>
+          Commit and Push
         </button>
       </div>
     </footer>

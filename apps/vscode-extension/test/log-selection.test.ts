@@ -7,6 +7,10 @@ function commit(hash: string): CommitSummary {
 }
 
 describe('log selection continuity', () => {
+  it('prefers an explicitly revealed commit after a reload', () => {
+    expect(selectionAfterLogReload([commit('new'), commit('selected')], 'selected', 'new')).toBe('new');
+  });
+
   it('keeps the selected commit when it remains in the filtered log', () => {
     expect(selectionAfterLogReload([commit('new'), commit('selected'), commit('old')], 'selected')).toBe('selected');
   });

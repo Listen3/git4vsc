@@ -1,8 +1,8 @@
 import { access, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { CommitDetails, CommitFileChange, CommitPage, CommitSummary, GitChange, LogQuery, MergeConflict, RepositoryPhase, RepositoryStatus } from '@git4vsc/shared-types';
+import type { CommitDetails, CommitFileChange, CommitPage, CommitSummary, GitBlameLine, GitChange, LogQuery, MergeConflict, RepositoryPhase, RepositoryStatus } from '@git4vsc/shared-types';
 import { CommandRunner } from './command-runner.js';
-import { parseLog, parseNameStatus, parsePorcelainV2, parseRefs, parseUnmergedIndex } from './parsers.js';
+import { parseBlame, parseLog, parseNameStatus, parsePorcelainV2, parseRefs, parseUnmergedIndex } from './parsers.js';
 
 export interface RepositoryLocation {
   root: string;
@@ -131,21 +131,25 @@ export class GitClient {
     return Number(result.stdout.trim());
   }
 
-  async commitDetails(location: RepositoryLocation, hash: string): Promise<CommitDetails> {
-    const metadata = await this.runner.run([
+  async commitDetails(location: RepositoryLocation, hash: string, knownParents?: readonly string[]): Promise<CommitDetails> {
+    const metadataRequest = this.runner.run([
       '-C', location.root, 'show', '--no-patch',
       '--format=%H%x00%P%x00%an%x00%ae%x00%at%x00%cn%x00%ce%x00%ct%x00%B%x00', hash
     ]);
-    const fields = metadata.stdout.split('\0');
-    const parents = (fields[1] ?? '').split(' ').filter(Boolean);
+    const exactRefsRequest = this.runner.run(['-C', location.root, 'for-each-ref', `--points-at=${hash}`, '--format=%(refname)%09%(objectname)', 'refs/heads', 'refs/remotes', 'refs/tags']);
+    const containingBranchesRequest = this.runner.run(['-C', location.root, 'for-each-ref', `--contains=${hash}`, '--format=%(refname)%09%(objectname)', 'refs/heads', 'refs/remotes']);
+    const metadata = knownParents ? undefined : await metadataRequest;
+    const parents = knownParents ? [...knownParents] : (metadata!.stdout.split('\0')[1] ?? '').split(' ').filter(Boolean);
     const diffArgs = parents[0]
       ? ['-C', location.root, 'diff', '--name-status', '-z', '-M', '-C', parents[0], hash, '--']
       : ['-C', location.root, 'diff-tree', '--root', '--no-commit-id', '--name-status', '-r', '-z', '-M', '-C', hash, '--'];
-    const [diff, exactRefs, containingBranches] = await Promise.all([
+    const [resolvedMetadata, diff, exactRefs, containingBranches] = await Promise.all([
+      metadataRequest,
       this.runner.run(diffArgs),
-      this.runner.run(['-C', location.root, 'for-each-ref', `--points-at=${hash}`, '--format=%(refname)%09%(objectname)', 'refs/heads', 'refs/remotes', 'refs/tags']),
-      this.runner.run(['-C', location.root, 'for-each-ref', `--contains=${hash}`, '--format=%(refname)%09%(objectname)', 'refs/heads', 'refs/remotes'])
+      exactRefsRequest,
+      containingBranchesRequest
     ]);
+    const fields = resolvedMetadata.stdout.split('\0');
     const message = (fields[8] ?? '').replace(/\r?\n$/, '');
     return {
       hash: fields[0] ?? hash,
@@ -410,6 +414,11 @@ export class GitClient {
 
   async pushBranch(location: RepositoryLocation, branch: string, remote: string, targetBranch = branch, force = false): Promise<void> {
     await this.runner.run(['-C', location.root, 'push', '--set-upstream', ...(force ? ['--force-with-lease'] : []), remote, `${branch}:refs/heads/${targetBranch}`]);
+  }
+
+  async blame(location: RepositoryLocation, path: string): Promise<GitBlameLine[]> {
+    const result = await this.runner.run(['-C', location.root, 'blame', '--line-porcelain', '--', path]);
+    return parseBlame(result.stdout);
   }
 
   async pullBranch(location: RepositoryLocation, remote: string, branch: string, rebase: boolean): Promise<void> {

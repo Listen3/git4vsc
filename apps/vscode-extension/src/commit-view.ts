@@ -10,10 +10,11 @@ import { notifyPushResult, resultNotificationsEnabled } from './operation-notifi
 
 interface CommitViewActions {
   commit(repository: RepositoryController, message: string, paths: readonly string[]): Promise<boolean>;
+  push(repository: RepositoryController): Promise<void>;
 }
 
 interface CommitViewMessage {
-  type: 'ready' | 'selectRepository' | 'message' | 'select' | 'replaceSelection' | 'openChange' | 'resolveConflict' | 'rollback' | 'rollbackFile' | 'deleteFile' | 'jumpToSource' | 'addToVcs' | 'addToIgnore' | 'openAiSettings' | 'generateCommitMessage' | 'cancelCommitMessage' | 'commit' | 'closePushPreview' | 'openPushPreviewDiff' | 'pushPreview';
+  type: 'ready' | 'selectRepository' | 'message' | 'select' | 'replaceSelection' | 'openChange' | 'resolveConflict' | 'rollback' | 'rollbackFile' | 'deleteFile' | 'jumpToSource' | 'addToVcs' | 'addToIgnore' | 'openAiSettings' | 'generateCommitMessage' | 'cancelCommitMessage' | 'commit' | 'commitAndPush' | 'closePushPreview' | 'openPushPreviewDiff' | 'pushPreview';
   root?: string;
   message?: string;
   paths?: string[];
@@ -259,7 +260,7 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
       this.cancelCommitMessage(repository);
       return;
     }
-    if (message.type === 'commit') {
+    if (message.type === 'commit' || message.type === 'commitAndPush') {
       const value = (message.message ?? this.messages.get(repository.root) ?? '').trim();
       const selected = this.selection(repository);
       const paths = [...new Set((repository.snapshot.status?.changes ?? []).flatMap(change => selected.has(change.path)
@@ -269,7 +270,8 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
         this.selections.set(repository.root, new Set());
         this.messages.set(repository.root, '');
         await this.context.workspaceState.update(this.messageKey(repository.root), '');
-        this.refresh();
+        if (message.type === 'commitAndPush') await this.actions.push(repository);
+        else this.refresh();
       }
     }
   }

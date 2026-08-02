@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { RepositoryManager, type RepositoryController } from '@git4vsc/repo-state';
+import { BlameAnnotations } from './blame-annotations.js';
 import { BranchMenu } from './branch-menu.js';
 import { GitContentProvider, type GitResourceState, ScmRepositoryAdapter } from './scm-adapter.js';
 import { ConflictResolver } from './conflict-resolver.js';
@@ -12,6 +13,7 @@ import { SettingsPanel } from './settings-panel.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const manager = new RepositoryManager();
+  const blameAnnotations = new BlameAnnotations(() => manager.all, path => manager.open(path));
   const adapters: ScmRepositoryAdapter[] = [];
   const conflictTree = new ConflictTree(() => manager.all);
   const conflictResolver = new ConflictResolver(() => conflictTree.refresh());
@@ -36,17 +38,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await vscode.window.withProgress({ location: vscode.ProgressLocation.SourceControl, title: 'Committing…' }, () => paths
       ? repository.commitPaths(message.trim(), paths)
       : repository.commit(message.trim(), all));
-    notifyCommitResult(repository.snapshot.status?.head ?? null, message.trim());
+    const head = repository.snapshot.status?.head ?? null;
+    notifyCommitResult(head, message.trim());
+    if (head) logPanel.revealCommit(repository, head);
     const adapter = adapters.find(candidate => candidate.repository === repository);
     if (adapter) adapter.sourceControl.inputBox.value = '';
     return true;
   };
-  const commitView = new CommitView(context, () => manager.all, { commit: (repository, message, paths) => commitRepository(repository, message, false, paths) });
   const previewPush = (repository: RepositoryController, branch: string, remote: string, upstream?: string) => commitView.previewPush(repository, branch, remote, upstream);
   const logPanel = new LogPanel(context, () => manager.all[0], previewPush);
   const settingsPanel = new SettingsPanel(context);
   const branchMenu = new BranchMenu(previewPush);
-  context.subscriptions.push(commitView, settingsPanel, vscode.window.registerWebviewViewProvider('git4vsc.repositories', commitView, { webviewOptions: { retainContextWhenHidden: true } }));
+  const commitView = new CommitView(context, () => manager.all, {
+    commit: (repository, message, paths) => commitRepository(repository, message, false, paths),
+    push: repository => branchMenu.pushCurrent(repository)
+  });
+  context.subscriptions.push(commitView, settingsPanel, blameAnnotations, vscode.window.registerWebviewViewProvider('git4vsc.repositories', commitView, { webviewOptions: { retainContextWhenHidden: true } }));
   context.subscriptions.push(conflictResolver, vscode.window.registerTreeDataProvider('git4vsc.conflicts', conflictTree));
   context.subscriptions.push(logPanel, vscode.window.registerWebviewViewProvider('git4vsc.logView', logPanel, { webviewOptions: { retainContextWhenHidden: true } }));
   context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider('git4vsc', new GitContentProvider(() => manager.all)));
@@ -111,6 +118,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   };
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('git4vsc.toggleBlameAnnotations', (uri?: vscode.Uri) => blameAnnotations.toggle(uri)),
     vscode.commands.registerCommand('git4vsc.refresh', async (value?: RepositoryController) => {
       const repositories = value ? [value] : manager.all;
       await Promise.all(repositories.map(repository => {
@@ -186,7 +194,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (value === undefined) await conflictResolver.markResolved();
       else await conflictResolver.markResolved(selectedRepository(value), selectedPath(value));
     }),
-    vscode.commands.registerCommand('git4vsc.acceptCurrent', async (...values: unknown[]) => {
+    vscode.commands.registerCommand/*  */('git4vsc.acceptCurrent', async (...values: unknown[]) => {
       const selection = selectedConflictPaths(values);
       if (selection) await conflictResolver.accept(selection.repository, selection.paths, 'ours');
     }),

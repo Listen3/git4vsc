@@ -1,4 +1,25 @@
-import type { ChangeCode, CommitFileChange, CommitSummary, GitChange, GitRef, MergeConflict, MergeConflictKind } from '@git4vsc/shared-types';
+import type { ChangeCode, CommitFileChange, CommitSummary, GitBlameLine, GitChange, GitRef, MergeConflict, MergeConflictKind } from '@git4vsc/shared-types';
+
+export function parseBlame(output: string): GitBlameLine[] {
+  const result: GitBlameLine[] = [];
+  let entry: Partial<GitBlameLine> | null = null;
+  for (const line of output.split(/\r?\n/)) {
+    const header = line.match(/^([0-9a-f]{40}) \d+ (\d+)(?: \d+)?$/);
+    if (header) {
+      entry = { hash: header[1]!, line: Number(header[2]) };
+    } else if (entry && line.startsWith('author ')) entry.authorName = line.slice(7);
+    else if (entry && line.startsWith('author-mail ')) entry.authorEmail = line.slice(12).replace(/^<|>$/g, '');
+    else if (entry && line.startsWith('author-time ')) entry.authorTime = Number(line.slice(12));
+    else if (entry && line.startsWith('summary ')) entry.summary = line.slice(8);
+    else if (entry && line.startsWith('\t')) {
+      if (entry.hash && entry.line && entry.authorName && entry.authorEmail !== undefined && entry.authorTime !== undefined && entry.summary !== undefined) {
+        result.push(entry as GitBlameLine);
+      }
+      entry = null;
+    }
+  }
+  return result;
+}
 
 export interface ParsedStatus {
   head: string | null;

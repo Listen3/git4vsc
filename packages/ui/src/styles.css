@@ -73,7 +73,7 @@ button { cursor: default; }
 .branch-group { margin: 1px 0; }
 .branch-group summary { height: 22px; padding: 2px 6px; display: flex; align-items: center; gap: 5px; color: var(--git4vsc-muted); list-style: none; }
 .branch-group summary::-webkit-details-marker { display: none; }
-.branch-group summary::before { content: ''; width: 6px; height: 6px; flex: 0 0 6px; margin: 0 4px 0 2px; border-right: 1.4px solid currentColor; border-bottom: 1.4px solid currentColor; transform: rotate(-45deg); transform-origin: 50% 50%; transition: transform 80ms ease-out; }
+.branch-group summary::before { content: ''; width: 5px; height: 5px; flex: 0 0 5px; margin: 0 5px 0 2px; border-right: 1.2px solid currentColor; border-bottom: 1.2px solid currentColor; transform: rotate(-45deg); transform-origin: 50% 50%; transition: transform 80ms ease-out; }
 .branch-group[open] > summary::before { transform: rotate(45deg); }
 .branch-count { margin-left: auto; opacity: .7; font-size: 11px; }
 .branch-group > div { padding-left: 10px; }
@@ -161,6 +161,8 @@ button { cursor: default; }
 
 .details-pane { min-width: 0; height: 100%; display: flex; flex-direction: column; overflow: hidden; background: var(--vscode-sideBar-background, var(--git4vsc-background)); }
 .details-empty { align-items: center; justify-content: center; padding: 24px; text-align: center; color: var(--git4vsc-muted); }
+.details-loading { align-items: center; justify-content: center; gap: 8px; color: var(--git4vsc-muted); font-size: 11px; }
+.details-loading-spinner { width: 14px; height: 14px; border: 1.5px solid color-mix(in srgb, var(--git4vsc-muted) 35%, transparent); border-top-color: var(--vscode-progressBar-background, #0e70c0); border-radius: 50%; }
 .changed-files { min-height: 150px; flex: 3 1 58%; position: relative; display: flex; flex-direction: column; border-bottom: 1px solid var(--git4vsc-border); overflow: hidden; }
 .changed-files-full { flex: 1; border-bottom: 0; }
 .changed-files > header { height: 28px; flex: 0 0 28px; padding: 0 5px 0 8px; display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--git4vsc-border); }
@@ -172,7 +174,7 @@ button { cursor: default; }
 .file-tree { flex: 1; overflow: auto; padding: 2px 4px; }
 .file-folder summary { height: 21px; padding: 2px 4px; display: flex; align-items: center; gap: 4px; color: var(--git4vsc-muted); list-style: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .file-folder summary::-webkit-details-marker { display: none; }
-.file-folder summary::before { content: ''; width: 6px; height: 6px; flex: 0 0 6px; margin: 0 3px 0 1px; border-right: 1.4px solid currentColor; border-bottom: 1.4px solid currentColor; transform: rotate(-45deg); transform-origin: 50% 50%; transition: transform 80ms ease-out; }
+.file-folder summary::before { content: ''; width: 5px; height: 5px; flex: 0 0 5px; margin: 0 4px 0 1px; border-right: 1.2px solid currentColor; border-bottom: 1.2px solid currentColor; transform: rotate(-45deg); transform-origin: 50% 50%; transition: transform 80ms ease-out; }
 .file-folder[open] > summary::before { transform: rotate(45deg); }
 .folder-icon { width: 15px; height: 15px; flex: 0 0 15px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linejoin: round; }
 .file-folder > div { padding-left: 13px; }
@@ -273,7 +275,7 @@ button { cursor: default; }
 .push-folder > summary { height: 23px; padding: 2px 4px; display: flex; align-items: center; color: var(--git4vsc-muted); white-space: nowrap; }
 .push-folder > summary { list-style: none; cursor: pointer; }
 .push-folder > summary::-webkit-details-marker { display: none; }
-.push-folder > summary::before { content: ''; width: 6px; height: 6px; flex: 0 0 6px; margin: 0 4px 0 1px; border-right: 1.4px solid currentColor; border-bottom: 1.4px solid currentColor; transform: rotate(-45deg); transform-origin: 50% 50%; transition: transform 80ms ease-out; }
+.push-folder > summary::before { content: ''; width: 5px; height: 5px; flex: 0 0 5px; margin: 0 5px 0 1px; border-right: 1.2px solid currentColor; border-bottom: 1.2px solid currentColor; transform: rotate(-45deg); transform-origin: 50% 50%; transition: transform 80ms ease-out; }
 .push-folder[open] > summary::before { transform: rotate(45deg); }
 .push-folder > div { padding-left: 14px; }
 .push-file { width: 100%; height: 23px; padding: 3px 5px 3px 19px; border: 0; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: transparent; text-align: left; }
@@ -294,6 +296,7 @@ button.push-file:hover { background: var(--vscode-list-hoverBackground, #2a2d2e)
 @media (prefers-reduced-motion: no-preference) {
   .operation-progress-bar { width: 34%; animation: operation-progress 1.15s ease-in-out infinite; }
   .operation-spinner { animation: operation-spin .8s linear infinite; }
+  .details-loading-spinner { animation: operation-spin .8s linear infinite; }
   @keyframes operation-progress { from { transform: translateX(-110%); } to { transform: translateX(305%); } }
   @keyframes operation-spin { to { transform: rotate(360deg); } }
   .dialog-frame { animation: dialog-enter 80ms ease-out; }
