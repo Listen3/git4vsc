@@ -21,6 +21,7 @@ interface CommitViewMessage {
   hash?: string;
   change?: CommitFileChange;
   targetBranch?: string;
+  force?: boolean;
   side?: 'staged' | 'working';
   selected?: boolean;
 }
@@ -185,7 +186,7 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
     if (message.type === 'pushPreview' && this.pushPreview && this.pushPreviewRemote && message.targetBranch?.trim()) {
       const preview = this.pushPreview;
       const targetBranch = message.targetBranch.trim();
-      await repository.pushBranch(preview.source, this.pushPreviewRemote, targetBranch);
+      await repository.pushBranch(preview.source, this.pushPreviewRemote, targetBranch, Boolean(message.force));
       notifyPushResult(preview.commits.length, `${this.pushPreviewRemote}/${targetBranch}`);
       this.pushPreview = null;
       this.pushPreviewRemote = null;

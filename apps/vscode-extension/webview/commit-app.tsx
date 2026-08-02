@@ -173,7 +173,7 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
 
   if (state.pushPreview) return <PushPreviewMode preview={state.pushPreview} busy={busy} activity={state.activity} postMessage={postMessage} />;
 
-  return <main className="commit-view">
+  return <main className="commit-view commit-main-view">
     <OperationActivity label={state.activity} />
     <header className="commit-toolbar">
       {state.repositories.length > 1
@@ -317,7 +317,13 @@ function PushPreviewMode({ preview, busy, activity, postMessage }: {
 
     <footer className="commit-push-actions">
       <button type="button" disabled={busy} onClick={() => postMessage({ type: 'closePushPreview' })}>Cancel</button>
-      <button type="button" className="primary" disabled={busy || !normalizedTarget} onClick={() => postMessage({ type: 'pushPreview', targetBranch: normalizedTarget })}>{busy ? 'Pushing…' : 'Push'}</button>
+      <div className="commit-push-submit">
+        <button type="button" className="primary" disabled={busy || !normalizedTarget} onClick={() => postMessage({ type: 'pushPreview', targetBranch: normalizedTarget })}>{busy ? 'Pushing…' : 'Push'}</button>
+        <details className={busy || !normalizedTarget ? 'disabled' : ''}>
+          <summary aria-label="Push options" title="Push options"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg></summary>
+          <div><button type="button" disabled={busy || !normalizedTarget} title="Push with --force-with-lease" onClick={() => postMessage({ type: 'pushPreview', targetBranch: normalizedTarget, force: true })}>Force Push</button></div>
+        </details>
+      </div>
     </footer>
   </main>;
 }
