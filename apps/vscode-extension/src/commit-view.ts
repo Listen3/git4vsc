@@ -62,11 +62,14 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
 
   private async postSnapshot(): Promise<void> {
     if (!this.view) return;
-    const aiConfigured = await aiIsConfigured(this.context);
-    if (!this.view) return;
     const repositories = this.repositories();
     const repository = repositories.find(candidate => candidate.root === this.activeRoot) ?? repositories[0];
     this.activeRoot = repository?.root ?? null;
+    const status = repository?.snapshot.status;
+    void vscode.commands.executeCommand('setContext', 'git4vsc.hasIncoming', Boolean(status?.upstream && status.behind));
+    void vscode.commands.executeCommand('setContext', 'git4vsc.hasOutgoing', Boolean(status?.upstream && status.ahead));
+    const aiConfigured = await aiIsConfigured(this.context);
+    if (!this.view) return;
     if (repository && !this.messages.has(repository.root)) {
       this.messages.set(repository.root, this.context.workspaceState.get<string>(this.messageKey(repository.root)) ?? '');
     }
@@ -74,9 +77,11 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
     const operation = repository?.snapshot.operation ?? null;
     const loading = repository?.snapshot.loading.has('status') ?? false;
     const showOperationProgress = readGeneralSettings().showOperationProgress;
-    const branch = repository?.snapshot.status?.branch ?? repository?.snapshot.status?.head?.slice(0, 8) ?? 'HEAD';
-    const tracking = branchTrackingSuffix(repository?.snapshot.status);
+    const branch = status?.branch ?? status?.head?.slice(0, 8) ?? 'HEAD';
+    const tracking = branchTrackingSuffix(status);
     this.view.title = repository ? `${this.pushPreview ? 'Push' : 'Commit'} — ${branch}${tracking ? ` ${tracking}` : ''}` : 'Commit';
+    const ahead = status?.upstream ? status.ahead : 0;
+    this.view.badge = ahead ? { value: ahead, tooltip: `${ahead} commit${ahead === 1 ? '' : 's'} ready to push` } : undefined;
     void this.view.webview.postMessage({
       type: 'commitSnapshot',
       state: {

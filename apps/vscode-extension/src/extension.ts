@@ -152,10 +152,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const repository = selectedRepository(value);
       if (repository) await branchMenu.update(repository);
     }),
+    vscode.commands.registerCommand('git4vsc.updateCurrentBranchAvailable', (value?: RepositoryController | vscode.SourceControl) =>
+      vscode.commands.executeCommand('git4vsc.updateCurrentBranch', value)
+    ),
     vscode.commands.registerCommand('git4vsc.pushCurrentBranch', async (value?: RepositoryController | vscode.SourceControl) => {
       const repository = selectedRepository(value);
       if (repository) await branchMenu.pushCurrent(repository);
     }),
+    vscode.commands.registerCommand('git4vsc.pushCurrentBranchAvailable', (value?: RepositoryController | vscode.SourceControl) =>
+      vscode.commands.executeCommand('git4vsc.pushCurrentBranch', value)
+    ),
     vscode.commands.registerCommand('git4vsc.openLog', async (value?: RepositoryController | GitResourceState) => {
       const repository = selectedRepository(value);
       if (repository) await logPanel.show(repository);

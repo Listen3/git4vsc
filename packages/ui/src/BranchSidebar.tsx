@@ -56,7 +56,7 @@ export function BranchSidebar({ status, activeRef, favoriteRefs = [], onSelectRe
         <BranchItem label="All" active={activeRef === null} icon="◎" onClick={() => onSelectRef?.(null)} />
         <BranchItem label={status?.branch ? `HEAD (${status.branch})` : 'HEAD (Detached)'} active={activeRef === 'HEAD'} icon="◆" onClick={() => onSelectRef?.('HEAD')} onContextMenu={event => openMenu(event, currentRef)} />
         <BranchGroup label="Local" count={local.length} onContextMenu={event => openMenu(event, null)}>
-          {local.map(ref => <BranchItem key={ref.fullName} label={ref.name} active={activeRef === ref.fullName} icon={ref.name === status?.branch ? '●' : '◇'} current={ref.name === status?.branch} favorite={favoriteRefs.includes(ref.fullName)} updateAvailable={hasRemoteUpdate(ref, status)} onClick={() => onSelectRef?.(ref.fullName)} onContextMenu={event => openMenu(event, ref)} />)}
+          {local.map(ref => <BranchItem key={ref.fullName} label={ref.name} active={activeRef === ref.fullName} icon={ref.name === status?.branch ? '●' : '◇'} current={ref.name === status?.branch} favorite={favoriteRefs.includes(ref.fullName)} updateAvailable={hasRemoteUpdate(ref, status)} ahead={ref.name === status?.branch ? status?.ahead ?? 0 : 0} behind={ref.name === status?.branch ? status?.behind ?? 0 : 0} upstream={ref.name === status?.branch ? status?.upstream : ref.upstream} onClick={() => onSelectRef?.(ref.fullName)} onContextMenu={event => openMenu(event, ref)} />)}
         </BranchGroup>
         <BranchGroup label="Remote" count={[...remoteGroups.values()].reduce((sum, group) => sum + group.length, 0)} onContextMenu={event => openRemoteMenu(event, null)}>
           {[...remoteGroups.entries()].map(([remote, remoteRefs]) => (
@@ -203,15 +203,25 @@ function BranchGroup({ label, count, nested = false, children, onContextMenu }: 
   );
 }
 
-function BranchItem({ label, icon, active, current, favorite, updateAvailable, onClick, onContextMenu }: {
+function BranchItem({ label, icon, active, current, favorite, updateAvailable, ahead = 0, behind = 0, upstream, onClick, onContextMenu }: {
   label: string;
   icon: string;
   active?: boolean;
   current?: boolean;
   favorite?: boolean;
   updateAvailable?: boolean;
+  ahead?: number;
+  behind?: number;
+  upstream?: string | null | undefined;
   onClick: () => void;
   onContextMenu?: ((event: MouseEvent) => void) | undefined;
 }) {
-  return <button type="button" className={`branch-item${active ? ' active' : ''}${current ? ' current' : ''}`} onClick={onClick} onContextMenu={onContextMenu}><span className="branch-icon">{icon}</span><span className="branch-label">{label}</span>{updateAvailable && <span className="branch-update" title="Updates available">↙</span>}{favorite && <span className="branch-favorite">★</span>}</button>;
+  return <button type="button" className={`branch-item${active ? ' active' : ''}${current ? ' current' : ''}`} onClick={onClick} onContextMenu={onContextMenu}>
+    <span className="branch-icon">{icon}</span><span className="branch-label">{label}</span>
+    <span className="branch-indicators">
+      {behind > 0 ? <span className="branch-behind" title={`${behind} commit${behind === 1 ? '' : 's'} behind ${upstream ?? 'upstream'}`}>↘{behind}</span> : updateAvailable && <span className="branch-behind" title="Updates available">↘</span>}
+      {ahead > 0 && <span className="branch-ahead" title={`${ahead} commit${ahead === 1 ? '' : 's'} ahead of ${upstream ?? 'upstream'} and ready to push`}>↗{ahead}</span>}
+      {favorite && <span className="branch-favorite">★</span>}
+    </span>
+  </button>;
 }

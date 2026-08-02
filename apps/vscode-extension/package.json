@@ -72,7 +72,9 @@
       { "command": "git4vsc.openCommitView", "title": "Open Commit Tool Window", "category": "Git4VSC", "icon": "$(checklist)" },
       { "command": "git4vsc.showBranchMenu", "title": "Repository and Branch Actions", "category": "Git4VSC", "icon": "$(ellipsis)" },
       { "command": "git4vsc.updateCurrentBranch", "title": "Update Current Branch", "category": "Git4VSC", "icon": { "light": "media/update-light.svg", "dark": "media/update-dark.svg" } },
+      { "command": "git4vsc.updateCurrentBranchAvailable", "title": "Update Current Branch", "category": "Git4VSC", "icon": { "light": "media/update-active-light.svg", "dark": "media/update-active-dark.svg" } },
       { "command": "git4vsc.pushCurrentBranch", "title": "Push Current Branch", "category": "Git4VSC", "icon": { "light": "media/push-light.svg", "dark": "media/push-dark.svg" } },
+      { "command": "git4vsc.pushCurrentBranchAvailable", "title": "Push Current Branch", "category": "Git4VSC", "icon": { "light": "media/push-active-light.svg", "dark": "media/push-active-dark.svg" } },
       { "command": "git4vsc.openLog", "title": "Open Commit Log", "category": "Git4VSC", "icon": "$(git-commit)" },
       { "command": "git4vsc.openSettings", "title": "Open Settings", "category": "Git4VSC", "icon": "$(settings-gear)" },
       { "command": "git4vsc.toggleLog", "title": "Toggle Commit Log", "category": "Git4VSC", "icon": "$(git-commit)" },
@@ -194,8 +196,10 @@
       "view/title": [
         { "command": "git4vsc.refresh", "when": "view == git4vsc.repositories && !git4vsc.busy", "group": "navigation@1" },
         { "command": "git4vsc.operationStatus", "when": "view == git4vsc.repositories && git4vsc.busy", "group": "navigation@1" },
-        { "command": "git4vsc.updateCurrentBranch", "when": "view == git4vsc.repositories && !git4vsc.busy", "group": "navigation@2" },
-        { "command": "git4vsc.pushCurrentBranch", "when": "view == git4vsc.repositories && !git4vsc.busy", "group": "navigation@3" },
+        { "command": "git4vsc.updateCurrentBranch", "when": "view == git4vsc.repositories && !git4vsc.busy && !git4vsc.hasIncoming", "group": "navigation@2" },
+        { "command": "git4vsc.updateCurrentBranchAvailable", "when": "view == git4vsc.repositories && !git4vsc.busy && git4vsc.hasIncoming", "group": "navigation@2" },
+        { "command": "git4vsc.pushCurrentBranch", "when": "view == git4vsc.repositories && !git4vsc.busy && !git4vsc.hasOutgoing", "group": "navigation@3" },
+        { "command": "git4vsc.pushCurrentBranchAvailable", "when": "view == git4vsc.repositories && !git4vsc.busy && git4vsc.hasOutgoing", "group": "navigation@3" },
         { "command": "git4vsc.toggleLog", "when": "view == git4vsc.repositories", "group": "navigation@4" },
         { "command": "git4vsc.openSettings", "when": "view == git4vsc.repositories", "group": "navigation@99" },
         { "command": "git4vsc.showBranchMenu", "when": "view == git4vsc.repositories", "group": "navigation@100" },
@@ -204,6 +208,10 @@
         { "command": "git4vsc.openSettings", "when": "view == git4vsc.logView", "group": "navigation@99" },
         { "command": "git4vsc.resolveConflicts", "when": "view == git4vsc.conflicts", "group": "navigation@1" },
         { "command": "git4vsc.abortOperation", "when": "view == git4vsc.conflicts", "group": "navigation@2" }
+      ],
+      "commandPalette": [
+        { "command": "git4vsc.updateCurrentBranchAvailable", "when": "false" },
+        { "command": "git4vsc.pushCurrentBranchAvailable", "when": "false" }
       ],
       "view/item/context": [
         { "command": "git4vsc.openConflict", "when": "view == git4vsc.conflicts && viewItem == git4vsc.conflict", "group": "inline@1" },
