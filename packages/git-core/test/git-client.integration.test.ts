@@ -52,6 +52,14 @@ describe('GitClient against generated repositories', () => {
     expect((await client.log(location, 0, 100, { since: '2030-01-01T00:00:00.000Z' })).commits).toEqual([]);
   });
 
+  it('supports literal, regex and case-sensitive commit searches', async () => {
+    const location = await client.discover(fixtures.history);
+    expect((await client.log(location, 0, 100, { text: 'FEATURE COMMIT' })).commits.map(commit => commit.subject)).toContain('feature commit');
+    expect((await client.log(location, 0, 100, { text: 'FEATURE COMMIT', caseSensitive: true })).commits).toEqual([]);
+    expect((await client.log(location, 0, 100, { text: 'feature (commit|missing)', regex: true })).commits.map(commit => commit.subject)).toContain('feature commit');
+    expect((await client.log(location, 0, 100, { text: 'feature (commit|missing)' })).commits).toEqual([]);
+  });
+
   it('compares changed files between revisions', async () => {
     const location = await client.discover(fixtures.history);
     const feature = (await client.log(location, 0, 100, { text: 'feature commit' })).commits[0]!;

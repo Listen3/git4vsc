@@ -27,6 +27,7 @@ interface ViewState {
   activeRef: string | null;
   favoriteRefs: string[];
   filters: LogFilters;
+  searchHistory: string[];
   users: string[];
   selectedHash: string | null;
   details: CommitDetails | null;
@@ -38,7 +39,7 @@ interface ViewState {
 }
 
 function LogApp() {
-  const [state, setState] = useState<ViewState>({ status: null, commits: [], activeRef: null, favoriteRefs: [], filters: { text: '', user: '', date: 'all', path: '' }, users: [], selectedHash: null, details: null, hasMore: false, loading: true, activity: 'Refreshing…', detailsLoading: false, error: null });
+  const [state, setState] = useState<ViewState>({ status: null, commits: [], activeRef: 'HEAD', favoriteRefs: [], filters: { text: '', regex: false, caseSensitive: false, user: '', date: 'all', path: '' }, searchHistory: [], users: [], selectedHash: null, details: null, hasMore: false, loading: true, activity: 'Refreshing…', detailsLoading: false, error: null });
   const [commitColumnWidths, setCommitColumnWidths] = useState(restoredState?.commitColumnWidths);
   const [commitColumnVisibility, setCommitColumnVisibility] = useState(restoredState?.commitColumnVisibility);
   const [viewOptions, setViewOptions] = useState<LogViewOptions>(restoredState?.viewOptions ?? { groupByDirectory: true, showDetails: true });
@@ -78,6 +79,7 @@ function LogApp() {
     onLoadMore={() => vscode.postMessage({ type: 'loadMore' })}
     onSelectRef={(ref: string | null) => vscode.postMessage({ type: 'selectRef', ref })}
     onFiltersChange={(filters: LogFilters) => vscode.postMessage({ type: 'filters', filters })}
+    onRememberSearch={(text: string) => vscode.postMessage({ type: 'rememberSearch', text })}
     onPickPaths={() => vscode.postMessage({ type: 'pickPaths', kind: 'paths' })}
     onSelectCommit={(commit: CommitSummary) => vscode.postMessage({ type: 'selectCommit', hash: commit.hash })}
     onOpenFile={(change: CommitFileChange) => vscode.postMessage({ type: 'openCommitDiff', hash: state.selectedHash, change })}

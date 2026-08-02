@@ -24,6 +24,9 @@ type RefAction =
   | 'rename' | 'delete';
 type RemoteAction = 'fetch' | 'add' | 'edit' | 'remove';
 type PreviewPush = (repository: RepositoryController, branch: string, remote: string, upstream?: string) => Promise<void>;
+interface PersistedLogState { activeRef: string | null; filters: LogFilters }
+
+const logSearchHistoryKey = 'git4vsc.logSearchHistory';
 
 export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
   private view: vscode.WebviewView | null = null;
@@ -52,8 +55,9 @@ export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   async show(repository: RepositoryController): Promise<void> {
+    const changed = this.repository !== repository;
     this.repository = repository;
-    this.attach();
+    if (changed || !this.session) this.attach();
     await vscode.commands.executeCommand('git4vsc.logView.focus');
     this.view?.show(true);
     if (!this.session) this.attach();
@@ -93,8 +97,9 @@ class LogSession implements vscode.Disposable {
   private readonly unsubscribe: () => void;
   private readonly messageSubscription: vscode.Disposable;
   private commits: CommitSummary[];
-  private activeRef: string | null = null;
-  private filters: LogFilters = { ...emptyLogFilters };
+  private activeRef: string | null;
+  private filters: LogFilters;
+  private searchHistory: string[];
   private users: string[];
   private selectedHash: string | null = null;
   private details: CommitDetails | null = null;
@@ -114,6 +119,10 @@ class LogSession implements vscode.Disposable {
     private readonly view: vscode.WebviewView,
     private readonly previewPush: PreviewPush
   ) {
+    const saved = context.workspaceState.get<Partial<PersistedLogState>>(this.stateKey());
+    this.activeRef = saved?.activeRef === null || saved?.activeRef === 'HEAD' || (typeof saved?.activeRef === 'string' && this.findRef(saved.activeRef)) ? saved.activeRef : 'HEAD';
+    this.filters = normalizeLogFilters(saved?.filters);
+    this.searchHistory = context.globalState.get<string[]>(logSearchHistoryKey, []);
     this.commits = [...repository.snapshot.commits];
     this.users = logUsers(this.commits);
     this.repositoryVersion = repository.snapshot.version;
@@ -160,6 +169,7 @@ class LogSession implements vscode.Disposable {
         case 'loadMore': await this.loadLog(false); break;
         case 'selectRef': await this.selectRef(request.ref); break;
         case 'filters': await this.setFilters(request.filters); break;
+        case 'rememberSearch': await this.rememberSearch(request.text); break;
         case 'pickPaths': await this.pickPaths(request.kind); break;
         case 'dialog:pathChildren': await this.pathChildren(request.id, request.path); break;
         case 'selectCommit': await this.selectCommit(request.hash); break;
@@ -181,13 +191,23 @@ class LogSession implements vscode.Disposable {
     if (value !== null && value !== 'HEAD' && (typeof value !== 'string' || !this.findRef(value))) return;
     if (this.activeRef === value) return;
     this.activeRef = value as string | null;
+    await this.persistState();
     await this.loadLog(true);
   }
 
   private async setFilters(value: unknown): Promise<void> {
     if (!isLogFilters(value) || JSON.stringify(value) === JSON.stringify(this.filters)) return;
     this.filters = value;
+    await this.persistState();
     await this.loadLog(true);
+  }
+
+  private async rememberSearch(value: unknown): Promise<void> {
+    if (typeof value !== 'string' || !value.trim()) return;
+    const text = value.trim();
+    this.searchHistory = [text, ...this.searchHistory.filter(item => item !== text)].slice(0, 10);
+    await this.context.globalState.update(logSearchHistoryKey, this.searchHistory);
+    this.postSnapshot();
   }
 
   private async pickPaths(value: unknown): Promise<void> {
@@ -801,6 +821,14 @@ class LogSession implements vscode.Disposable {
     return `git4vsc.favoriteRefs:${this.repository.root}`;
   }
 
+  private stateKey(): string {
+    return `git4vsc.logState:${this.repository.root}`;
+  }
+
+  private persistState(): Thenable<void> {
+    return this.context.workspaceState.update(this.stateKey(), { activeRef: this.activeRef, filters: this.filters } satisfies PersistedLogState);
+  }
+
   private findCommit(hash: string): CommitSummary | undefined {
     return this.commits.find(commit => commit.hash === hash);
   }
@@ -820,6 +848,7 @@ class LogSession implements vscode.Disposable {
         activeRef: this.activeRef,
         favoriteRefs: [...this.favoriteRefs],
         filters: this.filters,
+        searchHistory: this.searchHistory,
         users: this.users,
         selectedHash: this.selectedHash,
         details: this.details,
@@ -860,6 +889,21 @@ function splitRemoteBranch(value: string): [string, string] {
 function isLogFilters(value: unknown): value is LogFilters {
   if (!value || typeof value !== 'object') return false;
   const filters = value as Record<string, unknown>;
-  return typeof filters.text === 'string' && typeof filters.user === 'string' && typeof filters.path === 'string'
+  return typeof filters.text === 'string' && typeof filters.regex === 'boolean' && typeof filters.caseSensitive === 'boolean'
+    && typeof filters.user === 'string' && typeof filters.path === 'string'
     && ['all', 'today', 'yesterday', 'week', 'month'].includes(String(filters.date));
+}
+
+function normalizeLogFilters(value: unknown): LogFilters {
+  if (!value || typeof value !== 'object') return { ...emptyLogFilters };
+  const filters = value as Record<string, unknown>;
+  const normalized = {
+    text: typeof filters.text === 'string' ? filters.text : '',
+    regex: filters.regex === true,
+    caseSensitive: filters.caseSensitive === true,
+    user: typeof filters.user === 'string' ? filters.user : '',
+    date: filters.date,
+    path: typeof filters.path === 'string' ? filters.path : ''
+  };
+  return isLogFilters(normalized) ? normalized : { ...emptyLogFilters };
 }

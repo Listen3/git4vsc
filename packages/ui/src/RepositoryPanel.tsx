@@ -18,6 +18,7 @@ export interface RepositoryPanelProps {
   activeRef: string | null;
   favoriteRefs?: readonly string[] | undefined;
   filters: LogFilters;
+  searchHistory?: readonly string[] | undefined;
   users?: readonly string[] | undefined;
   selectedHash: string | null;
   details: CommitDetails | null;
@@ -33,6 +34,7 @@ export interface RepositoryPanelProps {
   onLoadMore?: (() => void) | undefined;
   onSelectRef?: ((ref: string | null) => void) | undefined;
   onFiltersChange?: ((filters: LogFilters) => void) | undefined;
+  onRememberSearch?: ((text: string) => void) | undefined;
   onPickPaths?: (() => void) | undefined;
   onSelectCommit?: ((commit: CommitSummary) => void) | undefined;
   onOpenFile?: ((change: CommitFileChange) => void) | undefined;
@@ -48,7 +50,7 @@ export interface RepositoryPanelProps {
 type FilterMenu = { type: 'branch' | 'user' | 'date' | 'paths'; x: number; y: number };
 
 export function RepositoryPanel(props: RepositoryPanelProps) {
-  const { status, commits, activeRef, favoriteRefs, filters, users = [], selectedHash, details, hasMore, loading, detailsLoading, error } = props;
+  const { status, commits, activeRef, favoriteRefs, filters, searchHistory = [], users = [], selectedHash, details, hasMore, loading, detailsLoading, error } = props;
   const viewOptions = props.viewOptions ?? { groupByDirectory: true, showDetails: true };
   const [searchDraft, setSearchDraft] = useState(filters.text);
   const [filterMenu, setFilterMenu] = useState<FilterMenu | null>(null);
@@ -80,7 +82,7 @@ export function RepositoryPanel(props: RepositoryPanelProps) {
     window.addEventListener('pointerup', stop);
   }
 
-  const activeLabel = activeRef === null ? 'All branches' : activeRef === 'HEAD' ? 'HEAD' : status?.refs.find(ref => ref.fullName === activeRef)?.name ?? activeRef;
+  const activeLabel = activeRef === null ? 'All branches' : activeRef === 'HEAD' ? status?.branch ?? 'HEAD' : status?.refs.find(ref => ref.fullName === activeRef)?.name ?? activeRef;
   const openFilter = (type: FilterMenu['type'], element: HTMLElement) => {
     const rect = element.getBoundingClientRect();
     setFilterMenu({ type, x: rect.left, y: rect.bottom + 2 });
@@ -117,7 +119,17 @@ export function RepositoryPanel(props: RepositoryPanelProps) {
       <section className="log-pane">
         <OperationActivity label={props.activity} />
         <header className="log-toolbar">
-          <div className="log-search"><span className="sidebar-search-icon" /><input value={searchDraft} onChange={event => setSearchDraft(event.target.value)} placeholder="Text or hash" /></div>
+          <LogSearch
+            value={searchDraft}
+            history={searchHistory}
+            regex={filters.regex}
+            caseSensitive={filters.caseSensitive}
+            onChange={setSearchDraft}
+            onApply={text => { setSearchDraft(text); updateFilters({ text: text.trim() }); }}
+            onRemember={text => props.onRememberSearch?.(text)}
+            onRegexChange={regex => updateFilters({ regex })}
+            onCaseSensitiveChange={caseSensitive => updateFilters({ caseSensitive })}
+          />
           <div className="log-filter-strip">
             <FilterControl label="Branch" detail={activeRef === null ? '' : activeLabel} title={`Branch: ${activeLabel}`} onOpen={element => openFilter('branch', element)} onClear={() => props.onSelectRef?.(null)} />
             <FilterControl label="User" detail={filters.user} title={filters.user || 'All users'} onOpen={element => openFilter('user', element)} onClear={() => updateFilters({ user: '' })} />
@@ -157,6 +169,39 @@ const dateFilters: readonly { id: LogDateFilter; label: string }[] = [
   { id: 'week', label: 'Last 7 days' },
   { id: 'month', label: 'Last 30 days' }
 ];
+
+function LogSearch({ value, history, regex, caseSensitive, onChange, onApply, onRemember, onRegexChange, onCaseSensitiveChange }: {
+  value: string;
+  history: readonly string[];
+  regex: boolean;
+  caseSensitive: boolean;
+  onChange(value: string): void;
+  onApply(value: string): void;
+  onRemember(value: string): void;
+  onRegexChange(value: boolean): void;
+  onCaseSensitiveChange(value: boolean): void;
+}) {
+  const [focused, setFocused] = useState(false);
+  const remember = () => { if (value.trim()) onRemember(value.trim()); };
+  return <div className="log-search" onFocus={() => setFocused(true)} onBlur={event => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      setFocused(false);
+      remember();
+    }
+  }}>
+    <span className="sidebar-search-icon" />
+    <input value={value} onChange={event => onChange(event.target.value)} onKeyDown={event => {
+      if (event.key === 'Enter') { onApply(value); remember(); setFocused(false); event.currentTarget.blur(); }
+      else if (event.key === 'Escape') { setFocused(false); event.currentTarget.blur(); }
+    }} placeholder="Text or hash" />
+    {value && <button type="button" className="log-search-action log-search-clear" title="Clear" aria-label="Clear search" onClick={() => onApply('')}>×</button>}
+    <button type="button" className={`log-search-action${regex ? ' active' : ''}`} title="Regex" aria-pressed={regex} onClick={() => onRegexChange(!regex)}>.*</button>
+    <button type="button" className={`log-search-action log-search-case${caseSensitive ? ' active' : ''}`} title="Match Case" aria-pressed={caseSensitive} onClick={() => onCaseSensitiveChange(!caseSensitive)}>Cc</button>
+    {focused && history.length > 0 && <div className="log-search-history">
+      {history.map(item => <button type="button" key={item} title={item} onPointerDown={event => event.preventDefault()} onClick={() => { onApply(item); onRemember(item); setFocused(false); }}>{item}</button>)}
+    </div>}
+  </div>;
+}
 
 function FilterControl({ label, detail, title, onOpen, onClear }: { label: string; detail: string; title: string; onOpen(element: HTMLButtonElement): void; onClear(): void }) {
   if (!detail) return <button type="button" className="log-filter-button" title={title} onClick={event => onOpen(event.currentTarget)}>{label}<ChevronIcon /></button>;

@@ -84,6 +84,8 @@ export interface CommitPage {
 export interface LogQuery {
   ref?: string;
   text?: string;
+  regex?: boolean;
+  caseSensitive?: boolean;
   author?: string;
   since?: string;
   until?: string;
@@ -94,6 +96,8 @@ export type LogDateFilter = 'all' | 'today' | 'yesterday' | 'week' | 'month';
 
 export interface LogFilters {
   text: string;
+  regex: boolean;
+  caseSensitive: boolean;
   user: string;
   date: LogDateFilter;
   path: string;

@@ -1,13 +1,13 @@
 import type { CommitSummary, LogDateFilter, LogFilters, LogQuery } from '@git4vsc/shared-types';
 
-export const emptyLogFilters: LogFilters = { text: '', user: '', date: 'all', path: '' };
+export const emptyLogFilters: LogFilters = { text: '', regex: false, caseSensitive: false, user: '', date: 'all', path: '' };
 
 export function logQueryFromFilters(filters: LogFilters, ref: string | null, now = Date.now()): LogQuery {
   const dates = dateRange(filters.date, now);
   const paths = filters.path.split(',').map(value => value.trim()).filter(Boolean);
   return {
     ...(ref ? { ref } : {}),
-    ...(filters.text ? { text: filters.text } : {}),
+    ...(filters.text ? { text: filters.text, regex: filters.regex, caseSensitive: filters.caseSensitive } : {}),
     ...(filters.user ? { author: filters.user } : {}),
     ...dates,
     ...(paths.length ? { paths } : {})

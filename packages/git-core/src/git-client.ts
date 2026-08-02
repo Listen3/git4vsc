@@ -102,8 +102,12 @@ export class GitClient {
     ];
     if (resolvedHash) args.push('--no-walk', resolvedHash);
     else {
-      if (query.text) args.push('--regexp-ignore-case', `--grep=${query.text}`);
-      if (query.author) args.push('--regexp-ignore-case', `--author=${escapeRegExp(query.author)}`);
+      if (query.text || query.author) {
+        args.push(query.regex ? '--extended-regexp' : '--fixed-strings');
+        if (!query.text || !query.caseSensitive) args.push('--regexp-ignore-case');
+      }
+      if (query.text) args.push(`--grep=${query.text}`);
+      if (query.author) args.push(`--author=${query.regex ? escapeRegExp(query.author) : query.author}`);
       if (query.since) args.push(`--since=${query.since}`);
       if (query.until) args.push(`--until=${query.until}`);
       args.push(query.ref ?? '--all');
@@ -434,7 +438,7 @@ export class GitClient {
 }
 
 function escapeRegExp(value: string): string {
-  const special = new Set(['\\', '.', '[', ']', '*', '^', '$']);
+  const special = new Set(['\\', '.', '[', ']', '(', ')', '{', '}', '*', '+', '?', '|', '^', '$']);
   return [...value].map(character => special.has(character) ? `\\${character}` : character).join('');
 }
 
