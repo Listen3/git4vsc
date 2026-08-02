@@ -1,96 +1,132 @@
 # Git4VSC
 
-Git4VSC 是一个面向 VS Code 的本地 Git 工作流增强扩展。它希望把成熟桌面 IDE 中高密度、可观察、可逐步操作的 Git 体验带到 VS Code，同时继续使用 VS Code 原生的编辑器、Diff、Merge Editor、状态栏和命令体系。
+Git4VSC 是一个面向 Visual Studio Code 的本地 Git 工作流扩展。它将提交、分支、Commit Log、Push 预览和逐文件冲突处理集中到稳定的工具窗口中，同时继续使用 VS Code 原生编辑器、Diff 和 Merge Editor。
 
-项目使用本机 Git CLI，核心 Git 图、状态模型和界面均为独立的 TypeScript/React 实现。
+项目调用本机 Git CLI；仓库状态、提交图和主要界面由 TypeScript 与 React 实现。产品结构和交互参考了 JetBrains Git4Idea 与 IntelliJ Platform VCS Log 的公开行为，但不复制其代码、图标或专有素材。
 
-> 当前版本：`0.1.0 Preview`。主要工作流已经可用，正在进行 Marketplace 首发前的文档、授权和发布准备。
+> 当前版本：`0.1.0 Preview`。单仓库的日常提交、同步、历史浏览和冲突处理流程已经可用。
 
-## 为什么做 Git4VSC
+## 功能预览
 
-VS Code 已经提供可靠的基础 Git 能力，但复杂仓库通常还需要更完整的提交窗口、分支操作、提交图、推送预览、更新策略和逐文件冲突处理。Git4VSC 将这些流程集中在三个稳定区域中：
+### Commit Log、Diff 与 Git Blame
 
-- 左侧 Commit 工具窗口：查看、选择、回滚和提交本地变更。
-- 底部 Git Log：浏览提交图、筛选历史并处理提交中的文件。
-- 状态栏与分支菜单：查看 ahead/behind、冲突和长时间操作状态，并快速执行常用分支动作。
+![Git4VSC Commit Log、Diff 与 Git Blame](apps/vscode-extension/media/overview.png)
 
-产品结构和交互逻辑参考了 JetBrains Git4Idea 与 IntelliJ Platform VCS Log 的公开行为和源码架构，但不复制其代码、商标、图标或专有素材。
+### 从 Annotate with Git Blame 到 Commit
 
-## 当前完成度
+![从 Git Blame 查看代码历史并完成提交](apps/vscode-extension/media/commit-workflow.gif)
 
-| 能力 | 状态 | 说明 |
+### AI Commit Message 设置
+
+![Git4VSC AI Commit Message 设置](apps/vscode-extension/media/ai-settings.png)
+
+## 核心功能
+
+### Commit 与 Push
+
+- 在左侧 Commit 工具窗口中按文件选择本次提交内容；修改文件可继续展开并按 Change Block 部分提交。
+- 双击文件查看 Diff；右键执行 Commit File、Rollback、Delete、Jump to Source、Add to VCS 或 Add to Ignore。
+- 提交信息区域可拖动调整高度，支持 **Commit** 和 **Commit and Push**。
+- Push 前预览待推送提交和文件；文件可按目录分组、展开并打开 Diff。
+- 支持修改远程目标分支，以及普通 Push 和基于 `--force-with-lease` 的 Force Push；受保护分支会禁用 Force Push。
+- 非快进 Push 被拒绝时，可选择 Merge 或 Rebase 更新，成功后自动重试一次 Push。
+
+### Commit Log 与历史操作
+
+- 拓扑提交图、虚拟滚动和分页加载，支持普通分叉、Merge 与多父提交。
+- 默认聚焦当前分支，保留上次选择、筛选条件和视图状态，避免重复打开时重新跳动。
+- Text or hash 支持普通文本、Hash、正则、大小写匹配和最近搜索。
+- 支持 Branch、User、Date、Paths 组合筛选；Paths 使用扩展内的目录/文件选择窗口。
+- Author、Date、Hash 列可独立显示或隐藏，列宽可调整；时间支持相对格式。
+- 提交详情支持目录分组或平铺，并可隐藏详情区。
+- Commit 级操作包括创建分支/Tag、Checkout、Cherry-Pick、Revert 和 Reset。
+- 文件级操作包括 Diff、本地比较、打开仓库版本、选择性 Revert/Cherry-Pick、创建 Patch、Get from Revision 和按路径筛选历史。
+
+### 分支、远程与仓库状态
+
+- 管理本地/远程分支、收藏分支、Tracking、Tag 和 Remote。
+- 支持 Checkout、Checkout and Update、Checkout and Rebase、Merge、Rebase、Pull、Push 和创建 Worktree。
+- 本地修改阻塞 Update/Checkout 时提供 Smart Operation：临时 Stash、完成操作并恢复修改；恢复冲突继续进入逐文件解决流程。
+- 支持创建和管理 Git Stash，包括 Apply、Pop、恢复暂存状态、Drop、查看文件和从 Stash 创建分支。
+- Commit 标题、分支列表与状态栏显示 ahead/behind 数量；有更新或待推送提交时使用方向和颜色提示。
+- 状态栏的分支区域打开仓库与分支操作菜单，旁边的 Commit Log 图标单独切换日志。
+- 长时间操作在不改变文件列表布局的位置显示进度，完成后给出简短结果通知。
+
+### 冲突解决
+
+- Merge、Rebase、Cherry-Pick 或 Revert 发生冲突后，显示持续存在的逐文件冲突列表。
+- 每个文件以 **Current｜Result｜Incoming** 三列打开 VS Code Merge Editor，也可直接接受 Current 或 Incoming。
+- 支持 Mark Resolved and Open Next、重新解决文件，以及 Continue/Abort 当前 Git 操作。
+
+### Git Blame
+
+- 在编辑器行号区域右键选择 **Annotate with Git Blame**，再次执行即可关闭。
+- 在行号右侧紧凑显示提交日期和作者，未提交的新行保持空白。
+- 不同时间的提交使用不同背景色；悬浮可查看作者、邮箱、摘要、Hash 和完整时间。
+
+### AI Commit Message
+
+- 可连接用户自己的 OpenAI-compatible API，加载或填写模型。
+- 根据本次勾选文件的实际变更上下文生成提交信息，并支持再次点击停止生成。
+- 可以配置输出语言和额外指令；未配置时点击灰色 AI 图标会直接打开 AI 设置。
+- API Key 保存在 VS Code SecretStorage 中。只有主动生成时才会发送选中变更上下文，不会自动上传整个仓库。
+
+## 当前范围
+
+| 工作流 | 状态 | 当前范围 |
 | --- | --- | --- |
-| Commit 工具窗口 | 已完成 | 变更分组、文件选择、颜色状态、Rollback、可调整提交信息区域、Commit and Push |
-| AI Commit Message | 已完成 | OpenAI-compatible API、自定义模型/语言/提示词、精确收集选中文件上下文、生成取消 |
-| 分支与远程操作 | 已完成 | Checkout、Update、Merge、Rebase、Pull、Push、Tracking、Tag、Worktree 与 Remote 管理 |
-| 仓库状态反馈 | 已完成 | ahead/behind、冲突、仓库阶段、后台操作进度和完成结果提示 |
-| Commit Log | 已完成 | 拓扑提交图、当前分支默认选择、缓存详情、正则/大小写搜索、历史搜索、组合筛选与可选列 |
-| 提交文件操作 | 已完成 | Diff、本地比较、仓库版本、Revert、选择性 Cherry-Pick、Patch、Get from Revision、Path History |
-| Push Preview | 已完成 | 待推送提交、目录化文件树、目标分支编辑、Push / Force Push |
-| Merge 冲突流程 | 已完成 | 逐文件冲突列表、三方 Merge Editor、Accept Current/Incoming、Continue、Abort |
-| Git Blame | 已完成 | 编辑器行号右键开关、紧凑作者信息、按提交时间着色、Hover 详情 |
-| 设置页面 | 已完成 | 紧凑的 General / AI 设置页，API Key 使用 VS Code SecretStorage |
-| Stash / Shelf | 计划中 | 将在后续版本补充 |
-| 完整国际化 | 计划中 | 当前 Marketplace 文档和主要界面以英语为主 |
+| Commit / Commit and Push | 可用 | 支持整文件和按 Change Block 部分提交；暂不支持逐行 Changelist |
+| Push Preview | 可用 | 提交和文件预览、目录分组、目标分支编辑、受保护分支和 Force Push 确认 |
+| Update / Pull / Push | 可用 | Merge/Rebase、Smart Update 和 Push Rejected 恢复重试 |
+| 分支、Tag 与 Remote | 可用 | 常用创建、切换、比较、合并、Rebase、Tracking 和删除操作 |
+| Worktree | 部分可用 | 支持创建；暂不提供列表、打开、删除和 Prune 管理页 |
+| Commit Log | 可用 | 图谱、组合筛选、可选列、详情和常用提交/文件操作 |
+| 文件历史 | 部分可用 | 支持按路径筛选；暂不提供独立 File History 与 rename follow |
+| Merge 冲突 | 可用 | 逐文件处理并使用 VS Code Merge Editor |
+| Git Blame | 可用 | 时间着色和 Hover 详情；暂不支持点击跳转 Commit Log |
+| AI Commit Message | 可选 | 使用用户配置的 OpenAI-compatible 服务 |
+| Git Stash | 可用 | 创建、Apply/Pop、Reinstate Index、Drop、查看文件、从 Stash 建分支 |
+| 部分提交 / Changelist | 部分可用 | 支持 Git diff hunk；暂不支持逐行选择和持久 Changelist |
+| Interactive Rebase | 未实现 | 后续版本评估 |
 
-### Marketplace 首发检查
-
-- [x] Marketplace 英文说明、分类、关键词和 Preview 元数据
-- [x] Marketplace PNG 图标
-- [x] 类型检查、单元测试、真实 Git 仓库集成测试和 Extension Host 测试
-- [ ] 确定并添加项目许可证
-- [ ] 创建/确认 Marketplace Publisher，并确认 `publisher` 字段
-- [ ] 添加使用截图或短演示（可选但推荐）
-
-## 使用方式
+## 快速开始
 
 ### 提交本地变更
 
 1. 打开 Git 仓库，在 Activity Bar 选择 **Git4VSC**。
-2. 在 Commit 窗口勾选本次要提交的文件。
-3. 双击文件查看 Diff，或右键执行 Rollback、Delete、Add to VCS、Add to Ignore 等操作。
-4. 输入 Commit Message，然后点击 **Commit** 或 **Commit and Push**。
-5. 如已配置 AI，可点击 Commit 按钮左侧的 AI 图标生成提交信息；未配置时点击灰色图标会直接打开 AI 设置。
+2. 在 Commit 工具窗口勾选文件；需要拆分提交时展开修改文件并勾选 Change Block。
+3. 输入 Commit Message，或使用 AI 生成。
+4. 点击 **Commit**，或点击 **Commit and Push** 后检查 Push 预览再推送。
 
 ### 查看提交历史
 
-- 点击工具窗口标题栏的 Commit Log 图标，或按 `Alt+3` 打开/关闭 Git Log；再次打开会恢复上次状态，并默认聚焦当前分支。
-- Text or hash 支持正则、大小写匹配和最近搜索；Branch、User、Date、Paths 可继续组合筛选。
-- 选择提交后，在右侧查看变更文件和提交详情；文件支持多选与右键批量操作。
-- 点击列设置图标控制 Author、Date 和 Hash 的显示。
+- 按 `Alt+3`，或点击工具窗口/状态栏中的 Commit Log 图标，打开或关闭底部日志。
+- 使用 Text or hash 搜索，并组合 Branch、User、Date、Paths 筛选。
+- 选择提交后，在右侧查看文件和详情；右键提交或文件执行历史操作。
 
-### 更新、推送与分支操作
+### 更新和分支操作
 
-- 使用 Commit 工具窗口顶部的斜向下箭头更新当前分支，斜向上箭头推送。
-- 更新支持 Merge 或 Rebase 策略，默认可在设置页中配置。
-- 点击状态栏 Commit Log 图标打开/关闭日志；点击相邻的分支名打开仓库与分支操作菜单。
-- Push 会先显示待推送提交和文件预览，并支持修改目标分支以及 Push / Force Push。
+- 使用 Commit 工具窗口顶部的向下箭头更新当前分支，向上箭头打开 Push 预览。
+- 点击状态栏分支名打开仓库与分支菜单；Commit Log 图标只负责切换日志。
+- Update 可以每次选择 Merge/Rebase，也可以在设置页保存默认策略。
+- 本地修改阻塞 Update/Checkout 时可选择 Smart Operation；Stash Changes 和 Stashes 位于分支操作菜单与命令面板。
 
 ### 处理冲突
 
-出现冲突后，Git4VSC 会显示逐文件冲突列表。可以逐个打开 VS Code Merge Editor，也可以接受 Current/Incoming；解决并标记当前文件后自动进入下一个文件，最后执行 Continue 或 Abort。
+冲突发生后，从 Merge Conflicts 列表逐个打开文件。完成当前文件后选择 **Mark Resolved and Open Next**，所有文件解决后执行 **Continue**；需要放弃操作时执行 **Abort**。
 
-### 查看 Git Blame
+## 设置
 
-在编辑器行号上右键选择 **Annotate with Git Blame**。注释显示相对时间和作者，颜色按提交新旧区分；再次执行即可关闭，未提交的新行保持空白。
+打开 **Git4VSC Settings**：
 
-## AI Commit Message
-
-AI 功能完全可选。打开 **Git4VSC Settings → AI**，配置：
-
-- OpenAI-compatible Base URL
-- API Key
-- Commit model
-- 输出语言
-- Additional instructions
-
-API Key 保存在 VS Code SecretStorage 中。只有在用户主动点击生成时，扩展才会发送当前勾选文件的变更上下文；不会自动分析或上传整个仓库。
+- **General**：更新策略、Smart Operation、Push Rejected、受保护分支、Force Push 确认、进度与结果通知。
+- **AI**：Base URL、API Key、模型、输出语言和附加指令；支持加载模型和测试连接。
 
 ## 运行要求
 
-- VS Code `1.102.0` 或更高版本
+- Visual Studio Code `1.102.0` 或更高版本
 - Git `2.23` 或更高版本
-- 一个本地或 Remote Workspace 中可由扩展主机访问的 Git 工作区
+- 扩展主机可以访问当前 Git 工作区；支持本地与 Remote Workspace
 
 ## 开发
 
@@ -122,9 +158,18 @@ apps/
 - [总体架构](docs/architecture.md)
 - [JetBrains Git/VCS Log 源码调研](docs/research/jetbrains-git-architecture.md)
 - [VS Code 平台能力](docs/research/vscode-extension-capabilities.md)
-- [功能对照矩阵](docs/research/feature-parity-matrix.md)
+- [早期功能对照调研（历史资料，以本页当前范围为准）](docs/research/feature-parity-matrix.md)
 - [AI Commit 上下文调研](docs/research/ai-commit-context.md)
 - [第三方声明](THIRD_PARTY_NOTICES.md)
+
+## Marketplace 首发准备
+
+- [x] 中英文 Marketplace 说明、分类、关键词与 Preview 元数据
+- [x] Marketplace PNG 图标
+- [x] 类型检查、单元测试、真实 Git 仓库集成测试和 Extension Host 测试
+- [x] 添加产品截图和核心流程短 GIF
+- [ ] 确定并添加项目许可证
+- [ ] 确认 Marketplace Publisher 与发布凭据
 
 ## 声明
 

@@ -4,6 +4,7 @@
   "description": "%extension.description%",
   "version": "0.1.0",
   "publisher": "git4vsc",
+  "license": "MIT",
   "preview": true,
   "pricing": "Free",
   "categories": ["SCM Providers", "Visualization"],
@@ -72,6 +73,8 @@
       { "command": "git4vsc.unstage", "title": "Unstage Changes", "category": "Git4VSC", "icon": "$(remove)" },
       { "command": "git4vsc.commit", "title": "Commit Staged Changes", "category": "Git4VSC", "icon": "$(check)" },
       { "command": "git4vsc.commitAll", "title": "Commit All Changes", "category": "Git4VSC" },
+      { "command": "git4vsc.stashChanges", "title": "Stash Changes", "category": "Git4VSC", "icon": "$(archive)" },
+      { "command": "git4vsc.manageStashes", "title": "Manage Stashes", "category": "Git4VSC", "icon": "$(list-tree)" },
       { "command": "git4vsc.openCommitView", "title": "Open Commit Tool Window", "category": "Git4VSC", "icon": "$(checklist)" },
       { "command": "git4vsc.showBranchMenu", "title": "Repository and Branch Actions", "category": "Git4VSC", "icon": "$(ellipsis)" },
       { "command": "git4vsc.updateCurrentBranch", "title": "Update Current Branch", "category": "Git4VSC", "icon": { "light": "media/update-light.svg", "dark": "media/update-dark.svg" } },
@@ -104,6 +107,35 @@
           "scope": "window",
           "order": 10,
           "description": "Controls how incoming commits are integrated when updating the current branch."
+        },
+        "git4vsc.protectedBranches": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["main", "master", "release/*"],
+          "scope": "window",
+          "order": 11,
+          "description": "Branch name patterns on which Force Push is disabled. Use * as a wildcard."
+        },
+        "git4vsc.confirmForcePush": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "order": 12,
+          "description": "Requires confirmation before Force Push with lease."
+        },
+        "git4vsc.autoUpdateOnPushRejected": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "order": 13,
+          "description": "Updates using the configured strategy and retries when a push is rejected as non-fast-forward."
+        },
+        "git4vsc.smartOperations": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "order": 14,
+          "description": "Offers to stash and restore local changes when they block update or checkout."
         },
         "git4vsc.showResultNotifications": {
           "type": "boolean",

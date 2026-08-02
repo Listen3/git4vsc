@@ -23,6 +23,18 @@ export class GitCommandError extends Error {
   }
 }
 
+export function isPushRejectedError(error: unknown): boolean {
+  if (!(error instanceof GitCommandError)) return false;
+  const output = `${error.result.stdout}\n${error.result.stderr}`;
+  return /(?:non-fast-forward|fetch first|stale info|tip of your current branch is behind)/i.test(output);
+}
+
+export function isLocalChangesOverwriteError(error: unknown): boolean {
+  if (!(error instanceof GitCommandError)) return false;
+  const output = `${error.result.stdout}\n${error.result.stderr}`;
+  return /(?:local changes to the following files|untracked working tree files) would be overwritten by (?:checkout|merge|switch|rebase)|cannot pull with rebase:.*(?:unstaged|uncommitted) changes|cannot rebase:.*(?:unstaged|uncommitted) changes/is.test(output);
+}
+
 export class CommandRunner {
   constructor(readonly executable = 'git') {}
 
@@ -34,6 +46,8 @@ export class CommandRunner {
           ...process.env,
           GIT_PAGER: 'cat',
           GIT_TERMINAL_PROMPT: '0',
+          LC_ALL: 'C',
+          LANG: 'C',
           ...options.env
         },
         windowsHide: true,
@@ -63,4 +77,3 @@ export class CommandRunner {
     });
   }
 }
-

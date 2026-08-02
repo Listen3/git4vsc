@@ -18,7 +18,7 @@ Git4VSC uses the VS Code Merge Editor for the actual three-way edit, while ownin
 2. A non-zero Git exit becomes an expected conflict result only when the refreshed snapshot contains unmerged paths.
 3. `git ls-files --unmerged -z` builds an exact per-file model, including missing Current or Incoming stages for modify/delete conflicts.
 4. `Merge Changes` and the `Git Merge` panel show only unresolved files.
-5. Resolve opens stage 1 as Base, stage 2 as Current and stage 3 as Incoming, with the working-tree file as output.
+5. Resolve opens stage 1 as Base, stage 2 as Current and stage 3 as Incoming, with the working-tree file as output, then switches the native Merge Editor to the Current / Result / Incoming column layout.
 6. `Mark Resolved and Open Next` saves the output, stages it and opens the next unresolved file. Accept Current/Incoming performs checkout-or-delete plus staging in one repository operation.
 7. After the last file, Continue finishes the active Git operation. Abort restores the pre-operation state.
 

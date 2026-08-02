@@ -8,6 +8,10 @@ type AiLanguage = 'system' | 'zh' | 'en';
 
 interface GeneralSettings {
   updateStrategy: UpdateStrategy;
+  protectedBranches: string[];
+  confirmForcePush: boolean;
+  autoUpdateOnPushRejected: boolean;
+  smartOperations: boolean;
   showResultNotifications: boolean;
   showOperationProgress: boolean;
 }
@@ -35,7 +39,15 @@ interface SettingsEvent {
   message?: string;
 }
 
-const generalDefaults: GeneralSettings = { updateStrategy: 'ask', showResultNotifications: true, showOperationProgress: true };
+const generalDefaults: GeneralSettings = {
+  updateStrategy: 'ask',
+  protectedBranches: ['main', 'master', 'release/*'],
+  confirmForcePush: true,
+  autoUpdateOnPushRejected: false,
+  smartOperations: true,
+  showResultNotifications: true,
+  showOperationProgress: true
+};
 const aiDefaults: AiDraft = { baseUrl: '', model: '', language: 'system', commitPrompt: '', apiKey: '' };
 
 export function SettingsApp({ postMessage }: { postMessage(message: unknown): void }) {
@@ -113,6 +125,14 @@ function GeneralSection({ settings, update, reset }: { settings: GeneralSettings
       <SettingRow title="Update strategy" description="Choose how incoming commits are integrated when updating the current branch.">
         <select value={settings.updateStrategy} onChange={event => update('updateStrategy', event.target.value as UpdateStrategy)}><option value="ask">Ask every time</option><option value="merge">Merge</option><option value="rebase">Rebase</option></select>
       </SettingRow>
+      <SettingRow title="Smart operations" description="Offer to temporarily stash local changes when they block update or checkout."><Toggle checked={settings.smartOperations} label="Smart operations" onChange={value => update('smartOperations', value)} /></SettingRow>
+      <SettingRow title="Update after rejected push" description="Automatically update with the selected strategy and retry a non-fast-forward push."><Toggle checked={settings.autoUpdateOnPushRejected} label="Update after rejected push" onChange={value => update('autoUpdateOnPushRejected', value)} /></SettingRow>
+    </div>
+    <div className="settings-group"><h2>Push Safety</h2>
+      <SettingRow title="Protected branches" description="Force Push is disabled for these names. Use * as a wildcard.">
+        <input className="setting-text-input" value={settings.protectedBranches.join(', ')} spellCheck={false} onChange={event => update('protectedBranches', event.target.value.split(',').map(value => value.trim()).filter(Boolean))} />
+      </SettingRow>
+      <SettingRow title="Confirm Force Push" description="Require an explicit confirmation before Force Push with lease."><Toggle checked={settings.confirmForcePush} label="Confirm Force Push" onChange={value => update('confirmForcePush', value)} /></SettingRow>
     </div>
     <div className="settings-group"><h2>Feedback</h2>
       <SettingRow title="Result notifications" description="Show short messages after successful commit, update, fetch and push operations."><Toggle checked={settings.showResultNotifications} label="Result notifications" onChange={value => update('showResultNotifications', value)} /></SettingRow>

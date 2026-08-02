@@ -5,8 +5,10 @@ import type { RepositoryController } from '@git4vsc/repo-state';
 import { operationLabel } from './repository-status.js';
 import { notifyUpdateResult } from './operation-notifications.js';
 import { pickUpdateStrategy } from './update-strategy.js';
+import { checkoutWithSmartFallback, createAndCheckoutWithSmartFallback, runSmartCheckoutFallback, updateWithSmartFallback } from './smart-operations.js';
+import { gitResourceUri } from './git-uri.js';
 
-type MenuAction = 'update' | 'commit' | 'push' | 'log' | 'newBranch' | 'checkoutRevision' | 'resolve';
+type MenuAction = 'update' | 'commit' | 'push' | 'log' | 'stash' | 'stashes' | 'newBranch' | 'checkoutRevision' | 'resolve';
 type RefAction = 'checkout' | 'checkoutUpdate' | 'update' | 'push' | 'log';
 
 interface MenuItem extends vscode.QuickPickItem {
@@ -45,7 +47,8 @@ export class BranchMenu {
     const rebase = await pickUpdateStrategy();
     if (rebase === undefined) return;
     const before = status.head;
-    await repository.pullBranch(remote, branch, rebase);
+    if (!await updateWithSmartFallback(repository, remote, branch, rebase)) return;
+    if (await this.resolveConflictsIfNeeded(repository)) return;
     await notifyUpdateResult(repository, before, status.upstream);
   }
 
@@ -64,6 +67,8 @@ export class BranchMenu {
       { label: '$(check) Commit…', description: `${status.changes.length} changes`, action: 'commit' },
       { label: '$(cloud-upload) Push…', description: status.upstream ?? 'Select remote', action: 'push' },
       { label: '$(git-commit) Open Commit Log', action: 'log' },
+      { label: '$(archive) Stash Changes...', description: status.changes.length ? `${status.changes.length} changes` : 'No local changes', action: 'stash' },
+      { label: '$(list-tree) Stashes...', action: 'stashes' },
       { label: '', kind: vscode.QuickPickItemKind.Separator },
       { label: '$(add) New Branch…', action: 'newBranch' },
       { label: '$(git-branch) Checkout Tag or Revision…', action: 'checkoutRevision' }
@@ -88,6 +93,8 @@ export class BranchMenu {
       return;
     }
     if (action === 'push') return this.pushCurrent(repository);
+    if (action === 'stash') return this.stashChanges(repository);
+    if (action === 'stashes') return this.manageStashes(repository);
     if (action === 'log') {
       await vscode.commands.executeCommand('git4vsc.openLog', repository);
       return;
@@ -98,11 +105,75 @@ export class BranchMenu {
     }
     if (action === 'newBranch') {
       const name = await vscode.window.showInputBox({ title: 'New Branch', prompt: 'Branch name', validateInput: value => value.trim() ? undefined : 'Enter a branch name' });
-      if (name) await repository.createAndCheckoutBranch(name.trim(), 'HEAD');
+      if (name && await createAndCheckoutWithSmartFallback(repository, name.trim(), 'HEAD')) await this.resolveConflictsIfNeeded(repository);
       return;
     }
     const target = await vscode.window.showInputBox({ title: 'Checkout Tag or Revision', prompt: 'Tag, commit hash or revision' });
-    if (target?.trim()) await repository.checkout(target.trim(), true);
+    if (target?.trim() && await checkoutWithSmartFallback(repository, target.trim(), true)) await this.resolveConflictsIfNeeded(repository);
+  }
+
+  async stashChanges(repository: RepositoryController): Promise<void> {
+    if (!repository.snapshot.status?.changes.length) {
+      void vscode.window.showInformationMessage('No local changes to stash.');
+      return;
+    }
+    const scope = await vscode.window.showQuickPick([
+      { label: 'Tracked and untracked files', includeUntracked: true, picked: true },
+      { label: 'Tracked files only', includeUntracked: false }
+    ], { title: 'Stash Changes', placeHolder: 'Choose which changes to stash' });
+    if (!scope) return;
+    const message = await vscode.window.showInputBox({ title: 'Stash Changes', prompt: 'Stash message', value: `Changes on ${repository.snapshot.status.branch ?? 'HEAD'}` });
+    if (!message?.trim()) return;
+    await repository.stashChanges(message.trim(), scope.includeUntracked);
+    void vscode.window.showInformationMessage(`Stashed changes: ${message.trim()}`);
+  }
+
+  async manageStashes(repository: RepositoryController): Promise<void> {
+    const stashes = await repository.git.stashes(repository.location);
+    if (!stashes.length) {
+      void vscode.window.showInformationMessage('No stashes in this repository.');
+      return;
+    }
+    const picked = await vscode.window.showQuickPick(stashes.map(stash => ({
+      label: `$(archive) ${stash.message}`,
+      description: stash.ref,
+      detail: [stash.branch, new Date(stash.authorTime * 1000).toLocaleString()].filter(Boolean).join(' · '),
+      stash
+    })), { title: 'Git Stashes', placeHolder: 'Select a stash' });
+    if (!picked) return;
+    const action = await vscode.window.showQuickPick([
+      { label: '$(play) Apply', id: 'apply' },
+      { label: '$(play) Apply and Reinstate Index', id: 'apply-index' },
+      { label: '$(check) Pop', id: 'pop' },
+      { label: '$(check) Pop and Reinstate Index', id: 'pop-index' },
+      { label: '$(git-branch) Create Branch from Stash...', id: 'branch' },
+      { label: '$(files) Show Changed Files', id: 'files' },
+      { label: '$(trash) Drop...', id: 'drop' }
+    ], { title: picked.stash.message, placeHolder: 'Select stash action' });
+    if (!action) return;
+    if (action.id === 'apply' || action.id === 'apply-index') await repository.applyStash(picked.stash.ref, action.id === 'apply-index');
+    else if (action.id === 'pop' || action.id === 'pop-index') await repository.popStash(picked.stash.ref, action.id === 'pop-index');
+    else if (action.id === 'branch') {
+      const name = await vscode.window.showInputBox({ title: 'Create Branch from Stash', prompt: 'Branch name', validateInput: value => value.trim() ? undefined : 'Enter a branch name' });
+      if (name?.trim()) await repository.createBranchFromStash(name.trim(), picked.stash.ref);
+    } else if (action.id === 'files') {
+      const files = await repository.git.stashChanges(repository.location, picked.stash.ref);
+      const file = await vscode.window.showQuickPick(files.map(change => ({ label: change.path, description: change.status, change })), { title: picked.stash.message, placeHolder: 'Select a file to open its diff' });
+      if (file) {
+        const left = file.change.status === 'added' ? gitResourceUri(repository, file.change.path, null) : gitResourceUri(repository, file.change.originalPath ?? file.change.path, `${picked.stash.ref}^1`);
+        let revision = picked.stash.ref;
+        if (file.change.status !== 'deleted') {
+          try { await repository.git.show(repository.location, file.change.path, revision); }
+          catch { revision = `${picked.stash.ref}^3`; }
+        }
+        const right = file.change.status === 'deleted' ? gitResourceUri(repository, file.change.path, null) : gitResourceUri(repository, file.change.path, revision);
+        await vscode.commands.executeCommand('vscode.diff', left, right, `${file.change.path} (${picked.stash.ref})`);
+      }
+    } else {
+      const confirmed = await vscode.window.showWarningMessage(`Drop ${picked.stash.ref}?`, { modal: true, detail: picked.stash.message }, 'Drop');
+      if (confirmed) await repository.dropStash(picked.stash.ref);
+    }
+    if (repository.snapshot.status?.changes.some(change => change.conflict)) await vscode.commands.executeCommand('git4vsc.resolveConflicts', repository);
   }
 
   private async showRefActions(repository: RepositoryController, ref: GitRef): Promise<void> {
@@ -122,7 +193,8 @@ export class BranchMenu {
     if (picked.action === 'update') return this.update(repository);
     if (picked.action === 'checkoutUpdate' && upstream) {
       const before = ref.hash;
-      await repository.checkoutAndUpdate(ref.name, upstream);
+      if (!await runSmartCheckoutFallback(repository, ref.name, () => repository.checkoutAndUpdate(ref.name, upstream), () => repository.smartCheckoutAndUpdate(ref.name, upstream))) return;
+      if (await this.resolveConflictsIfNeeded(repository)) return;
       await notifyUpdateResult(repository, before, upstream);
       return;
     }
@@ -151,18 +223,25 @@ export class BranchMenu {
 
   private async checkout(repository: RepositoryController, ref: GitRef): Promise<void> {
     if (ref.type === 'local-branch') {
-      await repository.checkout(ref.name);
+      if (await checkoutWithSmartFallback(repository, ref.name)) await this.resolveConflictsIfNeeded(repository);
       return;
     }
     if (ref.type === 'tag') {
-      await repository.checkout(ref.fullName, true);
+      if (await checkoutWithSmartFallback(repository, ref.fullName, true)) await this.resolveConflictsIfNeeded(repository);
       return;
     }
     if (ref.type !== 'remote-branch') return;
     const name = ref.name.slice(ref.name.indexOf('/') + 1);
     const local = repository.snapshot.status?.refs.find(candidate => candidate.type === 'local-branch' && candidate.name === name);
-    if (local) await repository.checkout(local.name);
-    else await repository.createAndCheckoutBranch(name, ref.fullName, true);
+    if (local) {
+      if (await checkoutWithSmartFallback(repository, local.name)) await this.resolveConflictsIfNeeded(repository);
+    } else if (await createAndCheckoutWithSmartFallback(repository, name, ref.fullName, true)) await this.resolveConflictsIfNeeded(repository);
+  }
+
+  private async resolveConflictsIfNeeded(repository: RepositoryController): Promise<boolean> {
+    if (!repository.snapshot.status?.changes.some(change => change.conflict)) return false;
+    await vscode.commands.executeCommand('git4vsc.resolveConflicts', repository);
+    return true;
   }
 }
 

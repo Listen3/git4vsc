@@ -10,6 +10,7 @@ import { notifyFetchResult, notifyUpdateResult, resultNotificationsEnabled } fro
 import { operationActivity } from './repository-status.js';
 import { readGeneralSettings } from './settings.js';
 import { configuredUpdateStrategy } from './update-strategy.js';
+import { checkoutWithSmartFallback, createAndCheckoutWithSmartFallback, runSmartCheckoutFallback, updateWithSmartFallback } from './smart-operations.js';
 
 type CommitAction = 'copyRevision' | 'copySubject' | 'createBranch' | 'createTag' | 'checkout' | 'compareLocal' | 'cherryPick' | 'revert' | 'reset';
 type CommitFileAction =
@@ -55,12 +56,16 @@ export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   async show(repository: RepositoryController): Promise<void> {
-    const changed = this.repository !== repository;
-    this.repository = repository;
-    if (changed || !this.session) this.attach();
+    this.select(repository);
     await vscode.commands.executeCommand('git4vsc.logView.focus');
     this.view?.show(true);
     if (!this.session) this.attach();
+  }
+
+  select(repository: RepositoryController): void {
+    const changed = this.repository !== repository;
+    this.repository = repository;
+    if (changed) this.attach();
   }
 
   toggle(repository: RepositoryController): void {
@@ -484,7 +489,7 @@ class LogSession implements vscode.Disposable {
     }
     if (action === 'checkout') {
       const confirmed = await vscode.window.showWarningMessage(`Checkout ${commit.hash.slice(0, 8)} in detached HEAD mode?`, { modal: true }, 'Checkout');
-      if (confirmed) await this.repository.checkout(commit.hash, true);
+      if (confirmed) await checkoutWithSmartFallback(this.repository, commit.hash, true);
       return;
     }
     if (action === 'compareLocal') {
@@ -576,7 +581,7 @@ class LogSession implements vscode.Disposable {
     if (action === 'checkoutNew') {
       const suggested = ref.type === 'remote-branch' ? ref.name.slice(ref.name.indexOf('/') + 1) : ref.name;
       const name = await this.branchName(`Checkout ${ref.name} as New Branch`, suggested);
-      if (name) await this.repository.createAndCheckoutBranch(name, ref.fullName, ref.type === 'remote-branch');
+      if (name && await createAndCheckoutWithSmartFallback(this.repository, name, ref.fullName, ref.type === 'remote-branch')) await this.resolveConflictsIfNeeded();
       return;
     }
     if (action === 'checkoutUpdate') {
@@ -587,7 +592,8 @@ class LogSession implements vscode.Disposable {
         return;
       }
       const before = ref.hash;
-      await this.repository.checkoutAndUpdate(ref.name, upstream);
+      if (!await runSmartCheckoutFallback(this.repository, ref.name, () => this.repository.checkoutAndUpdate(ref.name, upstream), () => this.repository.smartCheckoutAndUpdate(ref.name, upstream))) return;
+      if (await this.resolveConflictsIfNeeded()) return;
       await notifyUpdateResult(this.repository, before, upstream);
       return;
     }
@@ -596,13 +602,14 @@ class LogSession implements vscode.Disposable {
       if (!current) return;
       const confirmed = await vscode.window.showWarningMessage(`Rebase ${ref.name} onto ${current} and check it out?`, { modal: true }, 'Checkout and Rebase');
       if (!confirmed) return;
-      if (ref.type === 'local-branch') await this.repository.checkoutAndRebase(ref.name, current);
+      if (ref.type === 'local-branch') await runSmartCheckoutFallback(this.repository, ref.name, () => this.repository.checkoutAndRebase(ref.name, current), () => this.repository.smartCheckoutAndRebase(ref.name, current));
       else if (ref.type === 'remote-branch') {
         const local = await this.localBranchForRemote(ref);
         if (!local) return;
-        if (local.exists) await this.repository.checkoutAndRebase(local.name, current);
-        else await this.repository.checkoutRemoteAndRebase(local.name, ref.name, current);
+        if (local.exists) await runSmartCheckoutFallback(this.repository, local.name, () => this.repository.checkoutAndRebase(local.name, current), () => this.repository.smartCheckoutAndRebase(local.name, current));
+        else await runSmartCheckoutFallback(this.repository, local.name, () => this.repository.checkoutRemoteAndRebase(local.name, ref.name, current), () => this.repository.smartCheckoutRemoteAndRebase(local.name, ref.name, current));
       }
+      if (await this.resolveConflictsIfNeeded()) return;
       return;
     }
     if (action === 'compare') {
@@ -614,19 +621,15 @@ class LogSession implements vscode.Disposable {
       return;
     }
     if (action === 'checkout') {
-      const dirty = (this.repository.snapshot.status?.changes.length ?? 0) > 0;
-      const confirmed = dirty
-        ? await vscode.window.showWarningMessage(`Checkout ${ref.name}? Local changes must be preserved by Git.`, { modal: true }, 'Checkout')
-        : 'Checkout';
-      if (!confirmed) return;
       if (ref.type === 'remote-branch') {
         const local = await this.localBranchForRemote(ref);
         if (!local) return;
-        if (local.exists) await this.repository.checkout(local.name);
-        else await this.repository.createAndCheckoutBranch(local.name, ref.fullName, true);
+        if (local.exists) await checkoutWithSmartFallback(this.repository, local.name);
+        else await createAndCheckoutWithSmartFallback(this.repository, local.name, ref.fullName, true);
       } else {
-        await this.repository.checkout(ref.name, ref.type === 'tag');
+        await checkoutWithSmartFallback(this.repository, ref.name, ref.type === 'tag');
       }
+      await this.resolveConflictsIfNeeded();
       return;
     }
     if (action === 'rebaseOnto') {
@@ -715,7 +718,8 @@ class LogSession implements vscode.Disposable {
         { id: 'rebase', label: 'Rebase the current branch on top of incoming changes' }
       ], acceptLabel: 'Update' }) : configured;
       if (strategy !== 'merge' && strategy !== 'rebase') return;
-      await this.repository.pullBranch(remote, branch, strategy === 'rebase');
+      if (!await updateWithSmartFallback(this.repository, remote, branch, strategy === 'rebase')) return;
+      if (await this.resolveConflictsIfNeeded()) return;
     }
     else await this.repository.updateBranch(ref.name, upstream);
     const after = this.repository.snapshot.status?.refs.find(candidate => candidate.type === 'local-branch' && candidate.name === ref.name)?.hash ?? null;
@@ -749,15 +753,16 @@ class LogSession implements vscode.Disposable {
     const confirmed = await vscode.window.showWarningMessage(`Pull ${ref.name} into ${this.repository.snapshot.status?.branch ?? 'HEAD'} using ${method}?`, { modal: true }, 'Pull');
     if (confirmed) {
       const before = this.repository.snapshot.status?.head ?? null;
-      await this.repository.pullBranch(remote, branch, rebase);
+      if (!await updateWithSmartFallback(this.repository, remote, branch, rebase)) return;
+      if (await this.resolveConflictsIfNeeded()) return;
       await notifyUpdateResult(this.repository, before, ref.name);
     }
   }
 
-  private async resolveConflictsIfNeeded(): Promise<void> {
-    if (this.repository.snapshot.status?.changes.some(change => change.conflict)) {
-      await vscode.commands.executeCommand('git4vsc.resolveConflicts', this.repository);
-    }
+  private async resolveConflictsIfNeeded(): Promise<boolean> {
+    if (!this.repository.snapshot.status?.changes.some(change => change.conflict)) return false;
+    await vscode.commands.executeCommand('git4vsc.resolveConflicts', this.repository);
+    return true;
   }
 
   private async renameBranch(ref: GitRef): Promise<void> {

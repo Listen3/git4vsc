@@ -148,7 +148,33 @@ export interface PushPreviewDialogRequest {
   targetBranch: string;
   target: string;
   existingTargetBranches: string[];
+  protectedBranches: string[];
   commits: PushPreviewCommit[];
+}
+
+export interface GitDiffHunk {
+  id: string;
+  header: string;
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  additions: number;
+  deletions: number;
+}
+
+export interface CommitSelection {
+  path: string;
+  originalPath?: string;
+  hunkIds?: string[];
+}
+
+export interface GitStashEntry {
+  ref: string;
+  hash: string;
+  branch: string;
+  message: string;
+  authorTime: number;
 }
 
 export interface GitBlameLine {

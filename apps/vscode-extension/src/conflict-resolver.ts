@@ -47,10 +47,11 @@ export class ConflictResolver implements vscode.Disposable {
     const incoming = { uri: gitResourceUri(repository, path, ':3'), title: 'Incoming' };
     await vscode.commands.executeCommand('_open.mergeEditor', {
       base: gitResourceUri(repository, path, ':1'),
-      input1: incoming,
-      input2: current,
+      input1: current,
+      input2: incoming,
       output: file
     });
+    await vscode.commands.executeCommand('merge.columnLayout');
   }
 
   async markResolved(repository = this.repository, path = this.activePath): Promise<void> {
@@ -85,7 +86,20 @@ export class ConflictResolver implements vscode.Disposable {
       await this.start(repository, conflicts[0]?.path);
       return;
     }
+    const phase = repository.snapshot.status?.phase ?? 'normal';
+    if (phase === 'normal' || phase === 'detached') {
+      await repository.completeNonOperationConflict();
+      this.finishSession();
+      void vscode.window.showInformationMessage('All conflicts are resolved.');
+      return;
+    }
     await repository.continueOperation();
+    const restoredConflicts = await repository.git.conflicts(repository.location);
+    if (restoredConflicts.length) {
+      void vscode.window.showWarningMessage('The Git operation completed, but restoring stashed local changes caused conflicts.');
+      await this.start(repository, restoredConflicts[0]?.path);
+      return;
+    }
     this.finishSession();
     void vscode.window.showInformationMessage('Git operation completed.');
   }
@@ -95,6 +109,12 @@ export class ConflictResolver implements vscode.Disposable {
     const confirmed = await vscode.window.showWarningMessage(`Abort the current ${phase} operation?`, { modal: true }, 'Abort');
     if (!confirmed) return;
     await repository.abortOperation();
+    const restoredConflicts = await repository.git.conflicts(repository.location);
+    if (restoredConflicts.length) {
+      void vscode.window.showWarningMessage('The Git operation was aborted, but restoring stashed local changes caused conflicts.');
+      await this.start(repository, restoredConflicts[0]?.path);
+      return;
+    }
     this.finishSession();
   }
 
@@ -102,6 +122,13 @@ export class ConflictResolver implements vscode.Disposable {
     this.refreshTree();
     const conflicts = await repository.git.conflicts(repository.location);
     if (!conflicts.length) {
+      const phase = repository.snapshot.status?.phase ?? 'normal';
+      if (phase === 'normal' || phase === 'detached') {
+        await repository.completeNonOperationConflict();
+        this.finishSession();
+        void vscode.window.showInformationMessage('All conflicts are resolved.');
+        return;
+      }
       this.finishSession();
       const action = await vscode.window.showInformationMessage('All conflicts are resolved. Complete the Git operation?', 'Continue');
       if (action === 'Continue') await this.continue(repository);

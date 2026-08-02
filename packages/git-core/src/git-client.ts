@@ -1,8 +1,10 @@
-import { access, readFile, stat, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CommitDetails, CommitFileChange, CommitPage, CommitSummary, GitBlameLine, GitChange, LogQuery, MergeConflict, RepositoryPhase, RepositoryStatus } from '@git4vsc/shared-types';
+import type { CommitDetails, CommitFileChange, CommitPage, CommitSelection, CommitSummary, GitBlameLine, GitChange, GitDiffHunk, GitStashEntry, LogQuery, MergeConflict, RepositoryPhase, RepositoryStatus } from '@git4vsc/shared-types';
 import { CommandRunner } from './command-runner.js';
 import { parseBlame, parseLog, parseNameStatus, parsePorcelainV2, parseRefs, parseUnmergedIndex } from './parsers.js';
+import { parseFilePatch, selectPatchHunks } from './partial-commit.js';
 
 export interface RepositoryLocation {
   root: string;
@@ -56,6 +58,10 @@ function commitContextStatus(change: GitChange): CommitContextFile['status'] {
 
 function commitChangePaths(changes: readonly CommitFileChange[]): string[] {
   return [...new Set(changes.flatMap(change => [change.originalPath, change.path].filter((path): path is string => Boolean(path))))];
+}
+
+function selectionPaths(selections: readonly CommitSelection[]): string[] {
+  return [...new Set(selections.flatMap(selection => [selection.originalPath, selection.path].filter((path): path is string => Boolean(path))))];
 }
 
 export class GitClient {
@@ -225,6 +231,91 @@ export class GitClient {
     await this.runner.run(['-C', location.root, 'commit', '--only', '--file=-', '--', ...paths], { input: message });
   }
 
+  async diffHunks(location: RepositoryLocation, path: string): Promise<GitDiffHunk[]> {
+    const patch = await this.workingTreePatch(location, path);
+    return parseFilePatch(patch).hunks.map(({ text: _text, ...hunk }) => hunk);
+  }
+
+  async commitSelections(location: RepositoryLocation, message: string, selections: readonly CommitSelection[]): Promise<void> {
+    const directory = await mkdtemp(join(tmpdir(), 'git4vsc-index-'));
+    const index = join(directory, 'index');
+    const env = { GIT_INDEX_FILE: index };
+    try {
+      await this.runner.run(['-C', location.root, 'read-tree', 'HEAD'], { env });
+      const wholeFiles = selectionPaths(selections.filter(selection => selection.hunkIds === undefined));
+      if (wholeFiles.length) await this.runner.run(['-C', location.root, 'add', '--all', '--', ...wholeFiles], { env });
+
+      const partialPatches: { path: string; patch: string }[] = [];
+      for (const selection of selections) {
+        if (selection.hunkIds === undefined) continue;
+        const selected = selectPatchHunks(await this.workingTreePatch(location, selection.path), new Set(selection.hunkIds));
+        if (selected) partialPatches.push({ path: selection.path, patch: selected });
+      }
+      if (partialPatches.length) {
+        await this.runner.run(['-C', location.root, 'apply', '--cached', '--whitespace=nowarn'], { env, input: partialPatches.map(item => item.patch).join('') });
+      }
+      if (!wholeFiles.length && !partialPatches.length) throw new Error('Select at least one change block before committing.');
+
+      await this.runner.run(['-C', location.root, 'commit', '--file=-'], { env, input: message });
+      const resetPaths = await this.indexOrHeadPaths(location, wholeFiles);
+      if (resetPaths.length) await this.runner.run(['-C', location.root, 'reset', '--mixed', 'HEAD', '--', ...resetPaths]);
+      for (const item of partialPatches) await this.alignIndexAfterPartialCommit(location, item.path, item.patch);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+
+  async stashes(location: RepositoryLocation): Promise<GitStashEntry[]> {
+    const result = await this.runner.run(['-C', location.root, 'stash', 'list', '--format=%gd%x1f%H%x1f%ct%x1f%gs%x1e']);
+    return result.stdout.split('\x1e').map(record => record.trim()).filter(Boolean).map(record => {
+      const [ref = '', hash = '', authorTime = '0', subject = ''] = record.split('\x1f');
+      const match = /^(?:On|WIP on) ([^:]+):\s*(.*)$/.exec(subject);
+      return { ref, hash, authorTime: Number(authorTime), branch: match?.[1] ?? '', message: match?.[2] ?? subject };
+    });
+  }
+
+  async stashPush(location: RepositoryLocation, message: string, includeUntracked = true): Promise<GitStashEntry | null> {
+    const before = await this.resolveOptionalRef(location, 'refs/stash');
+    await this.runner.run(['-C', location.root, 'stash', 'push', ...(includeUntracked ? ['--include-untracked'] : []), '--message', message]);
+    const after = await this.resolveOptionalRef(location, 'refs/stash');
+    if (!after || after === before) return null;
+    return (await this.stashes(location)).find(entry => entry.hash === after) ?? null;
+  }
+
+  async stashApply(location: RepositoryLocation, ref: string, reinstateIndex = false): Promise<void> {
+    await this.runner.run(['-C', location.root, 'stash', 'apply', ...(reinstateIndex ? ['--index'] : []), ref]);
+  }
+
+  async stashPop(location: RepositoryLocation, ref: string, reinstateIndex = false): Promise<void> {
+    await this.runner.run(['-C', location.root, 'stash', 'pop', ...(reinstateIndex ? ['--index'] : []), ref]);
+  }
+
+  async stashDrop(location: RepositoryLocation, ref: string): Promise<void> {
+    await this.runner.run(['-C', location.root, 'stash', 'drop', ref]);
+  }
+
+  async stashBranch(location: RepositoryLocation, branch: string, ref: string): Promise<void> {
+    await this.runner.run(['-C', location.root, 'stash', 'branch', branch, ref]);
+  }
+
+  async stashChanges(location: RepositoryLocation, ref: string): Promise<CommitFileChange[]> {
+    const result = await this.runner.run(['-C', location.root, 'stash', 'show', '--include-untracked', '--name-status', '-z', '-M', '-C', ref]);
+    return parseNameStatus(result.stdout);
+  }
+
+  async rememberSmartStash(location: RepositoryLocation, hash: string): Promise<void> {
+    await this.runner.run(['-C', location.root, 'update-ref', 'refs/git4vsc/smart-stash', hash]);
+  }
+
+  async pendingSmartStash(location: RepositoryLocation): Promise<GitStashEntry | null> {
+    const hash = await this.resolveOptionalRef(location, 'refs/git4vsc/smart-stash');
+    return hash ? (await this.stashes(location)).find(entry => entry.hash === hash) ?? null : null;
+  }
+
+  async clearSmartStash(location: RepositoryLocation): Promise<void> {
+    await this.runner.run(['-C', location.root, 'update-ref', '-d', 'refs/git4vsc/smart-stash']);
+  }
+
   async commitMessageContext(location: RepositoryLocation, head: string | null, changes: readonly GitChange[]): Promise<CommitMessageContext> {
     const base = head ?? (await this.runner.run(['-C', location.root, 'hash-object', '-t', 'tree', '--stdin'], { input: '' })).stdout.trim();
     const files: CommitContextFile[] = [];
@@ -271,6 +362,39 @@ export class GitClient {
     const lines = text.split(/\r?\n/);
     if (text.endsWith('\n')) lines.pop();
     return `${header.join('\n')}\n@@ -0,0 +1,${lines.length} @@\n${lines.map(line => `+${line}`).join('\n')}\n${text.endsWith('\n') ? '' : '\\ No newline at end of file\n'}`;
+  }
+
+  private async workingTreePatch(location: RepositoryLocation, path: string): Promise<string> {
+    return (await this.runner.run(['-C', location.root, 'diff', '--binary', '--full-index', '--no-ext-diff', '--no-color', 'HEAD', '--', path])).stdout;
+  }
+
+  private async resolveOptionalRef(location: RepositoryLocation, ref: string): Promise<string | null> {
+    try {
+      return (await this.runner.run(['-C', location.root, 'rev-parse', '--verify', ref])).stdout.trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async indexOrHeadPaths(location: RepositoryLocation, paths: readonly string[]): Promise<string[]> {
+    if (!paths.length) return [];
+    const [index, head] = await Promise.all([
+      this.runner.run(['-C', location.root, 'ls-files', '-z', '--', ...paths]),
+      this.runner.run(['-C', location.root, 'ls-tree', '-r', '--name-only', '-z', 'HEAD', '--', ...paths])
+    ]);
+    return [...new Set(`${index.stdout}\0${head.stdout}`.split('\0').filter(Boolean))];
+  }
+
+  private async alignIndexAfterPartialCommit(location: RepositoryLocation, path: string, patch: string): Promise<void> {
+    try {
+      await this.runner.run(['-C', location.root, 'apply', '--cached', '--whitespace=nowarn'], { input: patch });
+    } catch {
+      try {
+        await this.runner.run(['-C', location.root, 'apply', '--cached', '--reverse', '--check'], { input: patch });
+      } catch {
+        await this.runner.run(['-C', location.root, 'reset', '--mixed', 'HEAD', '--', path]);
+      }
+    }
   }
 
   async conflicts(location: RepositoryLocation): Promise<MergeConflict[]> {
@@ -339,6 +463,14 @@ export class GitClient {
 
   async checkout(location: RepositoryLocation, target: string, detach = false, track = false): Promise<void> {
     const args = ['-C', location.root, 'switch'];
+    if (detach) args.push('--detach');
+    if (track) args.push('--track');
+    args.push(target);
+    await this.runner.run(args);
+  }
+
+  async forceCheckout(location: RepositoryLocation, target: string, detach = false, track = false): Promise<void> {
+    const args = ['-C', location.root, 'switch', '--discard-changes'];
     if (detach) args.push('--detach');
     if (track) args.push('--track');
     args.push(target);

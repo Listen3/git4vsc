@@ -151,6 +151,77 @@ describe('GitClient against generated repositories', () => {
     expect((await client.status(location)).changes).toContainEqual({ path: 'left-staged.txt', index: 'added', workingTree: null, conflict: false });
   });
 
+  it('commits a staged rename selected in the Commit view', async () => {
+    const location = await client.discover(fixtures.history);
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(`${location.root}/staged-rename.txt`, 'staged rename\n');
+    await client.commitPaths(location, 'staged rename base', ['staged-rename.txt']);
+    await rename(`${location.root}/staged-rename.txt`, `${location.root}/staged-renamed.txt`);
+    await client.stage(location, ['staged-rename.txt', 'staged-renamed.txt']);
+
+    await client.commitSelections(location, 'selected staged rename', [{ path: 'staged-renamed.txt', originalPath: 'staged-rename.txt' }]);
+
+    const details = await client.commitDetails(location, (await client.log(location, 0, 1)).commits[0]!.hash);
+    expect(details.files).toContainEqual({ path: 'staged-renamed.txt', originalPath: 'staged-rename.txt', status: 'renamed' });
+    expect((await client.status(location)).changes.some(change => change.path === 'staged-renamed.txt')).toBe(false);
+    expect((await client.status(location)).changes).toContainEqual({ path: 'left-staged.txt', index: 'added', workingTree: null, conflict: false });
+  });
+
+  it('commits selected change blocks and leaves the other blocks in the working tree', async () => {
+    const location = await client.discover(fixtures.history);
+    const { writeFile } = await import('node:fs/promises');
+    const original = Array.from({ length: 32 }, (_, index) => `line ${index + 1}`).join('\n') + '\n';
+    await writeFile(`${location.root}/partial-blocks.txt`, original);
+    await client.commitPaths(location, 'partial blocks base', ['partial-blocks.txt']);
+
+    const changed = original.replace('line 2\n', 'line two\n').replace('line 30\n', 'line thirty\n');
+    await writeFile(`${location.root}/partial-blocks.txt`, changed);
+    const hunks = await client.diffHunks(location, 'partial-blocks.txt');
+    expect(hunks).toHaveLength(2);
+    await client.commitSelections(location, 'commit first block', [{ path: 'partial-blocks.txt', hunkIds: [hunks[0]!.id] }]);
+
+    expect(await client.show(location, 'partial-blocks.txt', 'HEAD')).toContain('line two');
+    expect(await client.show(location, 'partial-blocks.txt', 'HEAD')).toContain('line 30');
+    expect((await client.status(location)).changes.some(change => change.path === 'partial-blocks.txt')).toBe(true);
+  });
+
+  it('preserves unrelated staged blocks in a partially committed file', async () => {
+    const location = await client.discover(fixtures.history);
+    const { writeFile } = await import('node:fs/promises');
+    const original = Array.from({ length: 32 }, (_, index) => `staged line ${index + 1}`).join('\n') + '\n';
+    await writeFile(`${location.root}/partial-staged.txt`, original);
+    await client.commitPaths(location, 'partial staged base', ['partial-staged.txt']);
+
+    await writeFile(`${location.root}/partial-staged.txt`, original.replace('staged line 2\n', 'kept staged\n'));
+    await client.stage(location, ['partial-staged.txt']);
+    await writeFile(`${location.root}/partial-staged.txt`, original.replace('staged line 2\n', 'kept staged\n').replace('staged line 30\n', 'committed block\n'));
+    const hunks = await client.diffHunks(location, 'partial-staged.txt');
+    await client.commitSelections(location, 'commit unstaged block', [{ path: 'partial-staged.txt', hunkIds: [hunks[1]!.id] }]);
+
+    expect(await client.show(location, 'partial-staged.txt', 'HEAD')).toContain('committed block');
+    expect(await client.show(location, 'partial-staged.txt', 'HEAD')).toContain('staged line 2');
+    expect(await client.show(location, 'partial-staged.txt', 'index')).toContain('kept staged');
+    expect((await client.status(location)).changes.find(change => change.path === 'partial-staged.txt')).toMatchObject({ index: 'modified', workingTree: null });
+  });
+
+  it('creates, restores and manages Git stashes', async () => {
+    const location = await client.discover(fixtures.history);
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(`${location.root}/base.txt`, 'stash tracked\n');
+    await writeFile(`${location.root}/stash-untracked.txt`, 'stash untracked\n');
+    const stash = await client.stashPush(location, 'integration stash');
+    expect(stash?.message).toBe('integration stash');
+    expect((await client.status(location)).changes.some(change => change.path === 'stash-untracked.txt')).toBe(false);
+    expect((await client.stashChanges(location, stash!.ref)).map(change => change.path)).toEqual(expect.arrayContaining(['base.txt', 'stash-untracked.txt']));
+    await client.rememberSmartStash(location, stash!.hash);
+    expect((await client.pendingSmartStash(location))?.hash).toBe(stash!.hash);
+    await client.clearSmartStash(location);
+    expect(await client.pendingSmartStash(location)).toBeNull();
+
+    await client.stashPop(location, stash!.ref, true);
+    expect((await client.status(location)).changes.map(change => change.path)).toContain('stash-untracked.txt');
+  });
+
   it('builds AI context from the selected files current commit contents', async () => {
     const location = await client.discover(fixtures.history);
     const { writeFile } = await import('node:fs/promises');

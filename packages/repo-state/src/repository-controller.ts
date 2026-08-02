@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import type { GitClient, RepositoryLocation } from '@git4vsc/git-core';
-import type { CommitFileChange, GitChange, RepositoryInvalidation, RepositorySnapshot } from '@git4vsc/shared-types';
+import type { CommitFileChange, CommitSelection, GitChange, GitStashEntry, RepositoryInvalidation, RepositorySnapshot } from '@git4vsc/shared-types';
 
 class OperationQueue {
   private tail = Promise.resolve();
@@ -17,6 +17,7 @@ export class RepositoryController {
   private readonly invalid = new Set<RepositoryInvalidation>(['status', 'log', 'refs']);
   private readonly operations = new OperationQueue();
   private activeRefresh: Promise<void> | null = null;
+  private pendingSmartStash: GitStashEntry | null = null;
   private mutable: RepositorySnapshot = {
     status: null,
     commits: [],
@@ -42,7 +43,9 @@ export class RepositoryController {
   }
 
   refresh(): Promise<void> {
-    if (this.activeRefresh) return this.activeRefresh;
+    if (this.activeRefresh) {
+      return this.activeRefresh.then(() => this.invalid.size > 0 ? this.refresh() : undefined);
+    }
     this.activeRefresh = this.refreshInvalidated().finally(() => { this.activeRefresh = null; });
     return this.activeRefresh;
   }
@@ -111,6 +114,30 @@ export class RepositoryController {
     return this.runOperation('commit', () => this.git.commitPaths(this.location, message, paths), ['status', 'log', 'refs']);
   }
 
+  commitSelections(message: string, selections: readonly CommitSelection[]): Promise<void> {
+    return this.runOperation('commit', () => this.git.commitSelections(this.location, message, selections), ['status', 'log', 'refs']);
+  }
+
+  stashChanges(message: string, includeUntracked = true): Promise<void> {
+    return this.runOperation('stash', () => this.git.stashPush(this.location, message, includeUntracked).then(() => undefined), ['status']);
+  }
+
+  applyStash(ref: string, reinstateIndex = false): Promise<void> {
+    return this.runOperation('apply-stash', () => this.git.stashApply(this.location, ref, reinstateIndex), ['status'], true);
+  }
+
+  popStash(ref: string, reinstateIndex = false): Promise<void> {
+    return this.runOperation('pop-stash', () => this.git.stashPop(this.location, ref, reinstateIndex), ['status'], true);
+  }
+
+  dropStash(ref: string): Promise<void> {
+    return this.runOperation('drop-stash', () => this.git.stashDrop(this.location, ref), ['status']);
+  }
+
+  createBranchFromStash(branch: string, ref: string): Promise<void> {
+    return this.runOperation('stash-branch', () => this.git.stashBranch(this.location, branch, ref), ['status', 'log', 'refs'], true);
+  }
+
   createBranch(name: string, startPoint: string): Promise<void> {
     return this.runOperation('create-branch', () => this.git.createBranch(this.location, name, startPoint), ['status', 'log', 'refs']);
   }
@@ -123,12 +150,24 @@ export class RepositoryController {
     return this.runOperation('checkout-update', () => this.git.checkoutAndUpdate(this.location, branch, upstream), ['status', 'log', 'refs'], true);
   }
 
+  smartCheckoutAndUpdate(branch: string, upstream: string): Promise<void> {
+    return this.runPreservingOperation('smart-checkout-update', () => this.git.checkoutAndUpdate(this.location, branch, upstream));
+  }
+
   checkoutAndRebase(branch: string, currentBranch: string): Promise<void> {
     return this.runOperation('checkout-rebase', () => this.git.checkoutAndRebase(this.location, branch, currentBranch), ['status', 'log', 'refs'], true);
   }
 
+  smartCheckoutAndRebase(branch: string, currentBranch: string): Promise<void> {
+    return this.runPreservingOperation('smart-checkout-rebase', () => this.git.checkoutAndRebase(this.location, branch, currentBranch));
+  }
+
   checkoutRemoteAndRebase(localBranch: string, remoteBranch: string, currentBranch: string): Promise<void> {
     return this.runOperation('checkout-rebase', () => this.git.checkoutRemoteAndRebase(this.location, localBranch, remoteBranch, currentBranch), ['status', 'log', 'refs'], true);
+  }
+
+  smartCheckoutRemoteAndRebase(localBranch: string, remoteBranch: string, currentBranch: string): Promise<void> {
+    return this.runPreservingOperation('smart-checkout-rebase', () => this.git.checkoutRemoteAndRebase(this.location, localBranch, remoteBranch, currentBranch));
   }
 
   createTag(name: string, startPoint: string): Promise<void> {
@@ -137,6 +176,18 @@ export class RepositoryController {
 
   checkout(target: string, detach = false, track = false): Promise<void> {
     return this.runOperation('checkout', () => this.git.checkout(this.location, target, detach, track), ['status', 'log', 'refs']);
+  }
+
+  forceCheckout(target: string, detach = false, track = false): Promise<void> {
+    return this.runOperation('force-checkout', () => this.git.forceCheckout(this.location, target, detach, track), ['status', 'log', 'refs']);
+  }
+
+  smartCheckout(target: string, detach = false, track = false): Promise<void> {
+    return this.runPreservingOperation('smart-checkout', () => this.git.checkout(this.location, target, detach, track));
+  }
+
+  smartCreateAndCheckoutBranch(name: string, startPoint: string, track = false): Promise<void> {
+    return this.runPreservingOperation('smart-checkout', () => this.git.createAndCheckoutBranch(this.location, name, startPoint, track));
   }
 
   merge(ref: string): Promise<void> {
@@ -157,12 +208,28 @@ export class RepositoryController {
 
   continueOperation(): Promise<void> {
     const phase = this.mutable.status?.phase ?? 'normal';
-    return this.runOperation('continue', () => this.git.continueOperation(this.location, phase), ['status', 'log', 'refs']);
+    return this.runOperation('continue', async () => {
+      await this.git.continueOperation(this.location, phase);
+      if (!(await this.git.conflicts(this.location)).length) await this.restorePendingSmartStash();
+    }, ['status', 'log', 'refs'], true);
   }
 
   abortOperation(): Promise<void> {
     const phase = this.mutable.status?.phase ?? 'normal';
-    return this.runOperation('abort', () => this.git.abortOperation(this.location, phase), ['status', 'log', 'refs']);
+    return this.runOperation('abort', async () => {
+      await this.git.abortOperation(this.location, phase);
+      await this.restorePendingSmartStash();
+    }, ['status', 'log', 'refs'], true);
+  }
+
+  completeNonOperationConflict(): Promise<void> {
+    return this.runOperation('complete-conflict', async () => {
+      const stash = this.pendingSmartStash ?? await this.git.pendingSmartStash(this.location);
+      if (!stash) return;
+      await this.git.stashDrop(this.location, stash.ref);
+      await this.git.clearSmartStash(this.location);
+      this.pendingSmartStash = null;
+    }, ['status', 'log', 'refs']);
   }
 
   rebase(ref: string): Promise<void> {
@@ -199,6 +266,10 @@ export class RepositoryController {
 
   pullBranch(remote: string, branch: string, rebase: boolean): Promise<void> {
     return this.runOperation(rebase ? 'pull-rebase' : 'pull-merge', () => this.git.pullBranch(this.location, remote, branch, rebase), ['status', 'log', 'refs'], true);
+  }
+
+  smartPullBranch(remote: string, branch: string, rebase: boolean): Promise<void> {
+    return this.runPreservingOperation(rebase ? 'smart-pull-rebase' : 'smart-pull-merge', () => this.git.pullBranch(this.location, remote, branch, rebase));
   }
 
   pushTag(name: string, remote: string): Promise<void> {
@@ -263,6 +334,45 @@ export class RepositoryController {
         this.patch({ operation: null });
       }
     });
+  }
+
+  private runPreservingOperation(name: string, operation: () => Promise<void>): Promise<void> {
+    return this.runOperation(name, async () => {
+      const stash = await this.git.stashPush(this.location, `Git4VSC smart operation: ${name}`, true);
+      try {
+        await operation();
+      } catch (error) {
+        if (stash) {
+          if ((await this.git.conflicts(this.location)).length) {
+            this.pendingSmartStash = stash;
+            await this.git.rememberSmartStash(this.location, stash.hash);
+          }
+          else await this.restoreSmartStash(stash);
+        }
+        throw error;
+      }
+      if (stash) await this.restoreSmartStash(stash);
+    }, ['status', 'log', 'refs'], true);
+  }
+
+  private async restorePendingSmartStash(): Promise<void> {
+    const stash = this.pendingSmartStash ?? await this.git.pendingSmartStash(this.location);
+    if (!stash) return;
+    await this.restoreSmartStash(stash);
+  }
+
+  private async restoreSmartStash(stash: GitStashEntry): Promise<void> {
+    try {
+      await this.git.stashPop(this.location, stash.ref, true);
+    } catch (error) {
+      if ((await this.git.conflicts(this.location)).length) {
+        this.pendingSmartStash = stash;
+        await this.git.rememberSmartStash(this.location, stash.hash);
+      }
+      throw error;
+    }
+    this.pendingSmartStash = null;
+    await this.git.clearSmartStash(this.location);
   }
 
   private patch(patch: Partial<RepositorySnapshot>): void {

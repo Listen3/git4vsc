@@ -35,6 +35,11 @@ export function branchTrackingSuffix(status: RepositoryStatus | null | undefined
 }
 
 export function operationLabel(operation: string): string {
+  if (operation.startsWith('smart-pull')) return operation.endsWith('rebase') ? 'Smart updating with rebase…' : 'Smart updating…';
+  if (operation.startsWith('smart-checkout')) return 'Smart checking out…';
+  if (operation === 'stash') return 'Stashing changes…';
+  if (operation === 'apply-stash' || operation === 'pop-stash') return 'Restoring stashed changes…';
+  if (operation === 'drop-stash') return 'Dropping stash…';
   if (operation === 'pull-merge' || operation === 'checkout-update' || operation === 'update-branch') return 'Updating…';
   if (operation === 'pull-rebase') return 'Updating with rebase…';
   if (operation === 'fetch') return 'Fetching…';

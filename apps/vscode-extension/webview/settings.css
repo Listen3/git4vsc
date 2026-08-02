@@ -29,6 +29,8 @@
 .setting-row p { margin: 4px 0 0; max-width: 560px; color: var(--vscode-descriptionForeground); font-size: 11px; line-height: 1.4; }
 .setting-control { min-width: 150px; display: flex; justify-content: flex-end; }
 .setting-control select { width: 170px; height: 27px; padding: 0 27px 0 8px; border: 1px solid var(--vscode-dropdown-border); border-radius: 2px; outline: 0; color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background); }
+.setting-text-input { box-sizing: border-box; width: 250px; height: 27px; padding: 0 8px; border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; outline: 0; color: var(--vscode-input-foreground); background: var(--vscode-input-background); font: inherit; }
+.setting-text-input:focus { border-color: var(--vscode-focusBorder); }
 .setting-control select:focus { border-color: var(--vscode-focusBorder); }
 .settings-toggle { width: 32px; height: 18px; position: relative; display: block; }
 .settings-toggle input { position: absolute; opacity: 0; }

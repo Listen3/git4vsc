@@ -14,7 +14,7 @@
 | 原生 Diff | platform Diff | `vscode.diff` | blob/diff API | Done（基础场景） |
 | stage/unstage | changes actions | SCM context | GitClient/controller | Done |
 | Commit staged/all | commit workflow | SCM input + progress | controller | Done |
-| partial commit/changelist | commit workflow | selected resources/hunks | index transaction | Planned |
+| partial commit/changelist | commit workflow | selected files and Git hunks | temporary index transaction | Partial: hunks implemented; persistent changelists planned |
 | hooks/GPG/amend/sign-off | commit options/detectors | options + diagnostics | commit use-case | Planned |
 | Log topo order | VCS Log provider | Webview | git-core | Done |
 | 分页/渐进加载 | first block + all hashes/details | Webview load more | controller | Done（offset pages） |
@@ -27,7 +27,7 @@
 | Pull merge/rebase | update process | progress/conflict | operation use-case | Next |
 | Push/rejected update | push operation | progress/reject action | operation use-case | Next |
 | Conflict continue/abort | platform Merge + operation | Merge Editor + actions | operation state | Done（逐文件会话、accept side、continue/abort） |
-| Stash | stash tracker/cache | TreeView/actions | stash store | Planned |
+| Stash | stash tracker/cache | branch menu and commands | Git stash store | Implemented: create/apply/pop/drop/files/branch |
 | Reset | reset operation/preview | QuickPick/confirm | reset use-case | Planned |
 | Cherry-pick | sequence process | log context action | sequence use-case | Planned |
 | Rebase | rebase process/editor | command + Webview plan | rebase state machine | Planned |

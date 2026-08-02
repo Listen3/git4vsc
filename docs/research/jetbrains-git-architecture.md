@@ -66,11 +66,11 @@ Git4Idea 是 Git 适配器，负责命令、Git 格式解析、仓库语义和 G
 
 | 流程 | JetBrains 关键类 | 观察到的职责 | Git4VSC 路线 |
 | --- | --- | --- | --- |
-| Commit | `GitCheckinEnvironment.kt`, `GitRepositoryCommitter.kt` | 按 root 分组、准备 index、message file、amend/sign-off/hooks/author、检测 nothing-to-commit/GPG、提交后刷新 | 当前 staged/all commit；后续 partial commit 与 hooks/GPG 诊断 |
+| Commit | `GitCheckinEnvironment.kt`, `GitRepositoryCommitter.kt` | 按 root 分组、准备 index、message file、amend/sign-off/hooks/author、检测 nothing-to-commit/GPG、提交后刷新 | 已支持文件和 Git hunk 选择；后续补逐行 Changelist 与 hooks/GPG 诊断 |
 | Push | `GitPushOperation.java`, `GitPushNativeResultParser.java` | 按 repo/spec 执行、解析 porcelain、reject 后 update-and-push、跟踪/标签与通知 | 第二链路：progress event、reject 分类、逐仓库结果 |
 | Fetch | `GitFetchSupportImpl.kt`, `GitRemoteOperationQueueImpl.kt` | remote operation queue、按 remote fetch、认证与 prune/options、结果聚合 | 第二链路；锁只属于 repository/remote |
 | Pull/Update | `GitUpdateProcess.java`, `GitMergeUpdater`, `GitRebaseUpdater` | 保存本地改动、获取远端、为每 root 选 updater、处理冲突、恢复改动、聚合 root 结果 | 第二链路 use-case，不把 `git pull` 当黑盒 |
-| Stash | `GitStashUtils.kt`, `GitStashTracker.kt`, `GitStashCache.kt` | push/list/apply/drop、reflog/log 格式解析、缓存刷新 | 第三阶段独立 stash store |
+| Stash | `GitStashUtils.kt`, `GitStashTracker.kt`, `GitStashCache.kt` | push/list/apply/drop、reflog/log 格式解析、缓存刷新 | 已接入基础管理，并作为 Smart Update/Checkout 的保留层 |
 | Reset | `GitResetOperation.java` | 多 root、local-overwrite 检测、必要时 changes saver、执行后 VFS/状态刷新 | 第三阶段 typed mode + preview |
 | Rebase | `GitRebaseProcess.java`, `GitRebaseProblemDetector.java`, `GitRebaseSpec.java` | published commit 检查、保存改动、逐 root 状态、冲突/continue/skip/abort、editor handler | 第三阶段显式 state machine |
 | Cherry-pick | `GitCherryPicker.java`, `CherryPickProcess.kt` | 平台 picker 入口、按 root/顺序执行、冲突继续与空提交策略 | 第三阶段 sequence state machine |

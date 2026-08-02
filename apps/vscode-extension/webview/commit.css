@@ -145,7 +145,7 @@ button:disabled { opacity: .45; }
 }
 .commit-change-group[open] > summary::before { transform: rotate(45deg); }
 .commit-change-group > summary small { margin-left: auto; }
-.commit-change-group input, .commit-change-row > input {
+.commit-change-group input, .commit-change-row > input, .commit-hunk-row input {
   width: 13px;
   height: 13px;
   flex: 0 0 13px;
@@ -156,11 +156,11 @@ button:disabled { opacity: .45; }
   border-radius: 2px;
   background: transparent;
 }
-.commit-change-group input:checked, .commit-change-row > input:checked, .commit-change-group input:indeterminate {
+.commit-change-group input:checked, .commit-change-row > input:checked, .commit-hunk-row input:checked, .commit-change-group input:indeterminate {
   border-color: var(--git4vsc-checkbox-border-checked);
   background: transparent;
 }
-.commit-change-group input:checked::after, .commit-change-row > input:checked::after {
+.commit-change-group input:checked::after, .commit-change-row > input:checked::after, .commit-hunk-row input:checked::after {
   content: '';
   display: block;
   position: absolute;
@@ -201,6 +201,19 @@ button:disabled { opacity: .45; }
 .commit-change-row.selected .commit-change-folder { color: var(--vscode-list-activeSelectionForeground, #fff); opacity: .54; }
 .commit-row-action { width: 20px; height: 19px; flex: 0 0 20px; visibility: hidden; font-size: 14px; }
 .commit-change-row:hover .commit-row-action, .commit-row-action:focus { visibility: visible; }
+.commit-hunk-toggle { width: 14px; height: 18px; flex: 0 0 14px; margin-left: -15px; padding: 0; border: 0; display: grid; place-items: center; color: var(--vscode-descriptionForeground); background: transparent; }
+.commit-hunk-toggle:hover { color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground); }
+.commit-hunk-toggle svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; transition: transform 80ms ease-out; }
+.commit-hunk-toggle.expanded svg { transform: rotate(90deg); }
+.commit-hunk-list { margin: 0 3px 2px 36px; border-left: 1px solid color-mix(in srgb, var(--vscode-panel-border) 72%, transparent); }
+.commit-hunk-row { min-height: 21px; padding: 0 5px 0 7px; display: flex; align-items: center; gap: 6px; color: var(--vscode-descriptionForeground); font-size: 11px; }
+.commit-hunk-row:hover { color: var(--vscode-foreground); background: color-mix(in srgb, var(--vscode-list-hoverBackground) 70%, transparent); }
+.commit-hunk-row > span { color: var(--vscode-foreground); }
+.commit-hunk-row small { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commit-hunk-row em { font-style: normal; }
+.commit-hunk-row em.added { color: var(--git4vsc-change-added); }
+.commit-hunk-row em.deleted { color: var(--git4vsc-change-deleted); }
+.commit-hunk-loading { min-height: 22px; padding: 0 8px; display: flex; align-items: center; color: var(--vscode-descriptionForeground); font-size: 11px; }
 .change-added { color: var(--git4vsc-change-added); }
 .change-modified { color: var(--git4vsc-change-modified); }
 .change-deleted, .change-unversioned, .change-conflict { color: var(--git4vsc-change-deleted); }

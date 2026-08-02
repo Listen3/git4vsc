@@ -48,7 +48,7 @@ Important gaps:
 - No discard, delete untracked, add to `.gitignore`, open file or copy-path actions.
 - No group-level Stage All / Unstage All / Discard All commands.
 - No Commit and Push, Amend or pre-commit validation flow.
-- No line/hunk staging and no quick-diff provider.
+- Git hunk selection is available in the Commit view; line-level staging and a quick-diff provider are not included.
 - Progress and Git errors are still generic rather than operation-specific.
 
 ## 4. Target Interaction

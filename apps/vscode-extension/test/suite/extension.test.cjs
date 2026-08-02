@@ -15,6 +15,8 @@ suite('Git4VSC Extension Host', () => {
     assert.ok(commands.includes('git4vsc.showBranchMenu'));
     assert.ok(commands.includes('git4vsc.updateCurrentBranch'));
     assert.ok(commands.includes('git4vsc.pushCurrentBranch'));
+    assert.ok(commands.includes('git4vsc.stashChanges'));
+    assert.ok(commands.includes('git4vsc.manageStashes'));
     assert.ok(commands.includes('git4vsc.justifyPanel'));
     assert.ok(commands.includes('git4vsc.repositories.focus'));
     assert.ok(commands.includes('git4vsc.resolveConflicts'));
