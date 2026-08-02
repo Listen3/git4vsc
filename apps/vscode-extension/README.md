@@ -12,15 +12,15 @@ Focused Git workflows for Visual Studio Code.
 
 **Commit workspace, Commit Log and Git Blame / 提交工作区、提交日志与 Git Blame**
 
-![Git4VSC Commit workspace, Commit Log and Git Blame](https://gitee.com/nebxy/git4vsc/raw/main/apps/vscode-extension/media/overview.png)
+![Git4VSC Commit workspace, Commit Log and Git Blame](https://raw.githubusercontent.com/Listen3/git4vsc/main/apps/vscode-extension/media/overview.png)
 
 **From Annotate with Git Blame to Commit / 从代码追溯到完成提交**
 
-![Git4VSC workflow from Git Blame to Commit](https://gitee.com/nebxy/git4vsc/raw/main/apps/vscode-extension/media/commit-workflow.gif)
+![Git4VSC workflow from Git Blame to Commit](https://raw.githubusercontent.com/Listen3/git4vsc/main/apps/vscode-extension/media/commit-workflow.gif)
 
 **Optional AI commit message settings / 可选的 AI 提交信息设置**
 
-![Git4VSC AI commit message settings](https://gitee.com/nebxy/git4vsc/raw/main/apps/vscode-extension/media/ai-settings.png)
+![Git4VSC AI commit message settings](https://raw.githubusercontent.com/Listen3/git4vsc/main/apps/vscode-extension/media/ai-settings.png)
 
 ## English
 
@@ -146,7 +146,7 @@ Commit 标题、分支列表和状态栏都会显示 ahead/behind 数量。长�
 
 ## Feedback / 反馈
 
-- [Source repository / 源码仓库](https://gitee.com/nebxy/git4vsc)
-- [Report an issue / 反馈问题](https://gitee.com/nebxy/git4vsc/issues)
+- [Source repository / 源码仓库](https://github.com/Listen3/git4vsc)
+- [Report an issue / 反馈问题](https://github.com/Listen3/git4vsc/issues)
 
 Git4VSC is an independent project and is not affiliated with or endorsed by JetBrains s.r.o. or Microsoft Corporation. Git4VSC 是独立项目，与 JetBrains s.r.o. 或 Microsoft Corporation 不存在隶属或背书关系。

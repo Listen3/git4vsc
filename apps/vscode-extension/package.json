@@ -31,11 +31,11 @@
   "galleryBanner": { "color": "#202938", "theme": "dark" },
   "repository": {
     "type": "git",
-    "url": "https://gitee.com/nebxy/git4vsc.git"
+    "url": "https://github.com/Listen3/git4vsc.git"
   },
-  "homepage": "https://gitee.com/nebxy/git4vsc",
-  "bugs": { "url": "https://gitee.com/nebxy/git4vsc/issues" },
-  "qna": "https://gitee.com/nebxy/git4vsc/issues",
+  "homepage": "https://github.com/Listen3/git4vsc",
+  "bugs": { "url": "https://github.com/Listen3/git4vsc/issues" },
+  "qna": "https://github.com/Listen3/git4vsc/issues",
   "type": "module",
   "engines": { "vscode": "^1.102.0" },
   "main": "./dist/extension.cjs",
