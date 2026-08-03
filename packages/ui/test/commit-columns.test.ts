@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultCommitColumnVisibility, defaultCommitColumnWidths, normalizeCommitColumnVisibility, normalizeCommitColumnWidths } from '../src/commit-columns.js';
+import { defaultCommitColumnVisibility, defaultCommitColumnWidths, normalizeCommitColumnVisibility, normalizeCommitColumnWidths, resizeCommitDetailColumn } from '../src/commit-columns.js';
 
 describe('commit column widths', () => {
   it('uses stable defaults', () => {
@@ -18,5 +18,16 @@ describe('commit column widths', () => {
   it('normalizes persisted column visibility', () => {
     expect(normalizeCommitColumnVisibility()).toEqual(defaultCommitColumnVisibility);
     expect(normalizeCommitColumnVisibility({ author: false, hash: false })).toEqual({ author: false, date: true, hash: false });
+  });
+
+  it('keeps columns to the right fixed by resizing detail columns from their left edge', () => {
+    const resized = resizeCommitDetailColumn(defaultCommitColumnWidths, 'date', 24);
+    expect(resized).toEqual({ ...defaultCommitColumnWidths, commit: 464, date: 108 });
+    expect(Object.values(resized).reduce((total, width) => total + width, 0)).toBe(Object.values(defaultCommitColumnWidths).reduce((total, width) => total + width, 0));
+  });
+
+  it('stops resizing when the detail or flexible commit column reaches its minimum', () => {
+    expect(resizeCommitDetailColumn(defaultCommitColumnWidths, 'date', 200).date).toBe(95);
+    expect(resizeCommitDetailColumn(defaultCommitColumnWidths, 'author', -200, 430)).toEqual({ ...defaultCommitColumnWidths, commit: 430, author: 120 });
   });
 });

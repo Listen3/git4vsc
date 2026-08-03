@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1 - Preview
+
+- Improved Commit Log startup, branch hierarchy, graph spacing, and column layout.
+- Added live working-tree refresh while suppressing duplicate Git metadata events that could cause repeated refreshes on macOS.
+- Kept partial-commit patch support internal and simplified the Commit file list to file-level selection.
+
 ## 0.1.0 - Preview
 
 - Added a compact selected-file commit workflow and file context actions.

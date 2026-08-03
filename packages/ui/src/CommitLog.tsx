@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type UIEvent } from 'react';
 import { layoutCommits } from '@git4vsc/git-graph';
 import type { CommitSummary } from '@git4vsc/shared-types';
-import { defaultCommitColumnWidths, normalizeCommitColumnVisibility, normalizeCommitColumnWidths, type CommitColumn, type CommitColumnVisibility, type CommitColumnWidths } from './commit-columns.js';
+import { defaultCommitColumnWidths, normalizeCommitColumnVisibility, normalizeCommitColumnWidths, resizeCommitDetailColumn, type CommitColumnVisibility, type CommitColumnWidths, type CommitDetailColumn } from './commit-columns.js';
 import { formatCommitTime, formatExactCommitTime } from './commit-date.js';
 import { CommitGraph, type FilteredConnection } from './CommitGraph.js';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu.js';
@@ -87,12 +87,12 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
     if (hasMore && onLoadMore && !loading && target.scrollTop + target.clientHeight >= target.scrollHeight - rowHeight * 8) onLoadMore();
   }
 
-  function startColumnResize(column: CommitColumn, event: PointerEvent) {
+  function startColumnResize(column: CommitDetailColumn, event: PointerEvent) {
     event.preventDefault();
     const startX = event.clientX;
-    const startWidth = widthsRef.current[column];
+    const startWidths = { ...widthsRef.current, commit: commitWidth };
     const move = (moveEvent: globalThis.PointerEvent) => {
-      const next = normalizeCommitColumnWidths({ ...widthsRef.current, [column]: startWidth + moveEvent.clientX - startX });
+      const next = resizeCommitDetailColumn(startWidths, column, moveEvent.clientX - startX, graphWidth + 80);
       widthsRef.current = next;
       setColumnWidths(next);
     };
@@ -107,18 +107,19 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
     window.addEventListener('pointercancel', stop);
   }
 
-  function resetColumn(column: CommitColumn) {
-    const next = { ...widthsRef.current, [column]: defaultCommitColumnWidths[column] };
+  function resetColumn(column: CommitDetailColumn) {
+    const current = { ...widthsRef.current, commit: commitWidth };
+    const next = resizeCommitDetailColumn(current, column, current[column] - defaultCommitColumnWidths[column], graphWidth + 80);
     widthsRef.current = next;
     setColumnWidths(next);
     onColumnWidthsChange?.(next);
   }
 
   let resizerLeft = commitWidth;
-  const resizers: [CommitColumn, string, number][] = [['commit', 'Commit', resizerLeft]];
+  const resizers: [CommitDetailColumn, string, number][] = [];
   for (const column of optionalColumns) {
-    resizerLeft += columnWidths[column];
     resizers.push([column, column[0]!.toUpperCase() + column.slice(1), resizerLeft]);
+    resizerLeft += columnWidths[column];
   }
 
   function navigate(event: KeyboardEvent, index: number) {
