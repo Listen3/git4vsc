@@ -91,6 +91,14 @@ describe('permanent graph layout', () => {
     graph.rows.slice(0, -1).forEach((row, index) => expect(row.lanesAfter).toEqual(graph.rows[index + 1]?.lanesBefore));
   });
 
+  it('keeps the same color id when an edge bends into another lane', () => {
+    const graph = layoutCommits(commits);
+    graph.rows.slice(0, -1).forEach((row, index) => {
+      const next = graph.rows[index + 1]!;
+      row.connections.forEach(edge => expect(edge.colorId).toBe(next.laneColorsBefore[edge.toLane]));
+    });
+  });
+
   it('keeps isolated roots in independent lanes', () => {
     const graph = layoutCommits([commit('A', ['R1']), commit('X', ['R2']), commit('R1', []), commit('R2', [])]);
     expect(graph.maxLaneCount).toBeGreaterThanOrEqual(2);

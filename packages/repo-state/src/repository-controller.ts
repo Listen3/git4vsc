@@ -14,7 +14,7 @@ class OperationQueue {
 
 export class RepositoryController {
   private readonly events = new EventEmitter();
-  private readonly invalid = new Set<RepositoryInvalidation>(['status', 'log', 'refs']);
+  private readonly invalid = new Set<RepositoryInvalidation>(['status', 'refs']);
   private readonly operations = new OperationQueue();
   private activeRefresh: Promise<void> | null = null;
   private pendingSmartStash: GitStashEntry | null = null;

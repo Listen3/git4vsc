@@ -168,7 +168,7 @@ function AiSection({ ai, hasApiKey, models, busy, update, run, clearKey }: {
     <header className="settings-heading"><div><h1>AI</h1><p>Connect an OpenAI-compatible service for commit message generation.</p></div></header>
     <div className="settings-group"><h2>Connection</h2>
       <AiField title="Base URL" description="OpenAI-compatible API root or chat endpoint."><input value={ai.baseUrl} placeholder="https://api.openai.com/v1" spellCheck={false} onChange={event => update('baseUrl', event.target.value)} /></AiField>
-      <AiField title="API key" description={hasApiKey ? 'Stored securely; enter a value only to replace it.' : 'Stored securely in VS Code Secret Storage.'}>
+      <AiField title="API key" description={hasApiKey ? 'Stored securely on this device; enter a value only to replace it.' : 'Stored securely per device; VS Code does not sync secrets.'}>
         <div className="ai-inline"><input type="password" value={ai.apiKey} placeholder={hasApiKey ? 'Saved' : 'Enter API key'} onChange={event => update('apiKey', event.target.value)} />{hasApiKey && <button type="button" className="secondary" disabled={disabled} onClick={clearKey}>Clear</button>}</div>
       </AiField>
       <AiField title="Commit model" description="Model used for commit message generation.">

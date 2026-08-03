@@ -24,7 +24,7 @@ Git4VSC 是一个面向 Visual Studio Code 的本地 Git 工作流扩展。它�
 
 ### Commit 与 Push
 
-- 在左侧 Commit 工具窗口中按文件选择本次提交内容；修改文件可继续展开并按 Change Block 部分提交。
+- 在左侧 Commit 工具窗口中按文件选择本次提交内容，并可直接检查 Diff、回滚或提交。
 - 双击文件查看 Diff；右键执行 Commit File、Rollback、Delete、Jump to Source、Add to VCS 或 Add to Ignore。
 - 提交信息区域可拖动调整高度，支持 **Commit** 和 **Commit and Push**。
 - Push 前预览待推送提交和文件；文件可按目录分组、展开并打开 Diff。
@@ -75,7 +75,7 @@ Git4VSC 是一个面向 Visual Studio Code 的本地 Git 工作流扩展。它�
 
 | 工作流 | 状态 | 当前范围 |
 | --- | --- | --- |
-| Commit / Commit and Push | 可用 | 支持整文件和按 Change Block 部分提交；暂不支持逐行 Changelist |
+| Commit / Commit and Push | 可用 | 支持按文件提交；部分提交入口计划放入 Diff 交互 |
 | Push Preview | 可用 | 提交和文件预览、目录分组、目标分支编辑、受保护分支和 Force Push 确认 |
 | Update / Pull / Push | 可用 | Merge/Rebase、Smart Update 和 Push Rejected 恢复重试 |
 | 分支、Tag 与 Remote | 可用 | 常用创建、切换、比较、合并、Rebase、Tracking 和删除操作 |
@@ -86,7 +86,7 @@ Git4VSC 是一个面向 Visual Studio Code 的本地 Git 工作流扩展。它�
 | Git Blame | 可用 | 时间着色和 Hover 详情；暂不支持点击跳转 Commit Log |
 | AI Commit Message | 可选 | 使用用户配置的 OpenAI-compatible 服务 |
 | Git Stash | 可用 | 创建、Apply/Pop、Reinstate Index、Drop、查看文件、从 Stash 建分支 |
-| 部分提交 / Changelist | 部分可用 | 支持 Git diff hunk；暂不支持逐行选择和持久 Changelist |
+| 部分提交 / Changelist | 规划中 | hunk patch 基础能力已具备，Commit 文件树暂不暴露独立入口 |
 | Interactive Rebase | 未实现 | 后续版本评估 |
 
 ## 快速开始
@@ -94,7 +94,7 @@ Git4VSC 是一个面向 Visual Studio Code 的本地 Git 工作流扩展。它�
 ### 提交本地变更
 
 1. 打开 Git 仓库，在 Activity Bar 选择 **Git4VSC**。
-2. 在 Commit 工具窗口勾选文件；需要拆分提交时展开修改文件并勾选 Change Block。
+2. 在 Commit 工具窗口勾选需要提交的文件。
 3. 输入 Commit Message，或使用 AI 生成。
 4. 点击 **Commit**，或点击 **Commit and Push** 后检查 Push 预览再推送。
 

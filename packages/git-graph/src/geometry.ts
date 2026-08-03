@@ -6,7 +6,7 @@ export interface GraphSegment {
   kind: 'incoming' | 'through' | 'parent';
   from: Point;
   to: Point;
-  lane: number;
+  colorId: number;
   parentIndex?: number;
 }
 
@@ -17,11 +17,11 @@ export interface RowGeometry {
   segments: GraphSegment[];
 }
 
-export function laneX(lane: number, laneWidth = 16): number {
+export function laneX(lane: number, laneWidth = 13): number {
   return laneWidth / 2 + lane * laneWidth;
 }
 
-export function createRowGeometry(row: GraphRow, rowHeight = 28, laneWidth = 16): RowGeometry {
+export function createRowGeometry(row: GraphRow, rowHeight = 25, laneWidth = 13): RowGeometry {
   const middle = rowHeight / 2;
   const segments: GraphSegment[] = [];
 
@@ -29,7 +29,7 @@ export function createRowGeometry(row: GraphRow, rowHeight = 28, laneWidth = 16)
     if (row.isHead && lane === row.nodeLane) return;
     segments.push({
       kind: 'incoming',
-      lane,
+      colorId: row.laneColorsBefore[lane] ?? lane,
       from: { x: laneX(lane, laneWidth), y: 0 },
       to: { x: laneX(lane, laneWidth), y: middle }
     });
@@ -37,7 +37,7 @@ export function createRowGeometry(row: GraphRow, rowHeight = 28, laneWidth = 16)
   row.connections.forEach(connection => {
     const base = {
       kind: connection.kind,
-      lane: connection.fromLane,
+      colorId: connection.colorId,
       from: { x: laneX(connection.fromLane, laneWidth), y: middle },
       to: { x: laneX(connection.toLane, laneWidth), y: rowHeight }
     } as GraphSegment;

@@ -28,7 +28,7 @@ Git4VSC brings a focused commit window, a topology-aware Commit Log, branch stat
 
 ### Highlights
 
-- **Focused commit workflow:** Select files or individual change blocks, review diffs, roll back changes, and use Commit or Commit and Push.
+- **Focused commit workflow:** Select files, review diffs, roll back changes, and use Commit or Commit and Push.
 - **Update and repository status:** Update with Merge or Rebase, monitor ahead/behind counts, and receive unobtrusive progress and result feedback.
 - **Safe push workflow:** Preview outgoing commits, protect branch patterns from Force Push, confirm history rewrites, and recover rejected pushes with Merge or Rebase.
 - **Commit Log:** Browse a topology graph with persistent selection, virtual scrolling, relative dates, and configurable Author, Date, and Hash columns.
@@ -71,7 +71,7 @@ Open **Git4VSC Settings → AI** to configure a Base URL, API key, model, langua
 
 ### Current preview scope
 
-- Commits support whole files and Git change blocks. Line-level selection and persistent changelists are not included yet.
+- Commits currently select whole files. Partial selection is planned for the Diff workflow rather than the Commit file tree.
 - New worktrees can be created, but there is no full worktree management page yet.
 - Path filtering is available in Commit Log; a dedicated rename-aware File History view is not yet included.
 - Git Stash is available; Shelf and Interactive Rebase are not included yet.
@@ -90,7 +90,7 @@ Git4VSC 为 VS Code 提供聚焦的 Commit 工具窗口、拓扑 Commit Log、�
 
 ### 主要功能
 
-- **紧凑提交：** 勾选文件或单独的 Change Block、检查 Diff、回滚变更，并使用 Commit 或 Commit and Push。
+- **紧凑提交：** 勾选文件、检查 Diff、回滚变更，并使用 Commit 或 Commit and Push。
 - **更新与仓库状态：** 使用 Merge 或 Rebase 更新，查看 ahead/behind 数量，并获得不干扰布局的进度和结果反馈。
 - **安全 Push：** 检查待推送提交和文件，保护指定分支免受 Force Push，在历史改写前确认，并用 Merge/Rebase 恢复被拒绝的 Push。
 - **Commit Log：** 浏览拓扑图，保留选择和筛选状态，使用虚拟滚动、相对时间以及可配置的 Author、Date、Hash 列。
@@ -133,7 +133,7 @@ Commit 标题、分支列表和状态栏都会显示 ahead/behind 数量。长�
 
 ### Preview 当前范围
 
-- 支持整文件和 Git Change Block 部分提交；暂不支持逐行选择和持久 Changelist。
+- 当前按整文件提交；部分选择计划放入 Diff 交互，不在 Commit 文件树增加额外层级。
 - 可以创建 Worktree，暂不提供完整的 Worktree 管理页面。
 - Commit Log 支持按路径筛选，暂不提供独立且跟踪重命名的 File History 页面。
 - Git Stash 已可用；Shelf 和 Interactive Rebase 暂未包含。

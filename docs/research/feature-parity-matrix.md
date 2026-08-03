@@ -14,7 +14,7 @@
 | 原生 Diff | platform Diff | `vscode.diff` | blob/diff API | Done（基础场景） |
 | stage/unstage | changes actions | SCM context | GitClient/controller | Done |
 | Commit staged/all | commit workflow | SCM input + progress | controller | Done |
-| partial commit/changelist | commit workflow | selected files and Git hunks | temporary index transaction | Partial: hunks implemented; persistent changelists planned |
+| partial commit/changelist | commit workflow | selected files; hunk patch backend | temporary index transaction | Backend ready; Diff-based UI and persistent changelists planned |
 | hooks/GPG/amend/sign-off | commit options/detectors | options + diagnostics | commit use-case | Planned |
 | Log topo order | VCS Log provider | Webview | git-core | Done |
 | 分页/渐进加载 | first block + all hashes/details | Webview load more | controller | Done（offset pages） |

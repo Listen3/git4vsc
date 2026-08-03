@@ -149,13 +149,13 @@ button { cursor: default; }
 .commit-row.selected { color: var(--vscode-list-activeSelectionForeground, #fff); background: var(--vscode-list-activeSelectionBackground, #04395e); }
 .commit-row:focus { outline: 1px solid var(--vscode-focusBorder, #007fd4); outline-offset: -1px; }
 .git-graph { display: block; }
-.commit-main { min-width: 0; height: 100%; display: flex; align-items: center; gap: 6px; overflow: hidden; }
+.commit-main { min-width: 0; height: 100%; padding: 0 6px 0 3px; display: flex; align-items: center; gap: 6px; overflow: hidden; }
 .commit-subject { min-width: 20px; line-height: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commit-refs { display: flex; flex: 0 1 auto; gap: 3px; overflow: hidden; }
 .commit-ref { border-radius: 8px; padding: 1px 6px; font-size: 10px; line-height: 16px; white-space: nowrap; background: var(--vscode-badge-background, #4d4d4d); color: var(--vscode-badge-foreground, white); }
 .commit-ref-tag { border-radius: 2px; background: color-mix(in srgb, var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d) 40%, transparent); }
-.commit-author, .commit-row time, .commit-row code { height: 100%; display: flex; align-items: center; color: currentColor; opacity: .72; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.commit-row code { padding: 0; border: 0; border-radius: 0; background: transparent; }
+.commit-author, .commit-row time, .commit-row code { height: 100%; padding: 0 7px; display: flex; align-items: center; color: currentColor; opacity: .72; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commit-row code { border: 0; border-radius: 0; background: transparent; }
 .commit-loading { position: sticky; bottom: 0; padding: 5px 10px; background: var(--vscode-notifications-background, var(--git4vsc-background)); border-top: 1px solid var(--git4vsc-border); }
 .commit-empty { padding: 28px 16px; color: var(--git4vsc-muted); text-align: center; }
 

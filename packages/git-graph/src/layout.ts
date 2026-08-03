@@ -4,6 +4,7 @@ export interface GraphConnection {
   fromLane: number;
   toLane: number;
   toHash: string;
+  colorId: number;
   kind: 'through' | 'parent';
   parentIndex?: number;
 }
@@ -16,6 +17,8 @@ export interface GraphRow {
   laneCount: number;
   lanesBefore: readonly string[];
   lanesAfter: readonly string[];
+  laneColorsBefore: readonly number[];
+  laneColorsAfter: readonly number[];
   connections: readonly GraphConnection[];
 }
 
@@ -35,40 +38,41 @@ function unique(values: readonly string[]): string[] {
  * directly from the node and receive adjacent lanes.
  */
 export function layoutCommits(commits: readonly CommitSummary[]): PermanentGraph {
-  let lanes: string[] = [];
+  let lanes: Array<{ hash: string; colorId: number }> = [];
+  let nextColorId = 0;
   let maxLaneCount = 0;
   const rows: GraphRow[] = [];
 
   commits.forEach((commit, row) => {
-    let nodeLane = lanes.indexOf(commit.hash);
+    let nodeLane = lanes.findIndex(lane => lane.hash === commit.hash);
     const isHead = nodeLane < 0;
     if (nodeLane < 0) {
       nodeLane = lanes.length;
-      lanes = [...lanes, commit.hash];
+      lanes = [...lanes, { hash: commit.hash, colorId: nextColorId++ }];
     }
-    const before = [...lanes];
+    const before = lanes.map(lane => ({ ...lane }));
     const parents = unique(commit.parents);
     const remaining = before.filter((_, lane) => lane !== nodeLane);
 
-    if (parents[0] && !remaining.includes(parents[0])) {
-      remaining.splice(Math.min(nodeLane, remaining.length), 0, parents[0]);
+    if (parents[0] && !remaining.some(lane => lane.hash === parents[0])) {
+      remaining.splice(Math.min(nodeLane, remaining.length), 0, { hash: parents[0], colorId: before[nodeLane]!.colorId });
     }
-    let insertAt = parents[0] ? remaining.indexOf(parents[0]) + 1 : Math.min(nodeLane, remaining.length);
+    let insertAt = parents[0] ? remaining.findIndex(lane => lane.hash === parents[0]) + 1 : Math.min(nodeLane, remaining.length);
     for (const parent of parents.slice(1)) {
-      if (remaining.includes(parent)) continue;
-      remaining.splice(insertAt, 0, parent);
+      if (remaining.some(lane => lane.hash === parent)) continue;
+      remaining.splice(insertAt, 0, { hash: parent, colorId: nextColorId++ });
       insertAt += 1;
     }
 
     const connections: GraphConnection[] = [];
-    before.forEach((hash, fromLane) => {
+    before.forEach((lane, fromLane) => {
       if (fromLane === nodeLane) return;
-      const toLane = remaining.indexOf(hash);
-      if (toLane >= 0) connections.push({ fromLane, toLane, toHash: hash, kind: 'through' });
+      const toLane = remaining.findIndex(next => next.hash === lane.hash);
+      if (toLane >= 0) connections.push({ fromLane, toLane, toHash: lane.hash, colorId: lane.colorId, kind: 'through' });
     });
     parents.forEach((hash, parentIndex) => {
-      const toLane = remaining.indexOf(hash);
-      if (toLane >= 0) connections.push({ fromLane: nodeLane, toLane, toHash: hash, kind: 'parent', parentIndex });
+      const toLane = remaining.findIndex(lane => lane.hash === hash);
+      if (toLane >= 0) connections.push({ fromLane: nodeLane, toLane, toHash: hash, colorId: remaining[toLane]!.colorId, kind: 'parent', parentIndex });
     });
 
     const laneCount = Math.max(before.length, remaining.length, 1);
@@ -79,8 +83,10 @@ export function layoutCommits(commits: readonly CommitSummary[]): PermanentGraph
       nodeLane,
       isHead,
       laneCount,
-      lanesBefore: before,
-      lanesAfter: [...remaining],
+      lanesBefore: before.map(lane => lane.hash),
+      lanesAfter: remaining.map(lane => lane.hash),
+      laneColorsBefore: before.map(lane => lane.colorId),
+      laneColorsAfter: remaining.map(lane => lane.colorId),
       connections
     });
     lanes = remaining;

@@ -81,7 +81,7 @@ describe('RepositoryController', () => {
     await Promise.all([repository.commit('one'), repository.commit('two')]);
     expect(fake.maxActive).toBe(1);
     expect(fake.statusCalls).toBe(3);
-    expect(fake.logCalls).toBe(3);
+    expect(fake.logCalls).toBe(2);
     expect(repository.snapshot.operation).toBeNull();
   });
 
@@ -102,7 +102,7 @@ describe('RepositoryController', () => {
     await expect(repository.merge('topic')).rejects.toThrow('merge conflict');
 
     expect(fake.statusCalls).toBe(2);
-    expect(fake.logCalls).toBe(2);
+    expect(fake.logCalls).toBe(1);
     expect(repository.snapshot.operation).toBeNull();
     expect(repository.snapshot.error).toBe('merge conflict');
   });

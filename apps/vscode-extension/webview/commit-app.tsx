@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { GitChange, GitDiffHunk, PushPreviewDialogRequest, RepositoryStatus } from '@git4vsc/shared-types';
+import type { GitChange, PushPreviewDialogRequest, RepositoryStatus } from '@git4vsc/shared-types';
 import { formatCommitTime, OperationActivity, OverlayScrollbar, PushFileTree } from '@git4vsc/ui';
 import './commit.css';
 
@@ -15,9 +15,6 @@ interface CommitViewState {
   activeRoot: string | null;
   status: RepositoryStatus | null;
   selectedPaths: string[];
-  hunks: Record<string, GitDiffHunk[]>;
-  selectedHunks: Record<string, string[]>;
-  loadingHunkPaths: string[];
   message: string;
   loading: boolean;
   operation: string | null;
@@ -55,9 +52,6 @@ const initialState: CommitViewState = {
   activeRoot: null,
   status: null,
   selectedPaths: [],
-  hunks: {},
-  selectedHunks: {},
-  loadingHunkPaths: [],
   message: '',
   loading: true,
   operation: null,
@@ -73,7 +67,6 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
   const [message, setMessage] = useState('');
   const [fileMenu, setFileMenu] = useState<FileMenuState | null>(null);
   const [activePath, setActivePath] = useState<string | null>(null);
-  const [expandedHunks, setExpandedHunks] = useState<Set<string>>(new Set());
   const [messageHeight, setMessageHeight] = useState(136);
   const messageRef = useRef('');
   const messageInput = useRef<HTMLTextAreaElement>(null);
@@ -105,12 +98,6 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
       window.removeEventListener('keydown', closeOnEscape);
     };
   }, [fileMenu]);
-
-  useEffect(() => {
-    for (const path of expandedHunks) {
-      if (state.status?.changes.some(change => change.path === path) && state.hunks[path] === undefined && !state.loadingHunkPaths.includes(path)) postMessage({ type: 'loadHunks', path });
-    }
-  }, [expandedHunks, postMessage, state.hunks, state.loadingHunkPaths, state.status]);
 
   const groups = useMemo(() => changeGroups(state.status?.changes ?? []), [state.status]);
   const selectedPaths = useMemo(() => new Set(state.selectedPaths), [state.selectedPaths]);
@@ -150,27 +137,6 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
 
   function commit() {
     postMessage({ type: 'commit', message: messageRef.current });
-  }
-
-  function toggleHunks(change: GitChange) {
-    setExpandedHunks(current => {
-      const next = new Set(current);
-      if (next.has(change.path)) next.delete(change.path);
-      else {
-        next.add(change.path);
-        if (state.hunks[change.path] === undefined && !state.loadingHunkPaths.includes(change.path)) postMessage({ type: 'loadHunks', path: change.path });
-      }
-      return next;
-    });
-  }
-
-  function setSelectedHunks(change: GitChange, hunkIds: string[]) {
-    setState(previous => ({
-      ...previous,
-      selectedPaths: hunkIds.length ? [...new Set([...previous.selectedPaths, change.path])] : previous.selectedPaths.filter(path => path !== change.path),
-      selectedHunks: { ...previous.selectedHunks, [change.path]: hunkIds }
-    }));
-    postMessage({ type: 'selectHunks', path: change.path, hunkIds });
   }
 
   function commitAndPush() {
@@ -236,7 +202,7 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
     <section ref={changesRef} className="commit-changes" aria-label="Changes">
       {groups.length === 0
         ? <div className="commit-no-changes">No changes</div>
-        : groups.map(group => <ChangeGroupView key={group.id} group={group} busy={busy} selected={selected} activePath={activePath} expandedHunks={expandedHunks} hunks={state.hunks} selectedHunks={state.selectedHunks} loadingHunks={new Set(state.loadingHunkPaths)} setActivePath={setActivePath} setSelected={setSelected} setSelectedHunks={setSelectedHunks} toggleHunks={toggleHunks} postMessage={postMessage} openFileMenu={setFileMenu} />)}
+        : groups.map(group => <ChangeGroupView key={group.id} group={group} busy={busy} selected={selected} activePath={activePath} setActivePath={setActivePath} setSelected={setSelected} postMessage={postMessage} openFileMenu={setFileMenu} />)}
     </section>
     <OverlayScrollbar targetRef={changesRef} />
 
@@ -402,19 +368,13 @@ function SelectionSummaryView({ summary }: { summary: SelectionSummary }) {
   </div>;
 }
 
-function ChangeGroupView({ group, busy, selected, activePath, expandedHunks, hunks, selectedHunks, loadingHunks, setActivePath, setSelected, setSelectedHunks, toggleHunks, postMessage, openFileMenu }: {
+function ChangeGroupView({ group, busy, selected, activePath, setActivePath, setSelected, postMessage, openFileMenu }: {
   group: ChangeGroup;
   busy: boolean;
   selected(change: GitChange): boolean;
   activePath: string | null;
-  expandedHunks: ReadonlySet<string>;
-  hunks: Readonly<Record<string, GitDiffHunk[]>>;
-  selectedHunks: Readonly<Record<string, string[]>>;
-  loadingHunks: ReadonlySet<string>;
   setActivePath(path: string): void;
   setSelected(changes: readonly GitChange[], value: boolean): void;
-  setSelectedHunks(change: GitChange, hunkIds: string[]): void;
-  toggleHunks(change: GitChange): void;
   postMessage(message: unknown): void;
   openFileMenu(menu: FileMenuState): void;
 }) {
@@ -435,25 +395,19 @@ function ChangeGroupView({ group, busy, selected, activePath, expandedHunks, hun
       <small>{group.changes.length}</small>
     </summary>
     <div>
-      {group.changes.map(change => <ChangeRow key={`${group.id}:${change.path}`} change={change} staged={selected(change)} active={activePath === change.path} conflict={conflict} busy={busy} expanded={expandedHunks.has(change.path)} hunks={hunks[change.path]} selectedHunks={selectedHunks[change.path]} loadingHunks={loadingHunks.has(change.path)} setActivePath={setActivePath} setSelected={setSelected} setSelectedHunks={setSelectedHunks} toggleHunks={toggleHunks} postMessage={postMessage} openFileMenu={openFileMenu} />)}
+      {group.changes.map(change => <ChangeRow key={`${group.id}:${change.path}`} change={change} staged={selected(change)} active={activePath === change.path} conflict={conflict} busy={busy} setActivePath={setActivePath} setSelected={setSelected} postMessage={postMessage} openFileMenu={openFileMenu} />)}
     </div>
   </details>;
 }
 
-function ChangeRow({ change, staged, active, conflict, busy, expanded, hunks, selectedHunks, loadingHunks, setActivePath, setSelected, setSelectedHunks, toggleHunks, postMessage, openFileMenu }: {
+function ChangeRow({ change, staged, active, conflict, busy, setActivePath, setSelected, postMessage, openFileMenu }: {
   change: GitChange;
   staged: boolean;
   active: boolean;
   conflict: boolean;
   busy: boolean;
-  expanded: boolean;
-  hunks: GitDiffHunk[] | undefined;
-  selectedHunks: string[] | undefined;
-  loadingHunks: boolean;
   setActivePath(path: string): void;
   setSelected(changes: readonly GitChange[], value: boolean): void;
-  setSelectedHunks(change: GitChange, hunkIds: string[]): void;
-  toggleHunks(change: GitChange): void;
   postMessage(message: unknown): void;
   openFileMenu(menu: FileMenuState): void;
 }) {
@@ -462,9 +416,7 @@ function ChangeRow({ change, staged, active, conflict, busy, expanded, hunks, se
   const name = slash >= 0 ? change.path.slice(slash + 1) : change.path;
   const side = change.workingTree !== null ? 'working' : 'staged';
   const tone = changeTone(change);
-  const supportsHunks = !conflict && tone === 'modified' && change.index !== 'renamed' && change.workingTree !== 'renamed';
-  const selectedHunkIds = new Set(selectedHunks ?? (staged ? hunks?.map(hunk => hunk.id) ?? [] : []));
-  return <><div
+  return <div
     className={`commit-change-row${active ? ' selected' : ''}`}
     title={change.path}
     onContextMenu={event => {
@@ -473,7 +425,6 @@ function ChangeRow({ change, staged, active, conflict, busy, expanded, hunks, se
       openFileMenu({ change, x: event.clientX, y: event.clientY });
     }}
   >
-    {supportsHunks && <button type="button" className={`commit-hunk-toggle${expanded ? ' expanded' : ''}`} title={expanded ? 'Hide change blocks' : 'Show change blocks'} aria-label={expanded ? 'Hide change blocks' : 'Show change blocks'} onClick={() => toggleHunks(change)}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m4 2.5 3.5 3.5L4 9.5" /></svg></button>}
     {!conflict && <SelectionCheckbox
       ariaLabel={`${staged ? 'Exclude' : 'Include'} ${change.path}`}
       checked={staged}
@@ -496,27 +447,7 @@ function ChangeRow({ change, staged, active, conflict, busy, expanded, hunks, se
         ? postMessage({ type: 'resolveConflict', path: change.path })
         : setSelected([change], !staged)}
     >{conflict ? '↔' : staged ? '−' : '+'}</button>
-  </div>
-  {supportsHunks && expanded && <div className="commit-hunk-list">
-    {loadingHunks && <div className="commit-hunk-loading">Loading change blocks…</div>}
-    {!loadingHunks && hunks?.map((hunk, index) => <label key={hunk.id} className="commit-hunk-row" title={hunk.header}>
-      <SelectionCheckbox
-        ariaLabel={`${selectedHunkIds.has(hunk.id) ? 'Exclude' : 'Include'} change block ${index + 1}`}
-        checked={selectedHunkIds.has(hunk.id)}
-        disabled={busy}
-        onChange={() => {
-          const next = new Set(selectedHunkIds);
-          if (next.has(hunk.id)) next.delete(hunk.id); else next.add(hunk.id);
-          setSelectedHunks(change, [...next]);
-        }}
-      />
-      <span>Change block {index + 1}</span>
-      <small>lines {hunk.newStart}–{Math.max(hunk.newStart, hunk.newStart + hunk.newLines - 1)}</small>
-      <em className="added">+{hunk.additions}</em><em className="deleted">−{hunk.deletions}</em>
-    </label>)}
-    {!loadingHunks && hunks?.length === 0 && <div className="commit-hunk-loading">No text change blocks</div>}
-  </div>}
-  </>;
+  </div>;
 }
 
 function FileContextMenu({ menu, busy, run }: {

@@ -40,7 +40,7 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
   const [clock, setClock] = useState(Date.now());
   const first = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
   const last = Math.min(commits.length, Math.ceil((scrollTop + height) / rowHeight) + overscan);
-  const graphWidth = filtered ? 28 : Math.max(32, graph.maxLaneCount * 16 + 8);
+  const graphWidth = filtered ? 24 : Math.max(26, graph.maxLaneCount * 13 + 6);
   const commitWidth = Math.max(columnWidths.commit, graphWidth + 80);
   const visibleColumns = normalizeCommitColumnVisibility(initialVisibleColumns);
   const optionalColumns = (['author', 'date', 'hash'] as const).filter(column => visibleColumns[column]);
@@ -156,6 +156,7 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
             const index = first + offset;
             const row = graph.rows[index];
             if (!row) return null;
+            const rowGraphWidth = filtered ? graphWidth : Math.max(26, row.laneCount * 13 + 6);
             return (
               <button
                 type="button"
@@ -169,7 +170,7 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
                 onKeyDown={event => navigate(event, index)}
               >
                 <CommitGraph row={row} width={graphWidth} {...(filtered ? { filtered: filteredConnections(commits, index) } : {})} />
-                <span className="commit-main"><span className="commit-subject">{commit.subject}</span><span className="commit-refs">{commit.refs.map(ref => <span className={`commit-ref commit-ref-${ref.type}`} key={ref.fullName}>{ref.name}</span>)}</span></span>
+                <span className="commit-main" style={{ marginLeft: rowGraphWidth - graphWidth, width: `calc(100% + ${graphWidth - rowGraphWidth}px)` }}><span className="commit-subject">{commit.subject}</span><span className="commit-refs">{commit.refs.map(ref => <span className={`commit-ref commit-ref-${ref.type}`} key={ref.fullName}>{ref.name}</span>)}</span></span>
                 {visibleColumns.author && <span className="commit-author">{commit.authorName}</span>}
                 {visibleColumns.date && <time title={formatExactCommitTime(commit.authorTime)}>{formatCommitTime(commit.authorTime, clock)}</time>}
                 {visibleColumns.hash && <code>{commit.hash.slice(0, 8)}</code>}

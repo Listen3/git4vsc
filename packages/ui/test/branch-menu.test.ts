@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GitRef, RepositoryStatus } from '@git4vsc/shared-types';
-import { buildBranchMenu, hasRemoteUpdate } from '../src/BranchSidebar.js';
+import { buildBranchMenu, groupRefsByDirectory, hasRemoteUpdate } from '../src/BranchSidebar.js';
 
 const refs: GitRef[] = [
   { name: 'main', fullName: 'refs/heads/main', hash: 'main-hash', type: 'local-branch' },
@@ -30,6 +30,17 @@ function actions(ref: GitRef, repositoryStatus: RepositoryStatus = status): stri
 }
 
 describe('branch context menus', () => {
+  it('groups slash-separated branch names without eagerly flattening directories', () => {
+    const tree = groupRefsByDirectory([
+      refs[0]!,
+      { name: 'feature/auth/login', fullName: 'refs/heads/feature/auth/login', hash: 'login', type: 'local-branch' },
+      { name: 'feature/auth/logout', fullName: 'refs/heads/feature/auth/logout', hash: 'logout', type: 'local-branch' }
+    ]);
+    expect(tree.refs.map(ref => ref.name)).toEqual(['main']);
+    expect(tree.directories[0]).toMatchObject({ name: 'feature', path: 'feature', count: 2 });
+    expect(tree.directories[0]?.directories[0]).toMatchObject({ name: 'auth', path: 'feature/auth', count: 2 });
+  });
+
   it('marks branches whose upstream has updates', () => {
     expect(hasRemoteUpdate({ ...refs[1]!, tracking: 'behind' }, status)).toBe(true);
     expect(hasRemoteUpdate({ ...refs[1]!, tracking: 'diverged' }, status)).toBe(true);

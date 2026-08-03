@@ -10,6 +10,7 @@ import { CommitView, stagedChanges } from './commit-view.js';
 import { LogPanel } from './log-panel.js';
 import { notifyCommitResult } from './operation-notifications.js';
 import { SettingsPanel } from './settings-panel.js';
+import { isRepositoryIndex, repositoryInvalidations } from './repository-watch.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const manager = new RepositoryManager();
@@ -231,19 +232,33 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 function watchRepository(context: vscode.ExtensionContext, repository: RepositoryController, refreshViews: () => void): void {
-  const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(repository.location.gitDir, '**/*'));
+  const worktreeWatcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(repository.root, '**/*'));
+  const gitWatcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(repository.location.gitDir, '**/*'));
   let timer: NodeJS.Timeout | undefined;
-  const schedule = () => {
+  let activeRefreshes = 0;
+  let ignoreIndexUntil = 0;
+  const pending = new Set<ReturnType<typeof repositoryInvalidations>[number]>();
+  const schedule = (uri: vscode.Uri) => {
+    if (isRepositoryIndex(repository.location.gitDir, uri.fsPath) && (activeRefreshes > 0 || Date.now() < ignoreIndexUntil)) return;
+    repositoryInvalidations(repository.root, repository.location.gitDir, uri.fsPath).forEach(part => pending.add(part));
+    if (pending.size === 0) return;
     clearTimeout(timer);
     timer = setTimeout(() => {
-      repository.invalidate('status', 'log', 'refs');
-      void repository.refresh().then(refreshViews);
-    }, 150);
+      repository.invalidate(...pending);
+      pending.clear();
+      activeRefreshes += 1;
+      void repository.refresh().then(refreshViews).finally(() => {
+        activeRefreshes -= 1;
+        ignoreIndexUntil = Date.now() + 500;
+      });
+    }, 120);
   };
-  watcher.onDidCreate(schedule);
-  watcher.onDidChange(schedule);
-  watcher.onDidDelete(schedule);
-  context.subscriptions.push(watcher, { dispose: () => clearTimeout(timer) });
+  for (const watcher of [worktreeWatcher, gitWatcher]) {
+    watcher.onDidCreate(schedule);
+    watcher.onDidChange(schedule);
+    watcher.onDidDelete(schedule);
+  }
+  context.subscriptions.push(worktreeWatcher, gitWatcher, { dispose: () => clearTimeout(timer) });
 }
 
 export function deactivate(): void {}

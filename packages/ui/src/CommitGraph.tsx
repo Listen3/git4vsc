@@ -15,20 +15,20 @@ export function CommitGraph({ row, width, filtered }: { row: GraphRow; width: nu
     <svg className="git-graph" width={width} height={geometry.height} aria-hidden="true">
       {geometry.segments.map((segment, index) => (
         <path
-          key={`${segment.kind}-${segment.lane}-${index}`}
+          key={`${segment.kind}-${segment.colorId}-${index}`}
           d={curve(segment.from.x, segment.from.y, segment.to.x, segment.to.y)}
-          stroke={colors[segment.lane % colors.length]}
+          stroke={colors[segment.colorId % colors.length]}
           fill="none"
-          strokeWidth="1.6"
+          strokeWidth="1.45"
         />
       ))}
       <circle
         cx={geometry.node.x}
         cy={geometry.node.y}
-        r="4"
+        r="3.5"
         fill="var(--git4vsc-background)"
-        stroke={colors[row.nodeLane % colors.length]}
-        strokeWidth="2"
+        stroke={colors[(row.laneColorsBefore[row.nodeLane] ?? row.nodeLane) % colors.length]}
+        strokeWidth="1.7"
       />
     </svg>
   );

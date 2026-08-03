@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import type { GitRef, RepositoryStatus } from '@git4vsc/shared-types';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu.js';
 import { OverlayScrollbar } from './OverlayScrollbar.js';
@@ -10,6 +10,43 @@ export type RefAction =
   | 'update' | 'push' | 'setUpstream' | 'pullMerge' | 'pullRebase'
   | 'rename' | 'delete';
 export type RemoteAction = 'fetch' | 'add' | 'edit' | 'remove';
+
+export interface RefDirectory {
+  name: string;
+  path: string;
+  count: number;
+  refs: readonly GitRef[];
+  directories: readonly RefDirectory[];
+}
+
+export function groupRefsByDirectory(refs: readonly GitRef[], prefix = ''): { refs: readonly GitRef[]; directories: readonly RefDirectory[] } {
+  interface MutableDirectory { name: string; path: string; refs: GitRef[]; directories: Map<string, MutableDirectory> }
+  const root: MutableDirectory = { name: '', path: '', refs: [], directories: new Map() };
+  for (const ref of refs) {
+    const relative = prefix && ref.name.startsWith(`${prefix}/`) ? ref.name.slice(prefix.length + 1) : ref.name;
+    const parts = relative.split('/').filter(Boolean);
+    if (parts.length < 2) {
+      root.refs.push(ref);
+      continue;
+    }
+    let directory = root;
+    for (const part of parts.slice(0, -1)) {
+      const path = directory.path ? `${directory.path}/${part}` : part;
+      let child = directory.directories.get(part);
+      if (!child) {
+        child = { name: part, path, refs: [], directories: new Map() };
+        directory.directories.set(part, child);
+      }
+      directory = child;
+    }
+    directory.refs.push(ref);
+  }
+  const freeze = (directory: MutableDirectory): RefDirectory => {
+    const directories = [...directory.directories.values()].sort((a, b) => a.name.localeCompare(b.name)).map(freeze);
+    return { name: directory.name, path: directory.path, refs: directory.refs, directories, count: directory.refs.length + directories.reduce((sum, child) => sum + child.count, 0) };
+  };
+  return { refs: root.refs, directories: [...root.directories.values()].sort((a, b) => a.name.localeCompare(b.name)).map(freeze) };
+}
 
 export function BranchSidebar({ status, activeRef, favoriteRefs = [], onSelectRef, onRefAction, onRemoteAction }: {
   status: RepositoryStatus | null;
@@ -36,6 +73,7 @@ export function BranchSidebar({ status, activeRef, favoriteRefs = [], onSelectRe
     remoteGroups.set(remote, [...(remoteGroups.get(remote) ?? []), ref]);
   }
   const currentRef = status?.branch ? status.refs.find(ref => ref.type === 'local-branch' && ref.name === status.branch) ?? null : null;
+  const selectedRef = activeRef ? status?.refs.find(ref => ref.fullName === activeRef) ?? currentRef : currentRef;
 
   function openMenu(event: MouseEvent, ref: GitRef | null) {
     event.preventDefault();
@@ -48,6 +86,9 @@ export function BranchSidebar({ status, activeRef, favoriteRefs = [], onSelectRe
   }
 
   const menuItems: ContextMenuItem[] = menu ? buildBranchMenu(menu.ref, status, favoriteRefs) : [];
+  const renderLocal = (ref: GitRef, label: string) => <BranchItem key={ref.fullName} label={label} active={activeRef === ref.fullName} icon={ref.name === status?.branch ? '●' : '◇'} current={ref.name === status?.branch} favorite={favoriteRefs.includes(ref.fullName)} updateAvailable={hasRemoteUpdate(ref, status)} ahead={ref.name === status?.branch ? status?.ahead ?? 0 : 0} behind={ref.name === status?.branch ? status?.behind ?? 0 : 0} upstream={ref.name === status?.branch ? status?.upstream : ref.upstream} onClick={() => onSelectRef?.(ref.fullName)} onContextMenu={event => openMenu(event, ref)} />;
+  const renderRemote = (ref: GitRef, label: string) => <BranchItem key={ref.fullName} label={label} active={activeRef === ref.fullName} icon="◇" favorite={favoriteRefs.includes(ref.fullName)} onClick={() => onSelectRef?.(ref.fullName)} onContextMenu={event => openMenu(event, ref)} />;
+  const renderTag = (ref: GitRef, label: string) => <BranchItem key={ref.fullName} label={label} active={activeRef === ref.fullName} icon="◆" onClick={() => onSelectRef?.(ref.fullName)} onContextMenu={event => openMenu(event, ref)} />;
 
   return (
     <aside className="branch-sidebar" aria-label="Branches and tags">
@@ -56,17 +97,17 @@ export function BranchSidebar({ status, activeRef, favoriteRefs = [], onSelectRe
         <BranchItem label="All" active={activeRef === null} icon="◎" onClick={() => onSelectRef?.(null)} />
         <BranchItem label={status?.branch ? `HEAD (${status.branch})` : 'HEAD (Detached)'} active={activeRef === 'HEAD'} icon="◆" onClick={() => onSelectRef?.('HEAD')} onContextMenu={event => openMenu(event, currentRef)} />
         <BranchGroup label="Local" count={local.length} onContextMenu={event => openMenu(event, null)}>
-          {local.map(ref => <BranchItem key={ref.fullName} label={ref.name} active={activeRef === ref.fullName} icon={ref.name === status?.branch ? '●' : '◇'} current={ref.name === status?.branch} favorite={favoriteRefs.includes(ref.fullName)} updateAvailable={hasRemoteUpdate(ref, status)} ahead={ref.name === status?.branch ? status?.ahead ?? 0 : 0} behind={ref.name === status?.branch ? status?.behind ?? 0 : 0} upstream={ref.name === status?.branch ? status?.upstream : ref.upstream} onClick={() => onSelectRef?.(ref.fullName)} onContextMenu={event => openMenu(event, ref)} />)}
+          <BranchRefTree refs={local} expandedRef={selectedRef?.type === 'local-branch' ? selectedRef.name : status?.branch} forceOpen={Boolean(query)} renderRef={renderLocal} />
         </BranchGroup>
         <BranchGroup label="Remote" count={[...remoteGroups.values()].reduce((sum, group) => sum + group.length, 0)} onContextMenu={event => openRemoteMenu(event, null)}>
           {[...remoteGroups.entries()].map(([remote, remoteRefs]) => (
-            <BranchGroup label={remote} count={remoteRefs.length} nested key={remote} onContextMenu={event => openRemoteMenu(event, remote)}>
-              {remoteRefs.map(ref => <BranchItem key={ref.fullName} label={ref.name.slice(remote.length + 1)} active={activeRef === ref.fullName} icon="◇" favorite={favoriteRefs.includes(ref.fullName)} onClick={() => onSelectRef?.(ref.fullName)} onContextMenu={event => openMenu(event, ref)} />)}
+            <BranchGroup label={remote} count={remoteRefs.length} nested key={remote} defaultOpen={selectedRef?.remote === remote} forceOpen={Boolean(query)} onContextMenu={event => openRemoteMenu(event, remote)}>
+              <BranchRefTree refs={remoteRefs} prefix={remote} expandedRef={selectedRef?.remote === remote ? selectedRef.name.slice(remote.length + 1) : undefined} forceOpen={Boolean(query)} renderRef={renderRemote} />
             </BranchGroup>
           ))}
         </BranchGroup>
         {tags.length > 0 && <BranchGroup label="Tags" count={tags.length} onContextMenu={event => openMenu(event, null)}>
-          {tags.map(ref => <BranchItem key={ref.fullName} label={ref.name} active={activeRef === ref.fullName} icon="◆" onClick={() => onSelectRef?.(ref.fullName)} onContextMenu={event => openMenu(event, ref)} />)}
+          <BranchRefTree refs={tags} expandedRef={selectedRef?.type === 'tag' ? selectedRef.name : undefined} forceOpen={Boolean(query)} renderRef={renderTag} />
         </BranchGroup>}
       </nav>
       <OverlayScrollbar targetRef={treeRef} />
@@ -194,11 +235,24 @@ function joinMenuSections(...sections: ContextMenuItem[][]): ContextMenuItem[] {
   );
 }
 
-function BranchGroup({ label, count, nested = false, children, onContextMenu }: { label: string; count: number; nested?: boolean; children: React.ReactNode; onContextMenu?: ((event: MouseEvent) => void) | undefined }) {
+function BranchRefTree({ refs, prefix = '', expandedRef, forceOpen = false, renderRef }: { refs: readonly GitRef[]; prefix?: string; expandedRef?: string | null | undefined; forceOpen?: boolean; renderRef: (ref: GitRef, label: string) => ReactNode }) {
+  const tree = useMemo(() => groupRefsByDirectory(refs, prefix), [prefix, refs]);
+  const leafName = (ref: GitRef) => (prefix && ref.name.startsWith(`${prefix}/`) ? ref.name.slice(prefix.length + 1) : ref.name).split('/').at(-1) ?? ref.name;
+  const renderDirectory = (directory: RefDirectory): ReactNode => <BranchGroup key={directory.path} label={directory.name} count={directory.count} nested defaultOpen={Boolean(expandedRef?.startsWith(`${directory.path}/`))} forceOpen={forceOpen}>
+    {directory.refs.map(ref => renderRef(ref, leafName(ref)))}
+    {directory.directories.map(renderDirectory)}
+  </BranchGroup>;
+  return <>{tree.refs.map(ref => renderRef(ref, leafName(ref)))}{tree.directories.map(renderDirectory)}</>;
+}
+
+function BranchGroup({ label, count, nested = false, defaultOpen = true, forceOpen = false, children, onContextMenu }: { label: string; count: number; nested?: boolean; defaultOpen?: boolean; forceOpen?: boolean; children: ReactNode; onContextMenu?: ((event: MouseEvent) => void) | undefined }) {
+  const [open, setOpen] = useState(defaultOpen);
+  useEffect(() => { if (defaultOpen) setOpen(true); }, [defaultOpen]);
+  const expanded = forceOpen || open;
   return (
-    <details className={`branch-group${nested ? ' branch-group-nested' : ''}`} open>
+    <details className={`branch-group${nested ? ' branch-group-nested' : ''}`} open={expanded} onToggle={event => { if (!forceOpen) setOpen(event.currentTarget.open); }}>
       <summary onContextMenu={onContextMenu}><span>{label}</span><span className="branch-count">{count}</span></summary>
-      <div>{children}</div>
+      {expanded && <div>{children}</div>}
     </details>
   );
 }
