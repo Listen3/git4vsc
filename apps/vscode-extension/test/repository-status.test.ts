@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RepositorySnapshot, RepositoryStatus } from '@git4vsc/shared-types';
-import { branchTrackingSuffix, operationActivity, statusBarPresentation } from '../src/repository-status.js';
+import { branchTrackingSuffix, operationActivity, outgoingViewBadge, statusBarPresentation } from '../src/repository-status.js';
 
 const status: RepositoryStatus = {
   root: '/repo',
@@ -34,6 +34,12 @@ describe('repository status bar presentation', () => {
     expect(statusBarPresentation(snapshot({ operation: 'pull-merge' })).title).toBe('$(sync~spin) Updating…');
     expect(operationActivity('pull-merge')).toBe('Updating…');
     expect(operationActivity('stage')).toBeNull();
+  });
+
+  it('replaces a stale outgoing badge with a hidden zero badge', () => {
+    expect(outgoingViewBadge(status)).toEqual({ value: 1, tooltip: '1 commit ready to push' });
+    expect(outgoingViewBadge({ ...status, ahead: 0 })).toEqual({ value: 0, tooltip: 'No commits ready to push' });
+    expect(outgoingViewBadge({ ...status, upstream: null })).toEqual({ value: 0, tooltip: 'No commits ready to push' });
   });
 
   it('promotes unresolved conflicts', () => {

@@ -5,7 +5,7 @@ import type { CommitFileChange, CommitSelection, GitChange, GitDiffHunk, PushPre
 import type { RepositoryController } from '@git4vsc/repo-state';
 import { AiRequestCancelledError, aiIsConfigured, generateAiCommitMessage, onDidChangeAiSettings } from './ai-settings.js';
 import { gitResourceUri } from './git-uri.js';
-import { branchTrackingSuffix, operationActivity } from './repository-status.js';
+import { branchTrackingSuffix, operationActivity, outgoingViewBadge } from './repository-status.js';
 import { readGeneralSettings } from './settings.js';
 import { notifyPushResult, resultNotificationsEnabled } from './operation-notifications.js';
 import { isProtectedBranch } from './protected-branches.js';
@@ -101,8 +101,7 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
     const branch = status?.branch ?? status?.head?.slice(0, 8) ?? 'HEAD';
     const tracking = branchTrackingSuffix(status);
     this.view.title = repository ? `${this.pushPreview ? 'Push' : 'Commit'} — ${branch}${tracking ? ` ${tracking}` : ''}` : 'Commit';
-    const ahead = status?.upstream ? status.ahead : 0;
-    this.view.badge = ahead ? { value: ahead, tooltip: `${ahead} commit${ahead === 1 ? '' : 's'} ready to push` } : undefined;
+    this.view.badge = outgoingViewBadge(status);
     void this.view.webview.postMessage({
       type: 'commitSnapshot',
       state: {

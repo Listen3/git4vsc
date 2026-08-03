@@ -5,6 +5,11 @@ export interface StatusBarPresentation {
   tooltip: string;
 }
 
+export interface OutgoingViewBadge {
+  value: number;
+  tooltip: string;
+}
+
 export function statusBarPresentation(snapshot: RepositorySnapshot): StatusBarPresentation {
   const status = snapshot.status;
   const branch = status?.branch ?? status?.head?.slice(0, 8) ?? 'HEAD';
@@ -32,6 +37,14 @@ export function statusBarPresentation(snapshot: RepositorySnapshot): StatusBarPr
 export function branchTrackingSuffix(status: RepositoryStatus | null | undefined): string {
   if (!status?.upstream) return '';
   return [status.behind ? `↙${status.behind}` : '', status.ahead ? `↗${status.ahead}` : ''].filter(Boolean).join(' ');
+}
+
+export function outgoingViewBadge(status: RepositoryStatus | null | undefined): OutgoingViewBadge {
+  const ahead = status?.upstream ? status.ahead : 0;
+  return {
+    value: ahead,
+    tooltip: ahead ? `${ahead} commit${ahead === 1 ? '' : 's'} ready to push` : 'No commits ready to push'
+  };
 }
 
 export function operationLabel(operation: string): string {
