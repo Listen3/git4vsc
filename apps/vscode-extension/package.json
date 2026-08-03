@@ -2,7 +2,7 @@
   "name": "git4vsc",
   "displayName": "Git4VSC",
   "description": "%extension.description%",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "Listen",
   "license": "MIT",
   "preview": true,
@@ -45,7 +45,7 @@
     "build:webview": "vite build --config vite.config.ts",
     "build:extension": "tsup --config tsup.config.ts",
     "prepackage:vsix": "pnpm --filter \"@git4vsc/*\" build",
-    "package:vsix": "node -e \"require('node:fs').mkdirSync('../../artifacts',{recursive:true})\" && pnpm build && vsce package --no-dependencies --out ../../artifacts/git4vsc-0.1.1.vsix",
+    "package:vsix": "node -e \"require('node:fs').mkdirSync('../../artifacts',{recursive:true})\" && pnpm build && vsce package --no-dependencies --out ../../artifacts/git4vsc-0.1.2.vsix",
     "typecheck": "tsc --noEmit",
     "test:extension": "node ./test/runTest.cjs"
   },

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 - Preview
+
+- Fixed stale outgoing-commit badges remaining in the Activity Bar after a successful push.
+
 ## 0.1.1 - Preview
 
 - Improved Commit Log startup, branch hierarchy, graph spacing, and column layout.

@@ -6,7 +6,7 @@ Focused Git workflows for Visual Studio Code.
 
 **[English](#english) · [简体中文](#简体中文)**
 
-> `0.1.1 Preview` — Ready for evaluating the main commit, history, branch, push, blame, and conflict workflows.
+> `0.1.2 Preview` — Ready for evaluating the main commit, history, branch, push, blame, and conflict workflows.
 
 ## Product tour / 功能预览
 

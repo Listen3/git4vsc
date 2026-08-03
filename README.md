@@ -4,7 +4,7 @@ Git4VSC 是一个面向 Visual Studio Code 的本地 Git 工作流扩展。它�
 
 项目调用本机 Git CLI；仓库状态、提交图和主要界面由 TypeScript 与 React 实现。产品结构和交互参考了 JetBrains Git4Idea 与 IntelliJ Platform VCS Log 的公开行为，但不复制其代码、图标或专有素材。
 
-> 当前版本：`0.1.1 Preview`。单仓库的日常提交、同步、历史浏览和冲突处理流程已经可用。
+> 当前版本：`0.1.2 Preview`。单仓库的日常提交、同步、历史浏览和冲突处理流程已经可用。
 
 ## 功能预览
 
