@@ -28,7 +28,7 @@ export const defaultCommitColumnVisibility: CommitColumnVisibility = {
 };
 
 const limits: Record<CommitColumn, readonly [number, number]> = {
-  commit: [180, 900],
+  commit: [180, Number.MAX_SAFE_INTEGER],
   author: [70, 320],
   date: [95, 260],
   hash: [56, 160]
@@ -59,4 +59,17 @@ export function resizeCommitDetailColumn(widths: CommitColumnWidths, column: Com
   const maxOffset = Math.min(limits.commit[1] - current.commit, current[column] - columnMin);
   const applied = Math.round(Math.max(minOffset, Math.min(maxOffset, offset)));
   return { ...current, commit: current.commit + applied, [column]: current[column] - applied };
+}
+
+export function responsiveCommitColumnWidth(
+  widths: CommitColumnWidths,
+  visible: CommitColumnVisibility,
+  viewportWidth: number,
+  commitMinimum = limits.commit[0],
+  endPadding = 12
+): number {
+  const detailsWidth = (['author', 'date', 'hash'] as const)
+    .filter(column => visible[column])
+    .reduce((total, column) => total + widths[column], 0);
+  return Math.max(commitMinimum, Math.floor(viewportWidth - detailsWidth - endPadding));
 }

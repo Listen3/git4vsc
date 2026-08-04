@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3 - 2026-08-05
+
+- Added workspace discovery for nested repositories up to three directory levels.
+- Added rename-aware File History from the editor and line-number context menus.
+- Made Commit Log columns adapt to the available panel width while preserving detail-column widths.
+
 ## 0.1.2 - Preview
 
 - Fixed stale outgoing-commit badges remaining in the Activity Bar after a successful push.

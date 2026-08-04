@@ -6,7 +6,7 @@ Focused Git workflows for Visual Studio Code.
 
 **[English](#english) · [简体中文](#简体中文)**
 
-> `0.1.2 Preview` — Ready for evaluating the main commit, history, branch, push, blame, and conflict workflows.
+> `0.1.3 Preview` — Ready for evaluating multi-repository commit, history, branch, push, blame, and conflict workflows.
 
 ## Product tour / 功能预览
 
@@ -31,7 +31,8 @@ Git4VSC brings a focused commit window, a topology-aware Commit Log, branch stat
 - **Focused commit workflow:** Select files, review diffs, roll back changes, and use Commit or Commit and Push.
 - **Update and repository status:** Update with Merge or Rebase, monitor ahead/behind counts, and receive unobtrusive progress and result feedback.
 - **Safe push workflow:** Preview outgoing commits, protect branch patterns from Force Push, confirm history rewrites, and recover rejected pushes with Merge or Rebase.
-- **Commit Log:** Browse a topology graph with persistent selection, virtual scrolling, relative dates, and configurable Author, Date, and Hash columns.
+- **Commit Log:** Browse a topology graph with persistent selection, virtual scrolling, relative dates, and configurable columns that adapt to the available width.
+- **Multiple repositories:** Discover Git repositories at the workspace root or within three directory levels, then switch the active repository from Commit.
 - **Powerful filtering:** Search text or hashes with regex, case matching, and recent history; combine Branch, User, Date, and custom Path filters.
 - **Commit and file actions:** Compare revisions, Cherry-Pick, Revert, Reset, create branches or tags, export patches, restore files, and apply selected file changes.
 - **Branch workflows:** Manage local and remote branches, favorites, tracking, tags, remotes, and new worktrees with ahead/behind indicators.
@@ -59,6 +60,7 @@ Press `Alt+3` to toggle Commit Log. Select the status-bar branch name for reposi
 | Right-click a commit | Branch, tag, checkout, Cherry-Pick, Revert, or Reset |
 | Right-click files in commit details | Compare, restore, patch, Revert, or Cherry-Pick selected changes |
 | Right-click editor line numbers | Toggle Git Blame annotations |
+| Right-click the editor or line numbers | Open rename-aware File History |
 | `Alt+3` | Toggle Commit Log |
 
 ### Repository feedback
@@ -73,14 +75,14 @@ Open **Git4VSC Settings → AI** to configure a Base URL, API key, model, langua
 
 - Commits currently select whole files. Partial selection is planned for the Diff workflow rather than the Commit file tree.
 - New worktrees can be created, but there is no full worktree management page yet.
-- Path filtering is available in Commit Log; a dedicated rename-aware File History view is not yet included.
+- File History is available from the editor context menu and follows renames in the existing Git Log workspace.
 - Git Stash is available; Shelf and Interactive Rebase are not included yet.
 
 ### Requirements
 
 - Visual Studio Code `1.102.0` or newer.
 - Git `2.23` or newer available to the extension host.
-- A Git repository opened in the current local or remote workspace.
+- One or more Git repositories in the current local or remote workspace.
 
 ---
 
@@ -93,7 +95,8 @@ Git4VSC 为 VS Code 提供聚焦的 Commit 工具窗口、拓扑 Commit Log、�
 - **紧凑提交：** 勾选文件、检查 Diff、回滚变更，并使用 Commit 或 Commit and Push。
 - **更新与仓库状态：** 使用 Merge 或 Rebase 更新，查看 ahead/behind 数量，并获得不干扰布局的进度和结果反馈。
 - **安全 Push：** 检查待推送提交和文件，保护指定分支免受 Force Push，在历史改写前确认，并用 Merge/Rebase 恢复被拒绝的 Push。
-- **Commit Log：** 浏览拓扑图，保留选择和筛选状态，使用虚拟滚动、相对时间以及可配置的 Author、Date、Hash 列。
+- **Commit Log：** 浏览拓扑图，保留选择和筛选状态，使用虚拟滚动、相对时间以及随可用宽度适配的 Author、Date、Hash 列。
+- **多仓库：** 自动发现工作区根目录及最多三层子目录中的 Git 仓库，并可在 Commit 中切换当前仓库。
 - **组合筛选：** Text or hash 支持正则、大小写匹配和最近搜索，并可组合 Branch、User、Date、Paths 条件。
 - **提交与文件操作：** 比较版本、Cherry-Pick、Revert、Reset、创建分支或 Tag、导出 Patch、恢复文件和选择性应用变更。
 - **分支工作流：** 管理本地/远程分支、收藏、Tracking、Tag、Remote 和新 Worktree，并显示 ahead/behind。
@@ -121,6 +124,7 @@ Git4VSC 为 VS Code 提供聚焦的 Commit 工具窗口、拓扑 Commit Log、�
 | 右键提交 | 创建分支/Tag、Checkout、Cherry-Pick、Revert 或 Reset |
 | 右键提交详情文件 | 比较、恢复、创建 Patch、选择性 Revert 或 Cherry-Pick |
 | 右键编辑器行号 | 打开或关闭 Git Blame |
+| 右键编辑器内容或行号 | 打开跟踪重命名的 File History |
 | `Alt+3` | 打开或关闭 Commit Log |
 
 ### 仓库状态反馈
@@ -135,14 +139,14 @@ Commit 标题、分支列表和状态栏都会显示 ahead/behind 数量。长�
 
 - 当前按整文件提交；部分选择计划放入 Diff 交互，不在 Commit 文件树增加额外层级。
 - 可以创建 Worktree，暂不提供完整的 Worktree 管理页面。
-- Commit Log 支持按路径筛选，暂不提供独立且跟踪重命名的 File History 页面。
+- 编辑器右键可打开 File History，并在现有 Git Log 工作区中跟踪文件重命名历史。
 - Git Stash 已可用；Shelf 和 Interactive Rebase 暂未包含。
 
 ### 运行要求
 
 - Visual Studio Code `1.102.0` 或更高版本。
 - Extension Host 可访问 Git `2.23` 或更高版本。
-- 当前本地或远程工作区已经打开 Git 仓库。
+- 当前本地或远程工作区中包含一个或多个 Git 仓库。
 
 ## Feedback / 反馈
 

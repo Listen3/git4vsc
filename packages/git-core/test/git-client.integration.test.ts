@@ -151,6 +151,18 @@ describe('GitClient against generated repositories', () => {
     expect((await client.status(location)).changes).toContainEqual({ path: 'left-staged.txt', index: 'added', workingTree: null, conflict: false });
   });
 
+  it('follows file history across renames', async () => {
+    const location = await client.discover(fixtures.history);
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(`${location.root}/history-before.txt`, 'history\n');
+    await client.commitPaths(location, 'file history origin', ['history-before.txt']);
+    await rename(`${location.root}/history-before.txt`, `${location.root}/history-after.txt`);
+    await client.commitPaths(location, 'file history rename', ['history-before.txt', 'history-after.txt']);
+
+    const history = await client.log(location, 0, 20, { ref: 'HEAD', paths: ['history-after.txt'], followRenames: true });
+    expect(history.commits.map(commit => commit.subject)).toEqual(expect.arrayContaining(['file history origin', 'file history rename']));
+  });
+
   it('commits a staged rename selected in the Commit view', async () => {
     const location = await client.discover(fixtures.history);
     const { writeFile } = await import('node:fs/promises');

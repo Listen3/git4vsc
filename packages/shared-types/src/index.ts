@@ -83,6 +83,7 @@ export interface CommitPage {
 
 export interface LogQuery {
   ref?: string;
+  followRenames?: boolean;
   text?: string;
   regex?: boolean;
   caseSensitive?: boolean;

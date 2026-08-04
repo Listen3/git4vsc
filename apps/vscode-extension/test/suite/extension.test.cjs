@@ -3,12 +3,14 @@ const vscode = require('vscode');
 
 suite('Git4VSC Extension Host', () => {
   test('activates and registers public commands', async () => {
-    const extension = vscode.extensions.getExtension('git4vsc.git4vsc');
+    const extension = vscode.extensions.all.find(candidate => candidate.packageJSON.name === 'git4vsc' && candidate.packageJSON.publisher === 'Listen');
     assert.ok(extension, 'extension should be installed in the development host');
     await extension.activate();
     const commands = await vscode.commands.getCommands(true);
     assert.ok(commands.includes('git4vsc.refresh'));
     assert.ok(commands.includes('git4vsc.openLog'));
+    assert.ok(commands.includes('git4vsc.showFileHistory'));
+    assert.ok(commands.includes('git4vsc.toggleBlameAnnotations'));
     assert.ok(commands.includes('git4vsc.openSettings'));
     assert.ok(commands.includes('git4vsc.toggleLog'));
     assert.ok(commands.includes('git4vsc.openCommitView'));

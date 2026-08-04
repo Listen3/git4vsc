@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultCommitColumnVisibility, defaultCommitColumnWidths, normalizeCommitColumnVisibility, normalizeCommitColumnWidths, resizeCommitDetailColumn } from '../src/commit-columns.js';
+import { defaultCommitColumnVisibility, defaultCommitColumnWidths, normalizeCommitColumnVisibility, normalizeCommitColumnWidths, resizeCommitDetailColumn, responsiveCommitColumnWidth } from '../src/commit-columns.js';
 
 describe('commit column widths', () => {
   it('uses stable defaults', () => {
@@ -29,5 +29,11 @@ describe('commit column widths', () => {
   it('stops resizing when the detail or flexible commit column reaches its minimum', () => {
     expect(resizeCommitDetailColumn(defaultCommitColumnWidths, 'date', 200).date).toBe(95);
     expect(resizeCommitDetailColumn(defaultCommitColumnWidths, 'author', -200, 430)).toEqual({ ...defaultCommitColumnWidths, commit: 430, author: 120 });
+  });
+
+  it('lets the commit column consume the remaining viewport width', () => {
+    expect(responsiveCommitColumnWidth(defaultCommitColumnWidths, defaultCommitColumnVisibility, 1000)).toBe(682);
+    expect(responsiveCommitColumnWidth(defaultCommitColumnWidths, { author: false, date: true, hash: false }, 700)).toBe(556);
+    expect(responsiveCommitColumnWidth(defaultCommitColumnWidths, defaultCommitColumnVisibility, 420)).toBe(180);
   });
 });

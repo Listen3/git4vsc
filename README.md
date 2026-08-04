@@ -4,7 +4,7 @@ Git4VSC 是一个面向 Visual Studio Code 的本地 Git 工作流扩展。它�
 
 项目调用本机 Git CLI；仓库状态、提交图和主要界面由 TypeScript 与 React 实现。产品结构和交互参考了 JetBrains Git4Idea 与 IntelliJ Platform VCS Log 的公开行为，但不复制其代码、图标或专有素材。
 
-> 当前版本：`0.1.2 Preview`。单仓库的日常提交、同步、历史浏览和冲突处理流程已经可用。
+> 当前版本：`0.1.3 Preview`。日常提交、同步、历史浏览和冲突处理流程已经可用，并支持在一个工作区管理多个嵌套仓库。
 
 ## 功能预览
 
@@ -37,13 +37,14 @@ Git4VSC 是一个面向 Visual Studio Code 的本地 Git 工作流扩展。它�
 - 默认聚焦当前分支，保留上次选择、筛选条件和视图状态，避免重复打开时重新跳动。
 - Text or hash 支持普通文本、Hash、正则、大小写匹配和最近搜索。
 - 支持 Branch、User、Date、Paths 组合筛选；Paths 使用扩展内的目录/文件选择窗口。
-- Author、Date、Hash 列可独立显示或隐藏，列宽可调整；时间支持相对格式。
+- Author、Date、Hash 列可独立显示或隐藏，列宽可调整；窗口变化时 Commit 列自动适配剩余空间，时间支持相对格式。
 - 提交详情支持目录分组或平铺，并可隐藏详情区。
 - Commit 级操作包括创建分支/Tag、Checkout、Cherry-Pick、Revert 和 Reset。
 - 文件级操作包括 Diff、本地比较、打开仓库版本、选择性 Revert/Cherry-Pick、创建 Patch、Get from Revision 和按路径筛选历史。
 
 ### 分支、远程与仓库状态
 
+- 自动发现工作区根目录及最多三层子目录中的 Git 仓库，并在 Commit 工具窗口中切换当前仓库。
 - 管理本地/远程分支、收藏分支、Tracking、Tag 和 Remote。
 - 支持 Checkout、Checkout and Update、Checkout and Rebase、Merge、Rebase、Pull、Push 和创建 Worktree。
 - 本地修改阻塞 Update/Checkout 时提供 Smart Operation：临时 Stash、完成操作并恢复修改；恢复冲突继续进入逐文件解决流程。
@@ -81,7 +82,7 @@ Git4VSC 是一个面向 Visual Studio Code 的本地 Git 工作流扩展。它�
 | 分支、Tag 与 Remote | 可用 | 常用创建、切换、比较、合并、Rebase、Tracking 和删除操作 |
 | Worktree | 部分可用 | 支持创建；暂不提供列表、打开、删除和 Prune 管理页 |
 | Commit Log | 可用 | 图谱、组合筛选、可选列、详情和常用提交/文件操作 |
-| 文件历史 | 部分可用 | 支持按路径筛选；暂不提供独立 File History 与 rename follow |
+| 文件历史 | 可用 | 编辑器右键打开 File History，并使用 rename follow 跟踪重命名前后的提交 |
 | Merge 冲突 | 可用 | 逐文件处理并使用 VS Code Merge Editor |
 | Git Blame | 可用 | 时间着色和 Hover 详情；暂不支持点击跳转 Commit Log |
 | AI Commit Message | 可选 | 使用用户配置的 OpenAI-compatible 服务 |
@@ -168,8 +169,8 @@ apps/
 - [x] Marketplace PNG 图标
 - [x] 类型检查、单元测试、真实 Git 仓库集成测试和 Extension Host 测试
 - [x] 添加产品截图和核心流程短 GIF
-- [ ] 确定并添加项目许可证
-- [ ] 确认 Marketplace Publisher 与发布凭据
+- [x] 添加 MIT License 与 manifest 许可证字段
+- [x] 配置 Marketplace Publisher 与发布元数据
 
 ## 声明
 

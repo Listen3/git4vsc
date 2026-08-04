@@ -2,7 +2,7 @@
   "name": "git4vsc",
   "displayName": "Git4VSC",
   "description": "%extension.description%",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "Listen",
   "license": "MIT",
   "preview": true,
@@ -45,7 +45,7 @@
     "build:webview": "vite build --config vite.config.ts",
     "build:extension": "tsup --config tsup.config.ts",
     "prepackage:vsix": "pnpm --filter \"@git4vsc/*\" build",
-    "package:vsix": "node -e \"require('node:fs').mkdirSync('../../artifacts',{recursive:true})\" && pnpm build && vsce package --no-dependencies --out ../../artifacts/git4vsc-0.1.2.vsix",
+    "package:vsix": "node -e \"require('node:fs').mkdirSync('../../artifacts',{recursive:true})\" && pnpm build && vsce package --no-dependencies --out ../../artifacts/git4vsc-0.1.3.vsix",
     "typecheck": "tsc --noEmit",
     "test:extension": "node ./test/runTest.cjs"
   },
@@ -68,6 +68,7 @@
   "contributes": {
     "commands": [
       { "command": "git4vsc.refresh", "title": "Refresh", "category": "Git4VSC", "icon": "$(refresh)" },
+      { "command": "git4vsc.showFileHistory", "title": "File History", "category": "Git4VSC" },
       { "command": "git4vsc.toggleBlameAnnotations", "title": "Annotate with Git Blame", "category": "Git4VSC" },
       { "command": "git4vsc.stage", "title": "Stage Changes", "category": "Git4VSC", "icon": "$(add)" },
       { "command": "git4vsc.unstage", "title": "Unstage Changes", "category": "Git4VSC", "icon": "$(remove)" },
@@ -212,7 +213,12 @@
     },
     "menus": {
       "editor/lineNumber/context": [
+        { "command": "git4vsc.showFileHistory", "when": "resourceScheme == file", "group": "navigation@-101" },
         { "command": "git4vsc.toggleBlameAnnotations", "when": "resourceScheme == file", "group": "navigation@-100", "toggled": "git4vsc.blameVisible" }
+      ],
+      "editor/context": [
+        { "command": "git4vsc.showFileHistory", "when": "resourceScheme == file", "group": "git4vsc@1" },
+        { "command": "git4vsc.toggleBlameAnnotations", "when": "resourceScheme == file", "group": "git4vsc@2", "toggled": "git4vsc.blameVisible" }
       ],
       "scm/title": [
         { "command": "git4vsc.showBranchMenu", "when": "scmProvider == git4vsc", "group": "navigation@5" },

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type UIEvent } from 'react';
 import { layoutCommits } from '@git4vsc/git-graph';
 import type { CommitSummary } from '@git4vsc/shared-types';
-import { defaultCommitColumnWidths, normalizeCommitColumnVisibility, normalizeCommitColumnWidths, resizeCommitDetailColumn, type CommitColumnVisibility, type CommitColumnWidths, type CommitDetailColumn } from './commit-columns.js';
+import { defaultCommitColumnWidths, normalizeCommitColumnVisibility, normalizeCommitColumnWidths, resizeCommitDetailColumn, responsiveCommitColumnWidth, type CommitColumnVisibility, type CommitColumnWidths, type CommitDetailColumn } from './commit-columns.js';
 import { formatCommitTime, formatExactCommitTime } from './commit-date.js';
 import { CommitGraph, type FilteredConnection } from './CommitGraph.js';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu.js';
@@ -25,6 +25,7 @@ export interface CommitLogProps {
 
 const rowHeight = 25;
 const overscan = 10;
+const rowEndPadding = 12;
 
 export function CommitLog({ commits, selectedHash, hasMore = false, loading = false, filtered = false, columnWidths: initialColumnWidths, visibleColumns: initialVisibleColumns, onLoadMore, onSelectCommit, onCommitAction, onColumnWidthsChange }: CommitLogProps) {
   const graph = useMemo(() => layoutCommits(commits), [commits]);
@@ -35,21 +36,29 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
   const [scrollTop, setScrollTop] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [height, setHeight] = useState(500);
+  const [width, setWidth] = useState(0);
   const [columnWidths, setColumnWidths] = useState(widthsRef.current);
   const [menu, setMenu] = useState<{ x: number; y: number; commit: CommitSummary } | null>(null);
   const [clock, setClock] = useState(Date.now());
   const first = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
   const last = Math.min(commits.length, Math.ceil((scrollTop + height) / rowHeight) + overscan);
   const graphWidth = filtered ? 24 : Math.max(26, graph.maxLaneCount * 13 + 6);
-  const commitWidth = Math.max(columnWidths.commit, graphWidth + 80);
   const visibleColumns = normalizeCommitColumnVisibility(initialVisibleColumns);
   const optionalColumns = (['author', 'date', 'hash'] as const).filter(column => visibleColumns[column]);
+  const commitMinimum = graphWidth + 80;
+  const commitWidth = width > 0
+    ? responsiveCommitColumnWidth(columnWidths, visibleColumns, width, commitMinimum, rowEndPadding)
+    : Math.max(columnWidths.commit, commitMinimum);
   const rowTemplate = [`${graphWidth}px`, `${commitWidth - graphWidth}px`, ...optionalColumns.map(column => `${columnWidths[column]}px`)].join(' ');
-  const tableWidth = commitWidth + optionalColumns.reduce((width, column) => width + columnWidths[column], 0) + 6;
+  const naturalTableWidth = commitWidth + optionalColumns.reduce((total, column) => total + columnWidths[column], 0) + rowEndPadding;
+  const tableWidth = Math.max(width, naturalTableWidth);
 
   useEffect(() => {
     if (!container.current) return;
-    const observer = new ResizeObserver(entries => setHeight(entries[0]?.contentRect.height ?? 500));
+    const observer = new ResizeObserver(() => {
+      setHeight(container.current?.clientHeight ?? 500);
+      setWidth(container.current?.clientWidth ?? 0);
+    });
     observer.observe(container.current);
     return () => observer.disconnect();
   }, []);

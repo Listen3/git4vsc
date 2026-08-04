@@ -1,5 +1,5 @@
 import { readdir, writeFile } from 'node:fs/promises';
-import { join, resolve, sep } from 'node:path';
+import { basename, join, resolve, sep } from 'node:path';
 import * as vscode from 'vscode';
 import type { CommitDetails, CommitFileChange, CommitSummary, DialogListItem, GitRef, LogFilters, PathTreeEntry, RepositoryStatus } from '@git4vsc/shared-types';
 import type { RepositoryController } from '@git4vsc/repo-state';
@@ -56,10 +56,23 @@ export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   async show(repository: RepositoryController): Promise<void> {
+    const changed = this.repository !== repository;
     this.select(repository);
+    if (!changed) this.session?.showLog();
     await vscode.commands.executeCommand('git4vsc.logView.focus');
     this.view?.show(true);
     if (!this.session) this.attach();
+  }
+
+  async showFileHistory(repository: RepositoryController, path: string): Promise<void> {
+    const changed = this.repository !== repository;
+    this.repository = repository;
+    if (changed) this.attach(path);
+    else this.session?.showFileHistory(path);
+    await vscode.commands.executeCommand('git4vsc.logView.focus');
+    this.view?.show(true);
+    if (!this.session) this.attach(path);
+    this.session?.showFileHistory(path);
   }
 
   select(repository: RepositoryController): void {
@@ -95,10 +108,10 @@ export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
     this.session = null;
   }
 
-  private attach(): void {
+  private attach(fileHistoryPath: string | null = null): void {
     if (!this.view || !this.repository) return;
     this.session?.dispose();
-    this.session = new LogSession(this.context, this.repository, this.view, this.previewPush);
+    this.session = new LogSession(this.context, this.repository, this.view, this.previewPush, fileHistoryPath);
   }
 }
 
@@ -108,6 +121,8 @@ class LogSession implements vscode.Disposable {
   private commits: CommitSummary[];
   private activeRef: string | null;
   private filters: LogFilters;
+  private mainFilters: LogFilters;
+  private fileHistoryPath: string | null;
   private searchHistory: string[];
   private users: string[];
   private selectedHash: string | null = null;
@@ -129,21 +144,24 @@ class LogSession implements vscode.Disposable {
     private readonly context: vscode.ExtensionContext,
     private readonly repository: RepositoryController,
     private readonly view: vscode.WebviewView,
-    private readonly previewPush: PreviewPush
+    private readonly previewPush: PreviewPush,
+    fileHistoryPath: string | null = null
   ) {
     const saved = context.workspaceState.get<Partial<PersistedLogState>>(this.stateKey());
     this.activeRef = 'HEAD';
-    this.filters = normalizeLogFilters(saved?.filters);
+    this.mainFilters = normalizeLogFilters(saved?.filters);
+    this.fileHistoryPath = fileHistoryPath;
+    this.filters = fileHistoryPath ? { ...emptyLogFilters, path: fileHistoryPath } : this.mainFilters;
     this.searchHistory = context.globalState.get<string[]>(logSearchHistoryKey, []);
     this.commits = [];
     this.users = [];
     this.logIdentity = repositoryLogIdentity(repository.snapshot.status);
     this.favoriteRefs = new Set(context.workspaceState.get<string[]>(this.favoriteKey(), []));
     this.dialogs = new WebviewDialogController(message => view.webview.postMessage(message));
-    view.title = `Git Log — ${repository.snapshot.status?.branch ?? 'HEAD'}`;
+    this.updateTitle();
     view.webview.html = this.html(context, view.webview);
     this.unsubscribe = repository.onDidChange(snapshot => {
-      view.title = `Git Log — ${snapshot.status?.branch ?? 'HEAD'}`;
+      this.updateTitle();
       const identity = repositoryLogIdentity(snapshot.status);
       if (identity !== this.logIdentity) {
         this.logIdentity = identity;
@@ -158,6 +176,24 @@ class LogSession implements vscode.Disposable {
 
   refresh(): void {
     this.postSnapshot();
+  }
+
+  showLog(): void {
+    if (!this.fileHistoryPath) return;
+    this.fileHistoryPath = null;
+    this.activeRef = 'HEAD';
+    this.filters = this.mainFilters;
+    this.updateTitle();
+    void this.loadLog(true);
+  }
+
+  showFileHistory(path: string): void {
+    if (this.fileHistoryPath === path) return;
+    this.fileHistoryPath = path;
+    this.activeRef = 'HEAD';
+    this.filters = { ...emptyLogFilters, path };
+    this.updateTitle();
+    void this.loadLog(true);
   }
 
   revealCommit(hash: string): void {
@@ -216,7 +252,12 @@ class LogSession implements vscode.Disposable {
   private async setFilters(value: unknown): Promise<void> {
     if (!isLogFilters(value) || JSON.stringify(value) === JSON.stringify(this.filters)) return;
     this.filters = value;
-    await this.persistState();
+    if (this.fileHistoryPath && value.path !== this.fileHistoryPath) this.fileHistoryPath = null;
+    if (!this.fileHistoryPath) {
+      this.mainFilters = value;
+      await this.persistState();
+      this.updateTitle();
+    }
     await this.loadLog(true);
   }
 
@@ -267,7 +308,12 @@ class LogSession implements vscode.Disposable {
     this.localError = null;
     this.postSnapshot();
     try {
-      const page = await this.repository.git.log(this.repository.location, reset ? 0 : this.commits.length, limit, logQueryFromFilters(this.filters, this.activeRef));
+      const query = logQueryFromFilters(this.filters, this.activeRef);
+      if (this.fileHistoryPath) {
+        query.followRenames = true;
+        query.paths = [this.fileHistoryPath];
+      }
+      const page = await this.repository.git.log(this.repository.location, reset ? 0 : this.commits.length, limit, query);
       if (request !== this.logRequest) return;
       const next = reset ? page.commits : [...this.commits, ...page.commits.filter(commit => !this.commits.some(existing => existing.hash === commit.hash))];
       this.commits = next;
@@ -882,7 +928,7 @@ class LogSession implements vscode.Disposable {
   }
 
   private persistState(): Thenable<void> {
-    return this.context.workspaceState.update(this.stateKey(), { filters: this.filters } satisfies PersistedLogState);
+    return this.context.workspaceState.update(this.stateKey(), { filters: this.mainFilters } satisfies PersistedLogState);
   }
 
   private findCommit(hash: string): CommitSummary | undefined {
@@ -904,6 +950,7 @@ class LogSession implements vscode.Disposable {
         activeRef: this.activeRef,
         favoriteRefs: [...this.favoriteRefs],
         filters: this.filters,
+        fileHistoryPath: this.fileHistoryPath,
         searchHistory: this.searchHistory,
         users: this.users,
         selectedHash: this.selectedHash,
@@ -915,6 +962,12 @@ class LogSession implements vscode.Disposable {
         error: this.localError ?? snapshot.error
       }
     });
+  }
+
+  private updateTitle(): void {
+    this.view.title = this.fileHistoryPath
+      ? `File History — ${basename(this.fileHistoryPath)}`
+      : `Git Log — ${this.repository.snapshot.status?.branch ?? 'HEAD'}`;
   }
 
   private html(context: vscode.ExtensionContext, webview: vscode.Webview): string {

@@ -116,6 +116,7 @@ export class GitClient {
       if (query.author) args.push(`--author=${query.regex ? escapeRegExp(query.author) : query.author}`);
       if (query.since) args.push(`--since=${query.since}`);
       if (query.until) args.push(`--until=${query.until}`);
+      if (query.followRenames && query.paths?.length === 1) args.push('--follow');
       args.push(query.ref ?? '--all');
       if (query.paths?.length) args.push('--', ...query.paths);
     }

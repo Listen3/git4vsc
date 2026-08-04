@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { relative } from 'node:path';
 import type { CommitSelection } from '@git4vsc/shared-types';
 import { RepositoryManager, type RepositoryController } from '@git4vsc/repo-state';
 import { BlameAnnotations } from './blame-annotations.js';
@@ -11,10 +12,17 @@ import { LogPanel } from './log-panel.js';
 import { notifyCommitResult } from './operation-notifications.js';
 import { SettingsPanel } from './settings-panel.js';
 import { isRepositoryIndex, repositoryInvalidations } from './repository-watch.js';
+import { findWorkspaceRepositoryRoots } from './repository-discovery.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const manager = new RepositoryManager();
-  const blameAnnotations = new BlameAnnotations(() => manager.all, path => manager.open(path));
+  let initializingRepositories = true;
+  const openRepository = async (path: string): Promise<RepositoryController> => {
+    const repository = await manager.open(path);
+    registerRepository(repository);
+    return repository;
+  };
+  const blameAnnotations = new BlameAnnotations(() => manager.all, path => openRepository(path));
   const adapters: ScmRepositoryAdapter[] = [];
   const conflictTree = new ConflictTree(() => manager.all);
   const conflictResolver = new ConflictResolver(() => conflictTree.refresh());
@@ -60,29 +68,44 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(logPanel, vscode.window.registerWebviewViewProvider('git4vsc.logView', logPanel, { webviewOptions: { retainContextWhenHidden: true } }));
   context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider('git4vsc', new GitContentProvider(() => manager.all)));
 
-  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+  const registeredRoots = new Set<string>();
+  const syncViews = () => {
+    commitView.refresh();
+    conflictTree.refresh();
+    void vscode.commands.executeCommand('setContext', 'git4vsc.hasConflicts', manager.all.some(candidate => candidate.snapshot.status?.changes.some(change => change.conflict)));
+    void vscode.commands.executeCommand('setContext', 'git4vsc.operationInProgress', manager.all.some(candidate => candidate.snapshot.status?.phase !== 'normal' && candidate.snapshot.status?.phase !== 'detached'));
+  };
+  const registerRepository = (repository: RepositoryController) => {
+    if (registeredRoots.has(repository.root)) return;
+    registeredRoots.add(repository.root);
+    const adapter = new ScmRepositoryAdapter(repository);
+    adapters.push(adapter);
+    context.subscriptions.push(adapter);
+    watchRepository(context, repository, syncViews);
+    const unsubscribe = repository.onDidChange(syncViews);
+    context.subscriptions.push({ dispose: unsubscribe });
+    if (!initializingRepositories) syncViews();
+  };
+  const openWorkspaceRepositories = async (folder: vscode.WorkspaceFolder) => {
     try {
-      const repository = await manager.open(folder.uri.fsPath);
-      const adapter = new ScmRepositoryAdapter(repository);
-      adapters.push(adapter);
-      context.subscriptions.push(adapter);
-      const sync = () => {
-        commitView.refresh();
-        conflictTree.refresh();
-        void vscode.commands.executeCommand('setContext', 'git4vsc.hasConflicts', manager.all.some(candidate => candidate.snapshot.status?.changes.some(change => change.conflict)));
-        void vscode.commands.executeCommand('setContext', 'git4vsc.operationInProgress', manager.all.some(candidate => candidate.snapshot.status?.phase !== 'normal' && candidate.snapshot.status?.phase !== 'detached'));
-      };
-      watchRepository(context, repository, sync);
-      const unsubscribe = repository.onDidChange(sync);
-      context.subscriptions.push({ dispose: unsubscribe });
+      await openRepository(folder.uri.fsPath);
     } catch {
-      // A workspace folder is not necessarily a Git repository.
+      // A workspace folder can contain repositories without being one itself.
     }
-  }
-  commitView.refresh();
-  conflictTree.refresh();
-  void vscode.commands.executeCommand('setContext', 'git4vsc.hasConflicts', manager.all.some(repository => repository.snapshot.status?.changes.some(change => change.conflict)));
-  void vscode.commands.executeCommand('setContext', 'git4vsc.operationInProgress', manager.all.some(repository => repository.snapshot.status?.phase !== 'normal' && repository.snapshot.status?.phase !== 'detached'));
+    for (const root of await findWorkspaceRepositoryRoots(folder.uri.fsPath)) {
+      try {
+        await openRepository(root);
+      } catch {
+        // One invalid nested repository must not prevent the others from opening.
+      }
+    }
+  };
+  for (const folder of vscode.workspace.workspaceFolders ?? []) await openWorkspaceRepositories(folder);
+  initializingRepositories = false;
+  context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(event => {
+    for (const folder of event.added) void openWorkspaceRepositories(folder);
+  }));
+  syncViews();
   logPanel.initialize(manager.all[0]);
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
     if (!event.affectsConfiguration('git4vsc')) return;
@@ -104,6 +127,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ? (value as { path: string }).path
     : undefined;
 
+  const editorUri = (value?: unknown): vscode.Uri | undefined => value instanceof vscode.Uri
+    ? value
+    : vscode.window.activeTextEditor?.document.uri;
+
   const selectedOperationRepository = (value?: unknown): RepositoryController | undefined => value === undefined
     ? manager.all.find(repository => repository.snapshot.status?.changes.some(change => change.conflict))
       ?? manager.all.find(repository => repository.snapshot.status?.phase !== 'normal' && repository.snapshot.status?.phase !== 'detached')
@@ -119,6 +146,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.commands.registerCommand('git4vsc.toggleBlameAnnotations', (uri?: vscode.Uri) => blameAnnotations.toggle(uri)),
+    vscode.commands.registerCommand('git4vsc.showFileHistory', async (value?: unknown) => {
+      const uri = editorUri(value);
+      if (!uri || uri.scheme !== 'file') return;
+      const repository = await openRepository(uri.fsPath);
+      const path = relative(repository.root, uri.fsPath).replaceAll('\\', '/');
+      await commitView.select(repository);
+      await logPanel.showFileHistory(repository, path);
+    }),
     vscode.commands.registerCommand('git4vsc.refresh', async (value?: RepositoryController | vscode.SourceControl) => {
       const repository = selectedRepository(value);
       if (!repository) return;
