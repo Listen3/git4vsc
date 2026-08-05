@@ -1,6 +1,6 @@
 {
   "name": "git4vsc-workspace",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "packageManager": "pnpm@11.9.0",
   "scripts": {

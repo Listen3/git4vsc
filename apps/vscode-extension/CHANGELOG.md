@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.4 - 2026-08-06
+
+- Added changelist group actions for editing, activating, and deleting lists.
+- Streamlined moving files when no other changelist exists by opening Create and Move directly.
+
 ## 0.1.3 - 2026-08-05
 
 - Added workspace discovery for nested repositories up to three directory levels.
