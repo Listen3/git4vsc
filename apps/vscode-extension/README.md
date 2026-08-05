@@ -29,10 +29,13 @@ Git4VSC brings a focused commit window, a topology-aware Commit Log, branch stat
 ### Highlights
 
 - **Focused commit workflow:** Select files, review diffs, roll back changes, and use Commit or Commit and Push.
+- **Changelists:** Create, edit, delete, activate, and move files between repository-local change groups without changing the Git index.
+- **Native-style selection:** File-row selection is independent from commit checkboxes, with Ctrl/Cmd multi-select and Shift range selection for context actions and drag-and-drop.
 - **Update and repository status:** Update with Merge or Rebase, monitor ahead/behind counts, and receive unobtrusive progress and result feedback.
 - **Safe push workflow:** Preview outgoing commits, protect branch patterns from Force Push, confirm history rewrites, and recover rejected pushes with Merge or Rebase.
 - **Commit Log:** Browse a topology graph with persistent selection, virtual scrolling, relative dates, and configurable columns that adapt to the available width.
 - **Multiple repositories:** Discover Git repositories at the workspace root or within three directory levels, then switch the active repository from Commit.
+- **Pending changes badge:** The Activity Bar badge totals uncommitted files across managed repositories, including added, modified, and deleted files.
 - **Powerful filtering:** Search text or hashes with regex, case matching, and recent history; combine Branch, User, Date, and custom Path filters.
 - **Commit and file actions:** Compare revisions, Cherry-Pick, Revert, Reset, create branches or tags, export patches, restore files, and apply selected file changes.
 - **Branch workflows:** Manage local and remote branches, favorites, tracking, tags, remotes, and new worktrees with ahead/behind indicators.
@@ -56,7 +59,7 @@ Press `Alt+3` to toggle Commit Log. Select the status-bar branch name for reposi
 | Interaction | Result |
 | --- | --- |
 | Double-click a changed file | Open its Diff |
-| Right-click a file in Commit | Commit, rollback, delete, open, add, or ignore it |
+| Right-click a file in Commit | Commit, move to another changelist, rollback, delete, open, add, or ignore it |
 | Right-click a commit | Branch, tag, checkout, Cherry-Pick, Revert, or Reset |
 | Right-click files in commit details | Compare, restore, patch, Revert, or Cherry-Pick selected changes |
 | Right-click editor line numbers | Toggle Git Blame annotations |
@@ -73,7 +76,7 @@ Open **Git4VSC Settings → AI** to configure a Base URL, API key, model, langua
 
 ### Current preview scope
 
-- Commits currently select whole files. Partial selection is planned for the Diff workflow rather than the Commit file tree.
+- Changelists organize and commit whole files. The existing hunk-patch engine remains internal so the Commit tree stays compact.
 - New worktrees can be created, but there is no full worktree management page yet.
 - File History is available from the editor context menu and follows renames in the existing Git Log workspace.
 - Git Stash is available; Shelf and Interactive Rebase are not included yet.
@@ -93,10 +96,13 @@ Git4VSC 为 VS Code 提供聚焦的 Commit 工具窗口、拓扑 Commit Log、�
 ### 主要功能
 
 - **紧凑提交：** 勾选文件、检查 Diff、回滚变更，并使用 Commit 或 Commit and Push。
+- **Changelists：** 在每个仓库内创建、编辑、删除和激活变更清单，在清单间移动文件，并且不改写 Git index。
+- **原生列表选择：** 文件行高亮与提交勾选互相独立，支持 Ctrl/Cmd 多选和 Shift 连选，右键及拖拽只作用于高亮文件。
 - **更新与仓库状态：** 使用 Merge 或 Rebase 更新，查看 ahead/behind 数量，并获得不干扰布局的进度和结果反馈。
 - **安全 Push：** 检查待推送提交和文件，保护指定分支免受 Force Push，在历史改写前确认，并用 Merge/Rebase 恢复被拒绝的 Push。
 - **Commit Log：** 浏览拓扑图，保留选择和筛选状态，使用虚拟滚动、相对时间以及随可用宽度适配的 Author、Date、Hash 列。
 - **多仓库：** 自动发现工作区根目录及最多三层子目录中的 Git 仓库，并可在 Commit 中切换当前仓库。
+- **待提交角标：** Activity Bar 角标汇总所有已管理仓库中的新增、修改和删除文件。
 - **组合筛选：** Text or hash 支持正则、大小写匹配和最近搜索，并可组合 Branch、User、Date、Paths 条件。
 - **提交与文件操作：** 比较版本、Cherry-Pick、Revert、Reset、创建分支或 Tag、导出 Patch、恢复文件和选择性应用变更。
 - **分支工作流：** 管理本地/远程分支、收藏、Tracking、Tag、Remote 和新 Worktree，并显示 ahead/behind。
@@ -120,7 +126,7 @@ Git4VSC 为 VS Code 提供聚焦的 Commit 工具窗口、拓扑 Commit Log、�
 | 操作 | 结果 |
 | --- | --- |
 | 双击变更文件 | 打开 Diff |
-| 右键 Commit 文件 | 提交、回滚、删除、打开、加入版本控制或忽略 |
+| 右键 Commit 文件 | 提交、移动到其他 Changelist、回滚、删除、打开、加入版本控制或忽略 |
 | 右键提交 | 创建分支/Tag、Checkout、Cherry-Pick、Revert 或 Reset |
 | 右键提交详情文件 | 比较、恢复、创建 Patch、选择性 Revert 或 Cherry-Pick |
 | 右键编辑器行号 | 打开或关闭 Git Blame |
@@ -137,7 +143,7 @@ Commit 标题、分支列表和状态栏都会显示 ahead/behind 数量。长�
 
 ### Preview 当前范围
 
-- 当前按整文件提交；部分选择计划放入 Diff 交互，不在 Commit 文件树增加额外层级。
+- Changelists 当前按整文件组织和提交；hunk patch 底层能力仍保留，但不在 Commit 文件树增加额外层级。
 - 可以创建 Worktree，暂不提供完整的 Worktree 管理页面。
 - 编辑器右键可打开 File History，并在现有 Git Log 工作区中跟踪文件重命名历史。
 - Git Stash 已可用；Shelf 和 Interactive Rebase 暂未包含。

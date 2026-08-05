@@ -5,6 +5,9 @@
 - Added workspace discovery for nested repositories up to three directory levels.
 - Added rename-aware File History from the editor and line-number context menus.
 - Made Commit Log columns adapt to the available panel width while preserving detail-column widths.
+- Changed the Activity Bar badge to show uncommitted files across managed repositories, including deletions.
+- Added repository-local Changelists with persistent active state, create/edit/delete management, file moves, and isolated commit selection.
+- Added native-style single, Ctrl/Cmd multi-, and Shift range selection for Changelist context actions and drag-and-drop.
 
 ## 0.1.2 - Preview
 

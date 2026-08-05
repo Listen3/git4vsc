@@ -170,6 +170,14 @@ export interface CommitSelection {
   hunkIds?: string[];
 }
 
+export interface LocalChangelist {
+  id: string;
+  name: string;
+  description: string;
+  active: boolean;
+  paths: string[];
+}
+
 export interface GitStashEntry {
   ref: string;
   hash: string;

@@ -5,7 +5,7 @@ export interface StatusBarPresentation {
   tooltip: string;
 }
 
-export interface OutgoingViewBadge {
+export interface RepositoryViewBadge {
   value: number;
   tooltip: string;
 }
@@ -39,11 +39,11 @@ export function branchTrackingSuffix(status: RepositoryStatus | null | undefined
   return [status.behind ? `↙${status.behind}` : '', status.ahead ? `↗${status.ahead}` : ''].filter(Boolean).join(' ');
 }
 
-export function outgoingViewBadge(status: RepositoryStatus | null | undefined): OutgoingViewBadge {
-  const ahead = status?.upstream ? status.ahead : 0;
+export function changesViewBadge(statuses: readonly (RepositoryStatus | null | undefined)[]): RepositoryViewBadge {
+  const changes = statuses.reduce((total, status) => total + (status?.changes.length ?? 0), 0);
   return {
-    value: ahead,
-    tooltip: ahead ? `${ahead} commit${ahead === 1 ? '' : 's'} ready to push` : 'No commits ready to push'
+    value: changes,
+    tooltip: changes ? `${changes} changed file${changes === 1 ? '' : 's'} ready to commit` : 'No uncommitted file changes'
   };
 }
 

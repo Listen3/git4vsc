@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { GitChange, PushPreviewDialogRequest, RepositoryStatus } from '@git4vsc/shared-types';
+import type { GitChange, LocalChangelist, PushPreviewDialogRequest, RepositoryStatus } from '@git4vsc/shared-types';
 import { formatCommitTime, OperationActivity, OverlayScrollbar, PushFileTree } from '@git4vsc/ui';
 import './commit.css';
 
@@ -14,6 +14,7 @@ interface CommitViewState {
   repositories: RepositoryChoice[];
   activeRoot: string | null;
   status: RepositoryStatus | null;
+  changelists: LocalChangelist[];
   selectedPaths: string[];
   message: string;
   loading: boolean;
@@ -26,19 +27,33 @@ interface CommitViewState {
 }
 
 interface ChangeGroup {
-  id: 'conflicts' | 'changes' | 'untracked';
+  id: string;
+  kind: 'conflicts' | 'changelist' | 'untracked';
   title: string;
   changes: GitChange[];
+  changelist?: LocalChangelist;
 }
 
 type ChangeTone = 'added' | 'modified' | 'deleted' | 'unversioned' | 'conflict';
-type FileAction = 'commitFile' | 'rollbackFile' | 'deleteFile' | 'jumpToSource' | 'addToVcs' | 'addToIgnore';
+type FileAction = 'commitFile' | 'moveToChangelist' | 'rollbackFile' | 'deleteFile' | 'jumpToSource' | 'addToVcs' | 'addToIgnore';
 const fileNameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 interface FileMenuState {
   change: GitChange;
+  changes: GitChange[];
   x: number;
   y: number;
+}
+
+interface ChangelistMenuState {
+  changelist: LocalChangelist;
+  x: number;
+  y: number;
+}
+
+interface ManageChangelistsState {
+  id: string;
+  delete: boolean;
 }
 
 interface SelectionSummary {
@@ -51,6 +66,7 @@ const initialState: CommitViewState = {
   repositories: [],
   activeRoot: null,
   status: null,
+  changelists: [],
   selectedPaths: [],
   message: '',
   loading: true,
@@ -66,9 +82,14 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
   const [state, setState] = useState(initialState);
   const [message, setMessage] = useState('');
   const [fileMenu, setFileMenu] = useState<FileMenuState | null>(null);
-  const [activePath, setActivePath] = useState<string | null>(null);
+  const [rowSelection, setRowSelection] = useState<Set<string>>(new Set());
   const [messageHeight, setMessageHeight] = useState(136);
+  const [manageChangelists, setManageChangelists] = useState<ManageChangelistsState | null>(null);
+  const [changelistMenu, setChangelistMenu] = useState<ChangelistMenuState | null>(null);
+  const [movePaths, setMovePaths] = useState<string[] | null>(null);
   const messageRef = useRef('');
+  const rowAnchor = useRef<string | null>(null);
+  const activeRoot = useRef<string | null>(null);
   const messageInput = useRef<HTMLTextAreaElement>(null);
   const changesRef = useRef<HTMLElement>(null);
 
@@ -76,7 +97,11 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
     const listener = (event: MessageEvent<{ type: string; state: CommitViewState }>) => {
       if (event.data.type !== 'commitSnapshot') return;
       setState(event.data.state);
-      setActivePath(current => event.data.state.status?.changes.some(change => change.path === current) ? current : null);
+      const repositoryChanged = activeRoot.current !== event.data.state.activeRoot;
+      activeRoot.current = event.data.state.activeRoot;
+      const paths = new Set(event.data.state.status?.changes.map(change => change.path) ?? []);
+      setRowSelection(current => repositoryChanged ? new Set() : new Set([...current].filter(path => paths.has(path))));
+      if (repositoryChanged || (rowAnchor.current && !paths.has(rowAnchor.current))) rowAnchor.current = null;
       setMessage(event.data.state.message);
       messageRef.current = event.data.state.message;
     };
@@ -99,7 +124,8 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
     };
   }, [fileMenu]);
 
-  const groups = useMemo(() => changeGroups(state.status?.changes ?? []), [state.status]);
+  const groups = useMemo(() => changeGroups(state.status?.changes ?? [], state.changelists), [state.status, state.changelists]);
+  const visibleChanges = useMemo(() => groups.flatMap(group => group.changes), [groups]);
   const selectedPaths = useMemo(() => new Set(state.selectedPaths), [state.selectedPaths]);
   const selected = (change: GitChange) => selectedPaths.has(change.path);
   const selectedCount = selectedPaths.size;
@@ -116,6 +142,7 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
         : conflictCount > 0
           ? 'Resolve conflicts before generating a commit message'
           : 'Generate commit message with AI';
+  const activeChangelist = state.changelists.find(changelist => changelist.active) ?? state.changelists[0];
 
   function setSelected(changes: readonly GitChange[], value: boolean) {
     setState(previous => {
@@ -143,15 +170,50 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
     postMessage({ type: 'commitAndPush', message: messageRef.current });
   }
 
-  function runFileAction(action: FileAction, change: GitChange) {
+  function selectRow(change: GitChange, event: React.MouseEvent) {
+    const result = nextRowSelection(visibleChanges.map(candidate => candidate.path), rowSelection, change.path, rowAnchor.current, event.ctrlKey || event.metaKey, event.shiftKey);
+    rowAnchor.current = result.anchor;
+    setRowSelection(result.selected);
+  }
+
+  function openFileMenu(change: GitChange, event: React.MouseEvent) {
+    event.preventDefault();
+    const selected = rowSelection.has(change.path) ? rowSelection : new Set([change.path]);
+    if (!rowSelection.has(change.path)) {
+      rowAnchor.current = change.path;
+      setRowSelection(selected);
+    }
+    setFileMenu({ change, changes: visibleChanges.filter(candidate => selected.has(candidate.path)), x: event.clientX, y: event.clientY });
+  }
+
+  function selectDraggedRow(change: GitChange) {
+    if (rowSelection.has(change.path)) return;
+    rowAnchor.current = change.path;
+    setRowSelection(new Set([change.path]));
+  }
+
+  function runFileAction(action: FileAction, menu: FileMenuState) {
     setFileMenu(null);
     if (action === 'commitFile') {
-      setState(previous => ({ ...previous, selectedPaths: [change.path] }));
-      postMessage({ type: 'replaceSelection', paths: [change.path] });
+      const paths = menu.changes.filter(change => !change.conflict).map(change => change.path);
+      setState(previous => ({ ...previous, selectedPaths: paths }));
+      postMessage({ type: 'replaceSelection', paths });
       requestAnimationFrame(() => messageInput.current?.focus());
       return;
     }
-    postMessage({ type: action, path: change.path });
+    if (action === 'moveToChangelist') {
+      setMovePaths(menu.changes.filter(change => !change.conflict && change.workingTree !== 'untracked').map(change => change.path));
+      return;
+    }
+    if (action === 'rollbackFile') {
+      postMessage({ type: action, paths: menu.changes.filter(change => !change.conflict && change.workingTree !== 'untracked').map(change => change.path) });
+      return;
+    }
+    if (action === 'addToVcs') {
+      postMessage({ type: action, paths: menu.changes.filter(change => change.workingTree === 'untracked').map(change => change.path) });
+      return;
+    }
+    postMessage({ type: action, path: menu.change.path });
   }
 
   function resizeMessageArea(event: React.PointerEvent<HTMLDivElement>) {
@@ -195,6 +257,13 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
         disabled={busy || rollbackCount === 0}
         onClick={() => postMessage({ type: 'rollback' })}
       >↶</button>
+      <button
+        className="commit-toolbar-action changelist-toolbar-action"
+        title="Manage Changelists"
+        aria-label="Manage Changelists"
+        disabled={busy}
+        onClick={() => activeChangelist && setManageChangelists({ id: activeChangelist.id, delete: false })}
+      ><ChangelistIcon /></button>
     </header>
 
     {state.error && <div className="commit-error">{state.error}</div>}
@@ -202,7 +271,7 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
     <section ref={changesRef} className="commit-changes" aria-label="Changes">
       {groups.length === 0
         ? <div className="commit-no-changes">No changes</div>
-        : groups.map(group => <ChangeGroupView key={group.id} group={group} busy={busy} selected={selected} activePath={activePath} setActivePath={setActivePath} setSelected={setSelected} postMessage={postMessage} openFileMenu={setFileMenu} />)}
+        : groups.map(group => <ChangeGroupView key={group.id} group={group} busy={busy} selected={selected} rowSelection={rowSelection} visibleChanges={visibleChanges} selectRow={selectRow} selectDraggedRow={selectDraggedRow} setSelected={setSelected} postMessage={postMessage} openFileMenu={openFileMenu} openChangelistMenu={setChangelistMenu} openChangelists={id => setManageChangelists({ id, delete: false })} />)}
     </section>
     <OverlayScrollbar targetRef={changesRef} />
 
@@ -253,7 +322,191 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
       </div>
     </footer>
     {fileMenu && <FileContextMenu menu={fileMenu} busy={busy} run={runFileAction} />}
+    {changelistMenu && <ChangelistContextMenu
+      menu={changelistMenu}
+      listCount={state.changelists.length}
+      close={() => setChangelistMenu(null)}
+      edit={() => { setManageChangelists({ id: changelistMenu.changelist.id, delete: false }); setChangelistMenu(null); }}
+      remove={() => { setManageChangelists({ id: changelistMenu.changelist.id, delete: true }); setChangelistMenu(null); }}
+      setActive={() => { postMessage({ type: 'setActiveChangelist', id: changelistMenu.changelist.id }); setChangelistMenu(null); }}
+    />}
+    {manageChangelists && <ManageChangelistsDialog
+      changelists={state.changelists}
+      changes={state.status?.changes ?? []}
+      selectedPaths={state.selectedPaths}
+      initialId={manageChangelists.id}
+      initialDelete={manageChangelists.delete}
+      postMessage={postMessage}
+      close={() => setManageChangelists(null)}
+    />}
+    {movePaths && <MoveToChangelistDialog
+      changelists={state.changelists}
+      paths={movePaths}
+      postMessage={postMessage}
+      close={() => setMovePaths(null)}
+    />}
   </main>;
+}
+
+function ManageChangelistsDialog({ changelists, changes, selectedPaths, initialId, initialDelete, postMessage, close }: {
+  changelists: LocalChangelist[];
+  changes: readonly GitChange[];
+  selectedPaths: readonly string[];
+  initialId: string;
+  initialDelete: boolean;
+  postMessage(message: unknown): void;
+  close(): void;
+}) {
+  const initialSelected = changelists.find(list => list.id === initialId) ?? changelists.find(list => list.active) ?? changelists[0];
+  const [selectedId, setSelectedId] = useState<string | null>(initialSelected?.id ?? null);
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [makeActive, setMakeActive] = useState(true);
+  const [moveSelected, setMoveSelected] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(initialDelete ? changelists.find(list => list.id !== initialSelected?.id)?.id ?? null : null);
+  const selected = changelists.find(list => list.id === selectedId) ?? changelists[0];
+
+  useEffect(() => {
+    if (creating || !selected) return;
+    setName(selected.name);
+    setDescription(selected.description);
+  }, [creating, selected?.id, selected?.name, selected?.description]);
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      if (deleteTarget !== null) setDeleteTarget(null);
+      else if (creating) setCreating(false);
+      else close();
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [close, creating, deleteTarget]);
+
+  const currentPaths = new Set(changes.map(change => change.path));
+  const count = (list: LocalChangelist) => list.paths.filter(path => currentPaths.has(path)).length;
+  const otherLists = changelists.filter(list => list.id !== selected?.id);
+  const duplicateName = changelists.some(list => (creating || list.id !== selected?.id) && list.name.localeCompare(name.trim(), undefined, { sensitivity: 'accent' }) === 0);
+  const unchanged = !creating && selected?.name === name.trim() && selected.description === description.trim();
+
+  function choose(id: string) {
+    setCreating(false);
+    setDeleteTarget(null);
+    setSelectedId(id);
+  }
+
+  function startCreating() {
+    setCreating(true);
+    setDeleteTarget(null);
+    setName('');
+    setDescription('');
+    setMakeActive(true);
+    setMoveSelected(false);
+  }
+
+  function save() {
+    if (!name.trim()) return;
+    if (creating) {
+      postMessage({ type: 'createChangelist', name, description, active: makeActive, paths: moveSelected ? selectedPaths : [] });
+      close();
+    } else if (selected) {
+      postMessage({ type: 'updateChangelist', id: selected.id, name, description });
+    }
+  }
+
+  return <div className="commit-dialog-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}>
+    <section className="changelist-dialog" role="dialog" aria-modal="true" aria-label="Changelists">
+      <header><strong>Changelists</strong><button type="button" aria-label="Close" onClick={close}>×</button></header>
+      <div className="changelist-dialog-body">
+        <aside>
+          <div className="changelist-list">
+            {changelists.map(list => <button type="button" key={list.id} className={!creating && selected?.id === list.id ? 'selected' : ''} onClick={() => choose(list.id)}>
+              <span className={`changelist-active-dot${list.active ? ' active' : ''}`} />
+              <span>{list.name}</span>
+              <small>{count(list)}</small>
+            </button>)}
+          </div>
+          <button type="button" className="changelist-new" onClick={startCreating}>＋ New Changelist</button>
+        </aside>
+        <div className="changelist-editor">
+          <label>Name<input autoFocus={creating} value={name} onChange={event => setName(event.target.value)} /></label>
+          {duplicateName && <span className="changelist-validation">A changelist with this name already exists.</span>}
+          <label>Description<textarea rows={3} value={description} onChange={event => setDescription(event.target.value)} /></label>
+          {creating && <div className="changelist-options">
+            <label><input type="checkbox" checked={makeActive} onChange={event => setMakeActive(event.target.checked)} /> Set active</label>
+            <label><input type="checkbox" disabled={!selectedPaths.length} checked={moveSelected && selectedPaths.length > 0} onChange={event => setMoveSelected(event.target.checked)} /> Move included changes ({selectedPaths.length})</label>
+          </div>}
+          {!creating && selected && <div className="changelist-meta">
+            <span>{count(selected)} changed · {selected.paths.length} assigned</span>
+            {selected.active
+              ? <strong>Active</strong>
+              : <button type="button" onClick={() => postMessage({ type: 'setActiveChangelist', id: selected.id })}>Set Active</button>}
+          </div>}
+          {!creating && selected && deleteTarget !== null && <div className="changelist-delete-confirm">
+            <span>Move assigned files to</span>
+            <select value={deleteTarget} onChange={event => setDeleteTarget(event.target.value)}>{otherLists.map(list => <option key={list.id} value={list.id}>{list.name}</option>)}</select>
+            <button type="button" className="danger" onClick={() => { postMessage({ type: 'deleteChangelist', id: selected.id, targetId: deleteTarget }); if (initialDelete) close(); else setDeleteTarget(null); }}>Delete</button>
+            <button type="button" onClick={() => setDeleteTarget(null)}>Cancel</button>
+          </div>}
+        </div>
+      </div>
+      <footer>
+        {!creating && <button type="button" disabled={changelists.length < 2} onClick={() => setDeleteTarget(otherLists[0]?.id ?? '')}>Delete…</button>}
+        <span />
+        <button type="button" onClick={close}>Close</button>
+        <button type="button" className="primary" disabled={!name.trim() || duplicateName || unchanged} onClick={save}>{creating ? 'Create' : 'Save'}</button>
+      </footer>
+    </section>
+  </div>;
+}
+
+function MoveToChangelistDialog({ changelists, paths, postMessage, close }: {
+  changelists: LocalChangelist[];
+  paths: readonly string[];
+  postMessage(message: unknown): void;
+  close(): void;
+}) {
+  const choices = moveTargetChangelists(changelists, paths);
+  const directCreate = choices.length === 0;
+  const [creating, setCreating] = useState(directCreate);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [makeActive, setMakeActive] = useState(false);
+  const duplicateName = changelists.some(list => list.name.localeCompare(name.trim(), undefined, { sensitivity: 'accent' }) === 0);
+
+  useEffect(() => {
+    const backOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      if (creating && !directCreate) setCreating(false);
+      else close();
+    };
+    window.addEventListener('keydown', backOnEscape);
+    return () => window.removeEventListener('keydown', backOnEscape);
+  }, [close, creating, directCreate]);
+
+  return <div className="commit-dialog-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}>
+    <section className="changelist-dialog move-dialog" role="dialog" aria-modal="true" aria-label="Move to Another Changelist">
+      <header><strong>Move {paths.length} change{paths.length === 1 ? '' : 's'} to</strong><button type="button" aria-label="Close" onClick={close}>×</button></header>
+      {creating
+        ? <div className="move-changelist-new">
+          <p className="move-changelist-count">{paths.length} selected file{paths.length === 1 ? '' : 's'} will be moved to the new changelist.</p>
+          <label>Name<input autoFocus value={name} onChange={event => setName(event.target.value)} /></label>
+          {duplicateName && <span className="changelist-validation">A changelist with this name already exists.</span>}
+          <label>Description<input value={description} onChange={event => setDescription(event.target.value)} /></label>
+          <label><input type="checkbox" checked={makeActive} onChange={event => setMakeActive(event.target.checked)} /> Set active</label>
+          <div><button type="button" onClick={() => directCreate ? close() : setCreating(false)}>{directCreate ? 'Cancel' : 'Back'}</button><button type="button" className="primary" disabled={!name.trim() || duplicateName} onClick={() => { postMessage({ type: 'createChangelist', name, description, active: makeActive, paths }); close(); }}>Create and Move</button></div>
+        </div>
+        : <div className="move-changelist-list">
+          {choices.map(list => <button type="button" key={list.id} onClick={() => { postMessage({ type: 'moveToChangelist', id: list.id, paths }); close(); }}>
+            <span className={`changelist-active-dot${list.active ? ' active' : ''}`} /><span>{list.name}</span>{list.active && <small>Active</small>}
+          </button>)}
+          <button type="button" onClick={() => setCreating(true)}>＋ New Changelist…</button>
+        </div>}
+    </section>
+  </div>;
 }
 
 function PushPreviewMode({ preview, busy, activity, postMessage }: {
@@ -349,6 +602,10 @@ function EyeIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8s2.35-4 6.5-4 6.5 4 6.5 4-2.35 4-6.5 4-6.5-4-6.5-4Z" /><circle cx="8" cy="8" r="2" /></svg>;
 }
 
+function ChangelistIcon() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h2m2 0h7m-11 4h2m2 0h7m-11 4h2m2 0h7" /><path d="m2.2 3.4.7.7 1.3-1.5M2.2 7.4l.7.7 1.3-1.5M2.2 11.4l.7.7 1.3-1.5" /></svg>;
+}
+
 function AiCommitIcon({ spinning }: { spinning: boolean }) {
   return spinning
     ? <svg className="stop" viewBox="0 0 16 16" aria-hidden="true"><rect x="5.25" y="5.25" width="5.5" height="5.5" rx="1" /></svg>
@@ -368,21 +625,39 @@ function SelectionSummaryView({ summary }: { summary: SelectionSummary }) {
   </div>;
 }
 
-function ChangeGroupView({ group, busy, selected, activePath, setActivePath, setSelected, postMessage, openFileMenu }: {
+function ChangeGroupView({ group, busy, selected, rowSelection, visibleChanges, selectRow, selectDraggedRow, setSelected, postMessage, openFileMenu, openChangelistMenu, openChangelists }: {
   group: ChangeGroup;
   busy: boolean;
   selected(change: GitChange): boolean;
-  activePath: string | null;
-  setActivePath(path: string): void;
+  rowSelection: ReadonlySet<string>;
+  visibleChanges: readonly GitChange[];
+  selectRow(change: GitChange, event: React.MouseEvent): void;
+  selectDraggedRow(change: GitChange): void;
   setSelected(changes: readonly GitChange[], value: boolean): void;
   postMessage(message: unknown): void;
-  openFileMenu(menu: FileMenuState): void;
+  openFileMenu(change: GitChange, event: React.MouseEvent): void;
+  openChangelistMenu(menu: ChangelistMenuState): void;
+  openChangelists(id: string): void;
 }) {
-  const conflict = group.id === 'conflicts';
+  const conflict = group.kind === 'conflicts';
   const selectedCount = group.changes.filter(selected).length;
   const allSelected = selectedCount === group.changes.length;
-  return <details className="commit-change-group" open>
-    <summary>
+  return <details
+    className="commit-change-group"
+    open
+    onDragOver={event => { if (group.changelist) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; } }}
+    onDrop={event => {
+      if (!group.changelist) return;
+      event.preventDefault();
+      const paths = readDraggedPaths(event.dataTransfer);
+      if (paths.length) postMessage({ type: 'moveToChangelist', id: group.changelist.id, paths });
+    }}
+  >
+    <summary onContextMenu={event => {
+      if (!group.changelist) return;
+      event.preventDefault();
+      openChangelistMenu({ changelist: group.changelist, x: event.clientX, y: event.clientY });
+    }}>
       {!conflict && <SelectionCheckbox
         ariaLabel={`${allSelected ? 'Exclude' : 'Include'} all ${group.title}`}
         checked={allSelected}
@@ -392,24 +667,43 @@ function ChangeGroupView({ group, busy, selected, activePath, setActivePath, set
         onChange={() => setSelected(group.changes, !allSelected)}
       />}
       <span>{group.title}</span>
+      {group.changelist?.active && <span className="changelist-active-label">Active</span>}
       <small>{group.changes.length}</small>
+      {group.changelist && <button type="button" className="changelist-group-action" aria-label={`Manage ${group.title}`} title="Manage Changelist" onClick={event => { event.preventDefault(); event.stopPropagation(); openChangelists(group.changelist!.id); }}>⋯</button>}
     </summary>
     <div>
-      {group.changes.map(change => <ChangeRow key={`${group.id}:${change.path}`} change={change} staged={selected(change)} active={activePath === change.path} conflict={conflict} busy={busy} setActivePath={setActivePath} setSelected={setSelected} postMessage={postMessage} openFileMenu={openFileMenu} />)}
+      {group.changes.map(change => <ChangeRow
+        key={`${group.id}:${change.path}`}
+        change={change}
+        staged={selected(change)}
+        rowSelected={rowSelection.has(change.path)}
+        dragPaths={rowSelection.has(change.path)
+          ? visibleChanges.filter(candidate => rowSelection.has(candidate.path) && !candidate.conflict && candidate.workingTree !== 'untracked').map(candidate => candidate.path)
+          : [change.path]}
+        conflict={conflict}
+        busy={busy}
+        selectRow={selectRow}
+        selectDraggedRow={selectDraggedRow}
+        setSelected={setSelected}
+        postMessage={postMessage}
+        openFileMenu={openFileMenu}
+      />)}
     </div>
   </details>;
 }
 
-function ChangeRow({ change, staged, active, conflict, busy, setActivePath, setSelected, postMessage, openFileMenu }: {
+function ChangeRow({ change, staged, rowSelected, dragPaths, conflict, busy, selectRow, selectDraggedRow, setSelected, postMessage, openFileMenu }: {
   change: GitChange;
   staged: boolean;
-  active: boolean;
+  rowSelected: boolean;
+  dragPaths: readonly string[];
   conflict: boolean;
   busy: boolean;
-  setActivePath(path: string): void;
+  selectRow(change: GitChange, event: React.MouseEvent): void;
+  selectDraggedRow(change: GitChange): void;
   setSelected(changes: readonly GitChange[], value: boolean): void;
   postMessage(message: unknown): void;
-  openFileMenu(menu: FileMenuState): void;
+  openFileMenu(change: GitChange, event: React.MouseEvent): void;
 }) {
   const slash = Math.max(change.path.lastIndexOf('/'), change.path.lastIndexOf('\\'));
   const folder = slash >= 0 ? change.path.slice(0, slash) : '';
@@ -417,12 +711,17 @@ function ChangeRow({ change, staged, active, conflict, busy, setActivePath, setS
   const side = change.workingTree !== null ? 'working' : 'staged';
   const tone = changeTone(change);
   return <div
-    className={`commit-change-row${active ? ' selected' : ''}`}
+    className={`commit-change-row${rowSelected ? ' selected' : ''}`}
     title={change.path}
+    draggable={!busy && !conflict && change.workingTree !== 'untracked'}
+    onDragStart={event => {
+      selectDraggedRow(change);
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('application/x-git4vsc-changes', JSON.stringify(dragPaths));
+      event.dataTransfer.setData('text/plain', dragPaths.join('\n'));
+    }}
     onContextMenu={event => {
-      event.preventDefault();
-      setActivePath(change.path);
-      openFileMenu({ change, x: event.clientX, y: event.clientY });
+      openFileMenu(change, event);
     }}
   >
     {!conflict && <SelectionCheckbox
@@ -431,9 +730,10 @@ function ChangeRow({ change, staged, active, conflict, busy, setActivePath, setS
       disabled={busy}
       onChange={() => setSelected([change], !staged)}
     />}
-    <button className="commit-change-main" onClick={() => {
-      setActivePath(change.path);
+    <button className="commit-change-main" onClick={event => selectRow(change, event)} onDoubleClick={() => {
       postMessage({ type: conflict ? 'resolveConflict' : 'openChange', path: change.path, side });
+    }} onKeyDown={event => {
+      if (event.key === 'Enter') postMessage({ type: conflict ? 'resolveConflict' : 'openChange', path: change.path, side });
     }}>
       <span className={`commit-change-name change-${tone}`}>{name}</span>
       {folder && <span className="commit-change-folder">{folder}</span>}
@@ -450,44 +750,128 @@ function ChangeRow({ change, staged, active, conflict, busy, setActivePath, setS
   </div>;
 }
 
+function readDraggedPaths(data: DataTransfer): string[] {
+  try {
+    const value = JSON.parse(data.getData('application/x-git4vsc-changes')) as unknown;
+    return Array.isArray(value) ? value.filter((path): path is string => typeof path === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function ChangelistContextMenu({ menu, listCount, close, edit, remove, setActive }: {
+  menu: ChangelistMenuState;
+  listCount: number;
+  close(): void;
+  edit(): void;
+  remove(): void;
+  setActive(): void;
+}) {
+  useEffect(() => {
+    const closeMenu = () => close();
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') close(); };
+    window.addEventListener('mousedown', closeMenu);
+    window.addEventListener('blur', closeMenu);
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      window.removeEventListener('mousedown', closeMenu);
+      window.removeEventListener('blur', closeMenu);
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [close]);
+
+  const width = Math.min(220, window.innerWidth - 8);
+  const left = Math.min(menu.x, window.innerWidth - width - 4);
+  const top = Math.min(menu.y, window.innerHeight - 92);
+  return <div className="commit-file-menu changelist-context-menu" role="menu" style={{ left: Math.max(4, left), top: Math.max(4, top) }} onMouseDown={event => event.stopPropagation()}>
+    <button type="button" role="menuitem" onClick={edit}>Edit Changelist…</button>
+    {!menu.changelist.active && <button type="button" role="menuitem" onClick={setActive}>Set Active Changelist</button>}
+    <button type="button" role="menuitem" disabled={listCount < 2} onClick={remove}>Delete Changelist…</button>
+  </div>;
+}
+
 function FileContextMenu({ menu, busy, run }: {
   menu: FileMenuState;
   busy: boolean;
-  run(action: FileAction, change: GitChange): void;
+  run(action: FileAction, menu: FileMenuState): void;
 }) {
-  const items = fileContextActions(menu.change);
-  const left = Math.min(menu.x, window.innerWidth - 178);
+  const items = fileContextActions(menu.change, menu.changes);
+  const left = Math.min(menu.x, window.innerWidth - Math.min(270, window.innerWidth - 8) - 4);
   const top = Math.min(menu.y, window.innerHeight - items.length * 27 - 12);
   return <div className="commit-file-menu" role="menu" style={{ left: Math.max(4, left), top: Math.max(4, top) }} onMouseDown={event => event.stopPropagation()}>
     {items.map(item => <button
       key={item.action}
       role="menuitem"
       disabled={busy || !item.enabled}
-      onClick={() => run(item.action, menu.change)}
+      onClick={() => run(item.action, menu)}
     >{item.label}</button>)}
   </div>;
 }
 
-export function fileContextActions(change: GitChange): { action: FileAction; label: string; enabled: boolean }[] {
+export function fileContextActions(change: GitChange, selection: readonly GitChange[] = [change]): { action: FileAction; label: string; enabled: boolean }[] {
   const untracked = change.workingTree === 'untracked';
   const deleted = change.workingTree === 'deleted';
+  const commitCount = selection.filter(candidate => !candidate.conflict).length;
+  const moveCount = selection.filter(candidate => !candidate.conflict && candidate.workingTree !== 'untracked').length;
+  const rollbackCount = selection.filter(candidate => !candidate.conflict && candidate.workingTree !== 'untracked').length;
+  const addCount = selection.filter(candidate => candidate.workingTree === 'untracked').length;
   return [
-    { action: 'commitFile', label: 'Commit File…', enabled: !change.conflict },
-    { action: 'rollbackFile', label: 'Rollback…', enabled: !change.conflict && !untracked },
+    { action: 'commitFile', label: commitCount > 1 ? 'Commit Files…' : 'Commit File…', enabled: commitCount > 0 },
+    { action: 'moveToChangelist', label: 'Move to Another Changelist…', enabled: moveCount > 0 },
+    { action: 'rollbackFile', label: 'Rollback…', enabled: rollbackCount > 0 },
     { action: 'deleteFile', label: 'Delete…', enabled: !deleted },
     { action: 'jumpToSource', label: 'Jump to Source', enabled: !deleted },
-    { action: 'addToVcs', label: 'Add to VCS', enabled: untracked },
+    { action: 'addToVcs', label: 'Add to VCS', enabled: addCount > 0 },
     { action: 'addToIgnore', label: 'Add to Ignore', enabled: untracked }
   ];
 }
 
-export function changeGroups(changes: readonly GitChange[]): ChangeGroup[] {
+export function changeGroups(changes: readonly GitChange[], changelists: readonly LocalChangelist[] = []): ChangeGroup[] {
+  const tracked = changes.filter(change => !change.conflict && change.workingTree !== 'untracked');
+  const listGroups: ChangeGroup[] = changelists.length
+    ? changelists.map(changelist => ({
+      id: `changelist:${changelist.id}`,
+      kind: 'changelist',
+      title: changelist.name,
+      changelist,
+      changes: tracked.filter(change => changelist.paths.includes(change.path)).sort(compareIdeaFiles)
+    }))
+    : [{ id: 'changes', kind: 'changelist', title: 'Changes', changes: tracked.sort(compareIdeaFiles) }];
   const groups: ChangeGroup[] = [
-    { id: 'conflicts', title: 'Merge Conflicts', changes: changes.filter(change => change.conflict).sort(compareIdeaFiles) },
-    { id: 'changes', title: 'Changes', changes: changes.filter(change => !change.conflict && change.workingTree !== 'untracked').sort(compareIdeaFiles) },
-    { id: 'untracked', title: 'Unversioned Files', changes: changes.filter(change => change.workingTree === 'untracked').sort(compareIdeaFiles) }
+    { id: 'conflicts', kind: 'conflicts', title: 'Merge Conflicts', changes: changes.filter(change => change.conflict).sort(compareIdeaFiles) },
+    ...listGroups,
+    { id: 'untracked', kind: 'untracked', title: 'Unversioned Files', changes: changes.filter(change => change.workingTree === 'untracked').sort(compareIdeaFiles) }
   ];
   return groups.filter(group => group.changes.length > 0);
+}
+
+export function moveTargetChangelists(changelists: readonly LocalChangelist[], paths: readonly string[]): LocalChangelist[] {
+  const owners = new Set(paths.flatMap(path => changelists.filter(list => list.paths.includes(path)).map(list => list.id)));
+  return owners.size === 1 ? changelists.filter(list => !owners.has(list.id)) : [...changelists];
+}
+
+export function nextRowSelection(
+  order: readonly string[],
+  current: ReadonlySet<string>,
+  clicked: string,
+  anchor: string | null,
+  additive: boolean,
+  range: boolean
+): { selected: Set<string>; anchor: string } {
+  if (range && anchor && order.includes(anchor)) {
+    const from = order.indexOf(anchor);
+    const to = order.indexOf(clicked);
+    const selected = additive ? new Set(current) : new Set<string>();
+    for (const path of order.slice(Math.min(from, to), Math.max(from, to) + 1)) selected.add(path);
+    return { selected, anchor };
+  }
+  if (additive) {
+    const selected = new Set(current);
+    if (selected.has(clicked)) selected.delete(clicked);
+    else selected.add(clicked);
+    return { selected, anchor: clicked };
+  }
+  return { selected: new Set([clicked]), anchor: clicked };
 }
 
 export function compareIdeaFiles(left: GitChange, right: GitChange): number {

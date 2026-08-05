@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RepositorySnapshot, RepositoryStatus } from '@git4vsc/shared-types';
-import { branchTrackingSuffix, operationActivity, outgoingViewBadge, statusBarPresentation } from '../src/repository-status.js';
+import { branchTrackingSuffix, changesViewBadge, operationActivity, statusBarPresentation } from '../src/repository-status.js';
 
 const status: RepositoryStatus = {
   root: '/repo',
@@ -36,10 +36,21 @@ describe('repository status bar presentation', () => {
     expect(operationActivity('stage')).toBeNull();
   });
 
-  it('replaces a stale outgoing badge with a hidden zero badge', () => {
-    expect(outgoingViewBadge(status)).toEqual({ value: 1, tooltip: '1 commit ready to push' });
-    expect(outgoingViewBadge({ ...status, ahead: 0 })).toEqual({ value: 0, tooltip: 'No commits ready to push' });
-    expect(outgoingViewBadge({ ...status, upstream: null })).toEqual({ value: 0, tooltip: 'No commits ready to push' });
+  it('counts uncommitted files across repositories, including deletions', () => {
+    const changed = {
+      ...status,
+      changes: [
+        { path: 'modified.ts', index: null, workingTree: 'modified' as const, conflict: false },
+        { path: 'deleted.ts', index: 'deleted' as const, workingTree: null, conflict: false }
+      ]
+    };
+    const untracked = {
+      ...status,
+      root: '/other',
+      changes: [{ path: 'new.ts', index: null, workingTree: 'untracked' as const, conflict: false }]
+    };
+    expect(changesViewBadge([changed, untracked])).toEqual({ value: 3, tooltip: '3 changed files ready to commit' });
+    expect(changesViewBadge([status, null])).toEqual({ value: 0, tooltip: 'No uncommitted file changes' });
   });
 
   it('promotes unresolved conflicts', () => {

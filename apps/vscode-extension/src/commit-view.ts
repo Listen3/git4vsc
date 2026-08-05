@@ -5,12 +5,23 @@ import type { CommitFileChange, CommitSelection, GitChange, GitDiffHunk, PushPre
 import type { RepositoryController } from '@git4vsc/repo-state';
 import { AiRequestCancelledError, aiIsConfigured, generateAiCommitMessage, onDidChangeAiSettings } from './ai-settings.js';
 import { gitResourceUri } from './git-uri.js';
-import { branchTrackingSuffix, operationActivity, outgoingViewBadge } from './repository-status.js';
+import { branchTrackingSuffix, changesViewBadge, operationActivity } from './repository-status.js';
 import { readGeneralSettings } from './settings.js';
 import { notifyPushResult, resultNotificationsEnabled } from './operation-notifications.js';
 import { isProtectedBranch } from './protected-branches.js';
 import { checkoutWithSmartFallback, updateWithSmartFallback } from './smart-operations.js';
 import { pickUpdateStrategy } from './update-strategy.js';
+import {
+  changelistSnapshot,
+  createChangelist,
+  movePathsToChangelist,
+  normalizeChangelistState,
+  removeChangelist,
+  setActiveChangelist,
+  synchronizeChangelists,
+  updateChangelist,
+  type ChangelistState
+} from './changelists.js';
 
 interface CommitViewActions {
   commit(repository: RepositoryController, message: string, selections: readonly CommitSelection[]): Promise<boolean>;
@@ -19,7 +30,7 @@ interface CommitViewActions {
 }
 
 interface CommitViewMessage {
-  type: 'ready' | 'selectRepository' | 'message' | 'select' | 'selectHunks' | 'loadHunks' | 'replaceSelection' | 'openChange' | 'resolveConflict' | 'rollback' | 'rollbackFile' | 'deleteFile' | 'jumpToSource' | 'addToVcs' | 'addToIgnore' | 'openAiSettings' | 'generateCommitMessage' | 'cancelCommitMessage' | 'commit' | 'commitAndPush' | 'closePushPreview' | 'openPushPreviewDiff' | 'pushPreview';
+  type: 'ready' | 'selectRepository' | 'message' | 'select' | 'selectHunks' | 'loadHunks' | 'replaceSelection' | 'createChangelist' | 'updateChangelist' | 'deleteChangelist' | 'setActiveChangelist' | 'moveToChangelist' | 'openChange' | 'resolveConflict' | 'rollback' | 'rollbackFile' | 'deleteFile' | 'jumpToSource' | 'addToVcs' | 'addToIgnore' | 'openAiSettings' | 'generateCommitMessage' | 'cancelCommitMessage' | 'commit' | 'commitAndPush' | 'closePushPreview' | 'openPushPreviewDiff' | 'pushPreview';
   root?: string;
   message?: string;
   paths?: string[];
@@ -31,6 +42,11 @@ interface CommitViewMessage {
   side?: 'staged' | 'working';
   selected?: boolean;
   hunkIds?: string[];
+  id?: string;
+  targetId?: string;
+  name?: string;
+  description?: string;
+  active?: boolean;
 }
 
 export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -38,6 +54,8 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
   private activeRoot: string | null;
   private readonly messages = new Map<string, string>();
   private readonly selections = new Map<string, Set<string>>();
+  private readonly visibleChanges = new Map<string, Set<string>>();
+  private readonly changelistStates = new Map<string, ChangelistState>();
   private readonly hunks = new Map<string, Map<string, GitDiffHunk[]>>();
   private readonly hunkSelections = new Map<string, Map<string, Set<string>>>();
   private readonly hunkVersions = new Map<string, number>();
@@ -80,6 +98,18 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
     this.activeRoot = repository?.root ?? null;
     if (repository) this.actions.selectRepository(repository);
     const status = repository?.snapshot.status;
+    const changelists = repository ? this.changelists(repository) : null;
+    if (repository && changelists && status) {
+      const previousPaths = this.visibleChanges.get(repository.root);
+      const currentPaths = new Set(status.changes.map(change => change.path));
+      const appeared = previousPaths ? status.changes.filter(change => !previousPaths.has(change.path)) : [];
+      if (synchronizeChangelists(changelists, status.changes)) await this.persistChangelists(repository.root, changelists);
+      const selection = this.selections.get(repository.root);
+      for (const change of appeared) {
+        if (selection && !change.conflict && change.workingTree !== 'untracked' && changelists.assignments[change.path] === changelists.activeId) selection.add(change.path);
+      }
+      this.visibleChanges.set(repository.root, currentPaths);
+    }
     void vscode.commands.executeCommand('setContext', 'git4vsc.hasIncoming', Boolean(status?.upstream && status.behind));
     void vscode.commands.executeCommand('setContext', 'git4vsc.hasOutgoing', Boolean(status?.upstream && status.ahead));
     void vscode.commands.executeCommand('setContext', 'git4vsc.busy', operationActivity(repository?.snapshot.operation ?? null) !== null);
@@ -101,7 +131,7 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
     const branch = status?.branch ?? status?.head?.slice(0, 8) ?? 'HEAD';
     const tracking = branchTrackingSuffix(status);
     this.view.title = repository ? `${this.pushPreview ? 'Push' : 'Commit'} — ${branch}${tracking ? ` ${tracking}` : ''}` : 'Commit';
-    this.view.badge = outgoingViewBadge(status);
+    this.view.badge = changesViewBadge(repositories.map(candidate => candidate.snapshot.status));
     void this.view.webview.postMessage({
       type: 'commitSnapshot',
       state: {
@@ -113,6 +143,7 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
         })),
         activeRoot: repository?.root ?? null,
         status: repository?.snapshot.status ?? null,
+        changelists: changelists ? changelistSnapshot(changelists) : [],
         selectedPaths: [...selection],
         hunks: Object.fromEntries(this.hunks.get(repository?.root ?? '') ?? []),
         selectedHunks: Object.fromEntries([...(this.hunkSelections.get(repository?.root ?? '') ?? [])].map(([file, ids]) => [file, [...ids]])),
@@ -268,6 +299,70 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
       }
       return;
     }
+    if (message.type === 'createChangelist' && message.name) {
+      const state = this.changelists(repository);
+      try {
+        const id = createChangelist(state, message.name, message.description ?? '', Boolean(message.active));
+        if (message.paths?.length) {
+          movePathsToChangelist(state, id, message.paths);
+          this.updateMovedSelection(repository, id, message.paths);
+        }
+        if (message.active) this.selectChangelistChanges(repository, id);
+        await this.persistChangelists(repository.root, state);
+      } catch (error) {
+        void vscode.window.showWarningMessage(error instanceof Error ? error.message : String(error));
+      }
+      return this.refresh();
+    }
+    if (message.type === 'updateChangelist' && message.id && message.name) {
+      const state = this.changelists(repository);
+      try {
+        updateChangelist(state, message.id, message.name, message.description ?? '');
+        await this.persistChangelists(repository.root, state);
+      } catch (error) {
+        void vscode.window.showWarningMessage(error instanceof Error ? error.message : String(error));
+      }
+      return this.refresh();
+    }
+    if (message.type === 'setActiveChangelist' && message.id) {
+      const state = this.changelists(repository);
+      try {
+        setActiveChangelist(state, message.id);
+        this.selectChangelistChanges(repository, message.id);
+        await this.persistChangelists(repository.root, state);
+      } catch (error) {
+        void vscode.window.showWarningMessage(error instanceof Error ? error.message : String(error));
+      }
+      return this.refresh();
+    }
+    if (message.type === 'moveToChangelist' && message.id && message.paths?.length) {
+      const state = this.changelists(repository);
+      try {
+        const movedPaths = message.paths.filter(path => state.assignments[path] !== message.id);
+        if (movedPaths.length) {
+          movePathsToChangelist(state, message.id, movedPaths);
+          this.updateMovedSelection(repository, message.id, movedPaths);
+          await this.persistChangelists(repository.root, state);
+        }
+      } catch (error) {
+        void vscode.window.showWarningMessage(error instanceof Error ? error.message : String(error));
+      }
+      return this.refresh();
+    }
+    if (message.type === 'deleteChangelist' && message.id && message.targetId) {
+      const state = this.changelists(repository);
+      try {
+        const wasActive = state.activeId === message.id;
+        const movedPaths = Object.keys(state.assignments).filter(path => state.assignments[path] === message.id);
+        removeChangelist(state, message.id, message.targetId);
+        if (wasActive) this.selectChangelistChanges(repository, state.activeId);
+        else this.updateMovedSelection(repository, message.targetId, movedPaths);
+        await this.persistChangelists(repository.root, state);
+      } catch (error) {
+        void vscode.window.showWarningMessage(error instanceof Error ? error.message : String(error));
+      }
+      return this.refresh();
+    }
     if (message.type === 'selectHunks' && message.path && message.hunkIds) {
       const files = this.hunkSelections.get(repository.root) ?? new Map<string, Set<string>>();
       this.hunkSelections.set(repository.root, files);
@@ -289,7 +384,9 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
     }
     if ((message.type === 'rollback' || message.type === 'rollbackFile')) {
       const selected = this.selection(repository);
-      const requested = message.type === 'rollbackFile' && message.path ? new Set([message.path]) : selected;
+      const requested = message.type === 'rollbackFile'
+        ? new Set(message.paths?.length ? message.paths : message.path ? [message.path] : [])
+        : selected;
       const changes = (repository.snapshot.status?.changes ?? []).filter(change => requested.has(change.path) && !change.conflict && change.workingTree !== 'untracked');
       if (!changes.length) return;
       const confirmed = await vscode.window.showWarningMessage(
@@ -313,9 +410,10 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
     if (message.type === 'jumpToSource' && message.path) {
       return void await vscode.window.showTextDocument(this.fileUri(repository, message.path));
     }
-    if (message.type === 'addToVcs' && message.path) {
-      await repository.stage([message.path]);
-      this.selection(repository).add(message.path);
+    if (message.type === 'addToVcs' && (message.paths?.length || message.path)) {
+      const paths = message.paths?.length ? message.paths : [message.path!];
+      await repository.stage(paths);
+      for (const path of paths) this.selection(repository).add(path);
       return this.refresh();
     }
     if (message.type === 'addToIgnore' && message.path) {
@@ -423,13 +521,48 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
     const changes = repository.snapshot.status?.changes.filter(change => !change.conflict) ?? [];
     const existing = this.selections.get(repository.root);
     if (!existing) {
-      const initial = new Set(changes.filter(change => change.index !== null).map(change => change.path));
+      const changelists = this.changelists(repository);
+      const initial = new Set(changes
+        .filter(change => change.workingTree !== 'untracked' && changelists.assignments[change.path] === changelists.activeId)
+        .map(change => change.path));
       this.selections.set(repository.root, initial);
       return initial;
     }
     const paths = new Set(changes.map(change => change.path));
     for (const path of existing) if (!paths.has(path)) existing.delete(path);
     return existing;
+  }
+
+  private selectChangelistChanges(repository: RepositoryController, id: string): void {
+    const assignments = this.changelists(repository).assignments;
+    const paths = repository.snapshot.status?.changes
+      .filter(change => !change.conflict && change.workingTree !== 'untracked' && assignments[change.path] === id)
+      .map(change => change.path) ?? [];
+    this.selections.set(repository.root, new Set(paths));
+    this.hunkSelections.delete(repository.root);
+  }
+
+  private updateMovedSelection(repository: RepositoryController, targetId: string, paths: readonly string[]): void {
+    const selection = this.selection(repository);
+    const active = this.changelists(repository).activeId === targetId;
+    const hunkSelections = this.hunkSelections.get(repository.root);
+    for (const path of paths) {
+      if (active) selection.add(path);
+      else selection.delete(path);
+      hunkSelections?.delete(path);
+    }
+  }
+
+  private changelists(repository: RepositoryController): ChangelistState {
+    const existing = this.changelistStates.get(repository.root);
+    if (existing) return existing;
+    const state = normalizeChangelistState(this.context.workspaceState.get(this.changelistKey(repository.root)));
+    this.changelistStates.set(repository.root, state);
+    return state;
+  }
+
+  private persistChangelists(root: string, state: ChangelistState): Thenable<void> {
+    return this.context.workspaceState.update(this.changelistKey(root), state);
   }
 
   private async openChange(repository: RepositoryController, filePath: string, side: 'staged' | 'working'): Promise<void> {
@@ -457,6 +590,10 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
 
   private messageKey(root: string): string {
     return `git4vsc.commit.message.${root}`;
+  }
+
+  private changelistKey(root: string): string {
+    return `git4vsc.commit.changelists.${root}`;
   }
 
   private html(webview: vscode.Webview): string {
