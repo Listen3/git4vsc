@@ -1,13 +1,18 @@
 # Changelog
 
-## 0.1.4 - 2026-08-06
+## 0.1.5 - 2026-08-07
 
 - Added changelist group actions for editing, activating, and deleting lists.
+- Added persistent empty changelist groups and single, Ctrl/Cmd, or Shift multi-file drag-and-drop between lists.
 - Streamlined moving files when no other changelist exists by opening Create and Move directly.
+- Made empty changelist deletion immediate, with a separate destination-aware confirmation for assigned files and result notifications for both flows.
+- Stabilized changelist switching and tightened changelist, move, delete, and Reset dialogs for narrow panels.
 - Fixed File History repository resolution for editor files and nested repositories.
 - Kept custom dialogs centered and bounded when the Git Log panel becomes short.
-- Load the selected repository first and discover other workspace repositories in the background.
-- Build Push Preview file trees with one batched Git query instead of per-commit detail requests.
+- Loaded the selected repository first while discovering other workspace repositories in the background.
+- Built Push Preview file trees with one batched Git query instead of per-commit detail requests.
+- Changed the Activity Bar badge to show the selected repository's changed-file count while retaining the workspace total in its tooltip.
+- Removed outgoing-commit truncation and kept batched commit-file loading compatible with older Git versions.
 
 ## 0.1.3 - 2026-08-05
 
