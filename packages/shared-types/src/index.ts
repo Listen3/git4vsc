@@ -130,6 +130,7 @@ export interface ListDialogRequest {
   id: number;
   kind: 'list';
   title: string;
+  searchable?: boolean;
   placeholder?: string;
   acceptLabel?: string;
   items: DialogListItem[];

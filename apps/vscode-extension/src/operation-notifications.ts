@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import type { RepositoryController } from '@git4vsc/repo-state';
-import { pushResultMessage, updateResultMessage } from './operation-messages.js';
+import { changelistDeleteMessage, pushResultMessage, updateResultMessage } from './operation-messages.js';
 import { readGeneralSettings } from './settings.js';
 
 export async function notifyUpdateResult(repository: RepositoryController, before: string | null, upstream: string, after = repository.snapshot.status?.head ?? null): Promise<void> {
@@ -41,6 +41,11 @@ export function notifyFetchResult(remote?: string): void {
 export function notifyCommitResult(hash: string | null, subject: string): void {
   if (!resultNotificationsEnabled()) return;
   void vscode.window.showInformationMessage(hash ? `Committed ${hash.slice(0, 8)}: ${subject}` : `Committed: ${subject}`);
+}
+
+export function notifyChangelistDeleted(name: string, files: number, target: string): void {
+  if (!resultNotificationsEnabled()) return;
+  void vscode.window.showInformationMessage(changelistDeleteMessage(name, files, target));
 }
 
 export function resultNotificationsEnabled(): boolean {

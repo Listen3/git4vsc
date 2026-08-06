@@ -49,8 +49,14 @@ describe('repository status bar presentation', () => {
       root: '/other',
       changes: [{ path: 'new.ts', index: null, workingTree: 'untracked' as const, conflict: false }]
     };
-    expect(changesViewBadge([changed, untracked])).toEqual({ value: 3, tooltip: '3 changed files ready to commit' });
-    expect(changesViewBadge([status, null])).toEqual({ value: 0, tooltip: 'No uncommitted file changes' });
+    expect(changesViewBadge(changed, [changed, untracked])).toEqual({
+      value: 2,
+      tooltip: 'Current repository: 2 changed files\nAll repositories: 3 changed files'
+    });
+    expect(changesViewBadge(status, [status, untracked])).toEqual({
+      value: 0,
+      tooltip: 'Current repository: 0 changed files\nAll repositories: 1 changed file'
+    });
   });
 
   it('promotes unresolved conflicts', () => {

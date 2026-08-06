@@ -203,6 +203,7 @@ button:disabled { opacity: .45; }
 .commit-change-folder { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-descriptionForeground, #969ba0); opacity: .62; }
 .commit-change-row.selected .commit-change-name { color: var(--vscode-list-activeSelectionForeground, #fff); }
 .commit-change-row.selected .commit-change-folder { color: var(--vscode-list-activeSelectionForeground, #fff); opacity: .54; }
+.changelist-group-empty { height: 21px; padding-left: 54px; display: flex; align-items: center; color: var(--vscode-descriptionForeground); font-size: 11px; }
 .commit-row-action { width: 20px; height: 19px; flex: 0 0 20px; visibility: hidden; font-size: 14px; }
 .commit-change-row:hover .commit-row-action, .commit-row-action:focus { visibility: visible; }
 .change-added { color: var(--git4vsc-change-added); }
@@ -253,7 +254,7 @@ button:disabled { opacity: .45; }
 }
 
 .changelist-dialog {
-  width: min(520px, 100%);
+  width: min(480px, 100%);
   max-height: calc(100% - 14px);
   display: flex;
   flex-direction: column;
@@ -264,13 +265,13 @@ button:disabled { opacity: .45; }
   box-shadow: 0 6px 24px var(--vscode-widget-shadow, rgba(0, 0, 0, .5));
 }
 
-.changelist-dialog > header { height: 34px; flex: 0 0 34px; padding: 0 8px 0 12px; display: flex; align-items: center; border-bottom: 1px solid var(--git4vsc-border); }
+.changelist-dialog > header { height: 32px; flex: 0 0 32px; padding: 0 7px 0 10px; display: flex; align-items: center; border-bottom: 1px solid var(--git4vsc-border); }
 .changelist-dialog > header strong { flex: 1; }
 .changelist-dialog > header button { width: 24px; height: 24px; border: 0; border-radius: 3px; color: inherit; background: transparent; font-size: 18px; }
 .changelist-dialog > header button:hover { background: var(--vscode-toolbar-hoverBackground); }
-.changelist-dialog-body { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(130px, 42%) minmax(0, 1fr); overflow: auto; }
-.changelist-dialog aside { min-width: 0; padding: 7px; display: flex; flex-direction: column; gap: 6px; border-right: 1px solid var(--git4vsc-border); }
-.changelist-list { min-height: 150px; max-height: 290px; overflow-y: auto; }
+.changelist-dialog-body { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(125px, 40%) minmax(0, 1fr); overflow: auto; }
+.changelist-dialog aside { min-width: 0; padding: 6px; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid var(--git4vsc-border); }
+.changelist-list { min-height: 120px; max-height: 240px; overflow-y: auto; }
 .changelist-list > button, .move-changelist-list > button { width: 100%; height: 25px; padding: 0 7px; border: 0; border-radius: 3px; display: flex; align-items: center; gap: 7px; text-align: left; color: inherit; background: transparent; }
 .changelist-list > button:hover, .move-changelist-list > button:hover { background: var(--vscode-list-hoverBackground); }
 .changelist-list > button.selected { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
@@ -280,9 +281,9 @@ button:disabled { opacity: .45; }
 .changelist-active-dot.active { border-color: var(--git4vsc-change-added); background: var(--git4vsc-change-added); }
 .changelist-new { height: 25px; border: 0; border-radius: 3px; text-align: left; color: var(--vscode-textLink-foreground); background: transparent; }
 .changelist-new:hover { background: var(--vscode-list-hoverBackground); }
-.changelist-editor { min-width: 0; padding: 10px; display: flex; flex-direction: column; gap: 9px; }
-.changelist-editor > label, .move-changelist-new > label:not(:last-of-type) { display: flex; flex-direction: column; gap: 4px; color: var(--vscode-descriptionForeground); }
-.changelist-editor input[type='text'], .changelist-editor input:not([type]), .changelist-editor textarea, .move-changelist-new input:not([type]) { width: 100%; box-sizing: border-box; border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; padding: 4px 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); font: inherit; }
+.changelist-editor { min-width: 0; padding: 8px; display: flex; flex-direction: column; gap: 7px; }
+.changelist-editor > label, .move-changelist-new > label:not(:last-of-type) { display: flex; flex-direction: column; gap: 3px; color: var(--vscode-descriptionForeground); }
+.changelist-editor input[type='text'], .changelist-editor input:not([type]), .changelist-editor textarea, .move-changelist-new input:not([type]) { width: 100%; box-sizing: border-box; border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; padding: 3px 5px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); font: inherit; }
 .changelist-editor input:focus, .changelist-editor textarea:focus, .move-changelist-new input:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 .changelist-options { display: flex; flex-direction: column; gap: 5px; }
 .changelist-validation { margin-top: -5px; color: var(--vscode-errorForeground); font-size: 11px; }
@@ -291,20 +292,22 @@ button:disabled { opacity: .45; }
 .changelist-meta { display: flex; align-items: center; gap: 7px; color: var(--vscode-descriptionForeground); }
 .changelist-meta span { flex: 1; }
 .changelist-meta strong { color: var(--git4vsc-change-added); font-size: 11px; }
-.changelist-meta button, .changelist-delete-confirm button { height: 24px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 2px; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
-.changelist-delete-confirm { margin-top: auto; padding-top: 8px; display: grid; grid-template-columns: 1fr auto; gap: 5px; align-items: center; border-top: 1px solid var(--git4vsc-border); }
-.changelist-delete-confirm select { grid-column: 1 / -1; min-width: 0; height: 25px; color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background); border: 1px solid var(--vscode-dropdown-border, transparent); }
-.changelist-delete-confirm .danger { color: var(--vscode-button-foreground); background: var(--vscode-errorForeground, #c84b4b); }
-.changelist-dialog > footer { min-height: 38px; padding: 6px 8px; display: flex; align-items: center; gap: 6px; border-top: 1px solid var(--git4vsc-border); }
+.changelist-meta button { height: 24px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 2px; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
+.changelist-dialog > footer { min-height: 36px; padding: 5px 7px; display: flex; align-items: center; gap: 6px; border-top: 1px solid var(--git4vsc-border); }
 .changelist-dialog > footer span { flex: 1; }
 .changelist-dialog > footer button, .move-changelist-new > div button { min-width: 62px; height: 25px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 2px; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
 .changelist-dialog button.primary, .move-changelist-new > div button.primary { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
-.move-dialog { width: min(360px, 100%); }
+.changelist-dialog button.danger { color: var(--vscode-button-foreground); background: var(--vscode-errorForeground, #c84b4b); }
+.move-dialog { width: min(330px, 100%); }
 .move-changelist-list { max-height: 300px; padding: 7px; overflow-y: auto; }
 .move-changelist-list > button:last-child { margin-top: 4px; border-top: 1px solid var(--git4vsc-border); border-radius: 0; color: var(--vscode-textLink-foreground); }
-.move-changelist-new { padding: 10px; display: flex; flex-direction: column; gap: 9px; }
+.move-changelist-new { padding: 8px; display: flex; flex-direction: column; gap: 7px; }
 .move-changelist-count { margin: 0; color: var(--vscode-descriptionForeground); font-size: 11px; }
 .move-changelist-new > div { display: flex; justify-content: flex-end; gap: 6px; }
+.delete-changelist-dialog { width: min(340px, 100%); }
+.delete-changelist-body { padding: 10px; display: flex; flex-direction: column; gap: 7px; }
+.delete-changelist-body > span { color: var(--vscode-descriptionForeground); font-size: 11px; }
+.delete-changelist-body select { width: 100%; height: 26px; border: 1px solid var(--vscode-dropdown-border, transparent); color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background); }
 .changelist-context-menu { width: min(220px, calc(100vw - 8px)); }
 
 @media (max-width: 360px) {

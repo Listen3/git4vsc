@@ -13,6 +13,7 @@ export function DialogHost({ dialog, onResolve, onExpandPath }: {
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedHash, setSelectedHash] = useState<string | null>(null);
+  const searchable = dialog?.kind === 'list' && dialog.searchable !== false;
 
   useEffect(() => {
     if (!dialog) {
@@ -23,7 +24,7 @@ export function DialogHost({ dialog, onResolve, onExpandPath }: {
     setQuery('');
     setSelectedId(dialog?.kind === 'list' ? dialog.items.find(item => !item.separator)?.id ?? null : null);
     setSelectedHash(dialog?.kind === 'push-preview' ? dialog.commits[0]?.commit.hash ?? null : null);
-    requestAnimationFrame(() => search.current?.focus() ?? frame.current?.focus());
+    requestAnimationFrame(() => (dialog.kind === 'list' && dialog.searchable !== false ? search.current : frame.current)?.focus());
   }, [dialog]);
 
   const visibleItems = useMemo(() => dialog?.kind === 'list' ? filterDialogItems(dialog.items, query) : [], [dialog, query]);
@@ -48,11 +49,11 @@ export function DialogHost({ dialog, onResolve, onExpandPath }: {
   };
 
   return <div className="dialog-backdrop" onPointerDown={event => { if (event.target === event.currentTarget) onResolve(null); }}>
-    <div ref={frame} className={`dialog-frame dialog-${dialog.kind}`} role="dialog" aria-modal="true" aria-labelledby={`dialog-title-${dialog.id}`} tabIndex={-1} onKeyDown={keydown}>
+    <div ref={frame} className={`dialog-frame dialog-${dialog.kind}${dialog.kind === 'list' && !searchable ? ' dialog-compact-list' : ''}`} role="dialog" aria-modal="true" aria-labelledby={`dialog-title-${dialog.id}`} tabIndex={-1} onKeyDown={keydown}>
       <header className="dialog-header"><strong id={`dialog-title-${dialog.id}`}>{dialog.title}</strong><button type="button" aria-label="Close" onClick={() => onResolve(null)}>×</button></header>
       {dialog.kind === 'list'
         ? <>
-          <div className="dialog-search"><span className="sidebar-search-icon" /><input ref={search} value={query} aria-label="Filter options" placeholder={dialog.placeholder ?? 'Search'} onChange={event => setQuery(event.target.value)} /></div>
+          {searchable && <div className="dialog-search"><span className="sidebar-search-icon" /><input ref={search} value={query} aria-label="Filter options" placeholder={dialog.placeholder ?? 'Search'} onChange={event => setQuery(event.target.value)} /></div>}
           <div className="dialog-list" role="listbox">
             {visibleItems.map(item => item.separator
               ? <div key={item.id} className="dialog-list-separator">{item.label}</div>

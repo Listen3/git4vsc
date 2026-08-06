@@ -125,9 +125,9 @@ export class GitClient {
     return { commits: commits.slice(0, limit), offset, hasMore: commits.length > limit };
   }
 
-  async outgoingCommits(location: RepositoryLocation, branch: string, remote: string, upstream?: string, limit = 100): Promise<CommitSummary[]> {
+  async outgoingCommits(location: RepositoryLocation, branch: string, remote: string, upstream?: string): Promise<CommitSummary[]> {
     const result = await this.runner.run([
-      '-C', location.root, 'log', '--topo-order', '--date-order', '--parents', '--decorate=full', '-z', `--max-count=${limit}`,
+      '-C', location.root, 'log', '--topo-order', '--date-order', '--parents', '--decorate=full', '-z',
       '--format=%H%x00%P%x00%an%x00%ae%x00%at%x00%ct%x00%s%x00%D', branch, '--not', upstream ?? `--remotes=${remote}`
     ]);
     return parseLog(result.stdout);
@@ -137,8 +137,8 @@ export class GitClient {
     if (!commits.length) return new Map();
     const hashes = new Set(commits.map(commit => commit.hash));
     const result = await this.runner.run([
-      '-C', location.root, 'diff-tree', '--stdin', '--root', '--diff-merges=first-parent', '--name-status', '-r', '-z', '-M', '-C'
-    ], { input: `${commits.map(commit => commit.hash).join('\n')}\n` });
+      '-C', location.root, 'diff-tree', '--stdin', '--root', '--name-status', '-r', '-z', '-M', '-C'
+    ], { input: `${commits.map(commit => [commit.hash, commit.parents[0]].filter(Boolean).join(' ')).join('\n')}\n` });
     const files = new Map<string, CommitFileChange[]>();
     let hash: string | null = null;
     let records: string[] = [];

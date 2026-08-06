@@ -7,7 +7,7 @@ import { AiRequestCancelledError, aiIsConfigured, generateAiCommitMessage, onDid
 import { gitResourceUri } from './git-uri.js';
 import { branchTrackingSuffix, changesViewBadge, operationActivity } from './repository-status.js';
 import { readGeneralSettings } from './settings.js';
-import { notifyPushResult, resultNotificationsEnabled } from './operation-notifications.js';
+import { notifyChangelistDeleted, notifyPushResult, resultNotificationsEnabled } from './operation-notifications.js';
 import { isProtectedBranch } from './protected-branches.js';
 import { checkoutWithSmartFallback, updateWithSmartFallback } from './smart-operations.js';
 import { pickUpdateStrategy } from './update-strategy.js';
@@ -131,7 +131,7 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
     const branch = status?.branch ?? status?.head?.slice(0, 8) ?? 'HEAD';
     const tracking = branchTrackingSuffix(status);
     this.view.title = repository ? `${this.pushPreview ? 'Push' : 'Commit'} — ${branch}${tracking ? ` ${tracking}` : ''}` : 'Commit';
-    this.view.badge = changesViewBadge(repositories.map(candidate => candidate.snapshot.status));
+    this.view.badge = changesViewBadge(status, repositories.map(candidate => candidate.snapshot.status));
     void this.view.webview.postMessage({
       type: 'commitSnapshot',
       state: {
@@ -350,12 +350,15 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
     if (message.type === 'deleteChangelist' && message.id && message.targetId) {
       const state = this.changelists(repository);
       try {
+        const deletedName = state.lists.find(list => list.id === message.id)?.name ?? 'changelist';
+        const targetName = state.lists.find(list => list.id === message.targetId)?.name ?? 'target changelist';
         const wasActive = state.activeId === message.id;
         const movedPaths = Object.keys(state.assignments).filter(path => state.assignments[path] === message.id);
         removeChangelist(state, message.id, message.targetId);
         if (wasActive) this.selectChangelistChanges(repository, state.activeId);
         else this.updateMovedSelection(repository, message.targetId, movedPaths);
         await this.persistChangelists(repository.root, state);
+        notifyChangelistDeleted(deletedName, movedPaths.length, targetName);
       } catch (error) {
         void vscode.window.showWarningMessage(error instanceof Error ? error.message : String(error));
       }

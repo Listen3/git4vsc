@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GitChange } from '@git4vsc/shared-types';
-import { changeGroups, changeTone, compareIdeaFiles, fileContextActions, moveTargetChangelists, nextRowSelection, selectedChangeSummary } from '../webview/commit-app.js';
+import { changeGroups, changeTone, compareIdeaFiles, draggedChangePaths, fileContextActions, moveTargetChangelists, nextRowSelection, selectedChangeSummary } from '../webview/commit-app.js';
 
 describe('commit change groups', () => {
   it('keeps tracked files in one stable group while selection changes', () => {
@@ -32,6 +32,16 @@ describe('commit change groups', () => {
     expect(groups[1]?.changes.map(change => change.path)).toEqual(['generated/output.js']);
   });
 
+  it('keeps empty changelists visible as drag targets', () => {
+    const groups = changeGroups([], [
+      { id: 'default', name: 'Changes', description: '', active: true, paths: [] },
+      { id: 'empty', name: 'Review later', description: '', active: false, paths: [] }
+    ]);
+
+    expect(groups.map(group => group.title)).toEqual(['Changes', 'Review later']);
+    expect(groups.every(group => group.changes.length === 0)).toBe(true);
+  });
+
   it('uses IDEA-style semantic file colors without status letters', () => {
     expect(changeTone({ path: 'new.ts', index: 'added', workingTree: null, conflict: false })).toBe('added');
     expect(changeTone({ path: 'draft.ts', index: null, workingTree: 'untracked', conflict: false })).toBe('unversioned');
@@ -56,6 +66,18 @@ describe('commit change groups', () => {
     expect([...single.selected]).toEqual(['b.ts']);
     expect([...additive.selected]).toEqual(['b.ts', 'd.ts']);
     expect([...range.selected]).toEqual(['b.ts', 'c.ts', 'd.ts']);
+  });
+
+  it('drags the highlighted files together and a non-highlighted file alone', () => {
+    const changes: GitChange[] = [
+      { path: 'a.ts', index: null, workingTree: 'modified', conflict: false },
+      { path: 'b.ts', index: null, workingTree: 'modified', conflict: false },
+      { path: 'draft.ts', index: null, workingTree: 'untracked', conflict: false }
+    ];
+    const selection = new Set(['a.ts', 'b.ts']);
+
+    expect(draggedChangePaths(changes[0]!, selection, changes)).toEqual(['a.ts', 'b.ts']);
+    expect(draggedChangePaths(changes[2]!, selection, changes)).toEqual([]);
   });
 
   it('describes multi-file context actions from highlighted rows', () => {

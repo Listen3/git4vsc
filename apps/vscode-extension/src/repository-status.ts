@@ -39,11 +39,13 @@ export function branchTrackingSuffix(status: RepositoryStatus | null | undefined
   return [status.behind ? `↙${status.behind}` : '', status.ahead ? `↗${status.ahead}` : ''].filter(Boolean).join(' ');
 }
 
-export function changesViewBadge(statuses: readonly (RepositoryStatus | null | undefined)[]): RepositoryViewBadge {
-  const changes = statuses.reduce((total, status) => total + (status?.changes.length ?? 0), 0);
+export function changesViewBadge(current: RepositoryStatus | null | undefined, statuses: readonly (RepositoryStatus | null | undefined)[]): RepositoryViewBadge {
+  const changes = current?.changes.length ?? 0;
+  const total = statuses.reduce((count, status) => count + (status?.changes.length ?? 0), 0);
+  const label = (count: number) => `${count} changed file${count === 1 ? '' : 's'}`;
   return {
     value: changes,
-    tooltip: changes ? `${changes} changed file${changes === 1 ? '' : 's'} ready to commit` : 'No uncommitted file changes'
+    tooltip: `Current repository: ${label(changes)}\nAll repositories: ${label(total)}`
   };
 }
 

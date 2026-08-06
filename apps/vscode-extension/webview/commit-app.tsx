@@ -53,7 +53,11 @@ interface ChangelistMenuState {
 
 interface ManageChangelistsState {
   id: string;
-  delete: boolean;
+}
+
+interface DeleteChangelistState {
+  id: string;
+  targetId: string;
 }
 
 interface SelectionSummary {
@@ -85,6 +89,7 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
   const [rowSelection, setRowSelection] = useState<Set<string>>(new Set());
   const [messageHeight, setMessageHeight] = useState(136);
   const [manageChangelists, setManageChangelists] = useState<ManageChangelistsState | null>(null);
+  const [deleteChangelist, setDeleteChangelist] = useState<DeleteChangelistState | null>(null);
   const [changelistMenu, setChangelistMenu] = useState<ChangelistMenuState | null>(null);
   const [movePaths, setMovePaths] = useState<string[] | null>(null);
   const messageRef = useRef('');
@@ -168,6 +173,16 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
 
   function commitAndPush() {
     postMessage({ type: 'commitAndPush', message: messageRef.current });
+  }
+
+  function requestChangelistDeletion(id: string) {
+    const list = state.changelists.find(candidate => candidate.id === id);
+    const targetId = state.changelists.find(candidate => candidate.id !== id)?.id;
+    if (!list || !targetId) return;
+    setChangelistMenu(null);
+    setManageChangelists(null);
+    if (!list.paths.length) postMessage({ type: 'deleteChangelist', id, targetId });
+    else setDeleteChangelist({ id, targetId });
   }
 
   function selectRow(change: GitChange, event: React.MouseEvent) {
@@ -262,7 +277,7 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
         title="Manage Changelists"
         aria-label="Manage Changelists"
         disabled={busy}
-        onClick={() => activeChangelist && setManageChangelists({ id: activeChangelist.id, delete: false })}
+        onClick={() => activeChangelist && setManageChangelists({ id: activeChangelist.id })}
       ><ChangelistIcon /></button>
     </header>
 
@@ -271,7 +286,7 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
     <section ref={changesRef} className="commit-changes" aria-label="Changes">
       {groups.length === 0
         ? <div className="commit-no-changes">No changes</div>
-        : groups.map(group => <ChangeGroupView key={group.id} group={group} busy={busy} selected={selected} rowSelection={rowSelection} visibleChanges={visibleChanges} selectRow={selectRow} selectDraggedRow={selectDraggedRow} setSelected={setSelected} postMessage={postMessage} openFileMenu={openFileMenu} openChangelistMenu={setChangelistMenu} openChangelists={id => setManageChangelists({ id, delete: false })} />)}
+        : groups.map(group => <ChangeGroupView key={group.id} group={group} busy={busy} selected={selected} rowSelection={rowSelection} visibleChanges={visibleChanges} selectRow={selectRow} selectDraggedRow={selectDraggedRow} setSelected={setSelected} postMessage={postMessage} openFileMenu={openFileMenu} openChangelistMenu={setChangelistMenu} openChangelists={id => setManageChangelists({ id })} />)}
     </section>
     <OverlayScrollbar targetRef={changesRef} />
 
@@ -326,8 +341,8 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
       menu={changelistMenu}
       listCount={state.changelists.length}
       close={() => setChangelistMenu(null)}
-      edit={() => { setManageChangelists({ id: changelistMenu.changelist.id, delete: false }); setChangelistMenu(null); }}
-      remove={() => { setManageChangelists({ id: changelistMenu.changelist.id, delete: true }); setChangelistMenu(null); }}
+      edit={() => { setManageChangelists({ id: changelistMenu.changelist.id }); setChangelistMenu(null); }}
+      remove={() => requestChangelistDeletion(changelistMenu.changelist.id)}
       setActive={() => { postMessage({ type: 'setActiveChangelist', id: changelistMenu.changelist.id }); setChangelistMenu(null); }}
     />}
     {manageChangelists && <ManageChangelistsDialog
@@ -335,9 +350,15 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
       changes={state.status?.changes ?? []}
       selectedPaths={state.selectedPaths}
       initialId={manageChangelists.id}
-      initialDelete={manageChangelists.delete}
       postMessage={postMessage}
       close={() => setManageChangelists(null)}
+      requestDelete={requestChangelistDeletion}
+    />}
+    {deleteChangelist && <DeleteChangelistDialog
+      changelists={state.changelists}
+      value={deleteChangelist}
+      postMessage={postMessage}
+      close={() => setDeleteChangelist(null)}
     />}
     {movePaths && <MoveToChangelistDialog
       changelists={state.changelists}
@@ -348,14 +369,14 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
   </main>;
 }
 
-function ManageChangelistsDialog({ changelists, changes, selectedPaths, initialId, initialDelete, postMessage, close }: {
+function ManageChangelistsDialog({ changelists, changes, selectedPaths, initialId, postMessage, close, requestDelete }: {
   changelists: LocalChangelist[];
   changes: readonly GitChange[];
   selectedPaths: readonly string[];
   initialId: string;
-  initialDelete: boolean;
   postMessage(message: unknown): void;
   close(): void;
+  requestDelete(id: string): void;
 }) {
   const initialSelected = changelists.find(list => list.id === initialId) ?? changelists.find(list => list.active) ?? changelists[0];
   const [selectedId, setSelectedId] = useState<string | null>(initialSelected?.id ?? null);
@@ -364,7 +385,6 @@ function ManageChangelistsDialog({ changelists, changes, selectedPaths, initialI
   const [description, setDescription] = useState('');
   const [makeActive, setMakeActive] = useState(true);
   const [moveSelected, setMoveSelected] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(initialDelete ? changelists.find(list => list.id !== initialSelected?.id)?.id ?? null : null);
   const selected = changelists.find(list => list.id === selectedId) ?? changelists[0];
 
   useEffect(() => {
@@ -377,13 +397,12 @@ function ManageChangelistsDialog({ changelists, changes, selectedPaths, initialI
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       event.preventDefault();
-      if (deleteTarget !== null) setDeleteTarget(null);
-      else if (creating) setCreating(false);
+      if (creating) setCreating(false);
       else close();
     };
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [close, creating, deleteTarget]);
+  }, [close, creating]);
 
   const currentPaths = new Set(changes.map(change => change.path));
   const count = (list: LocalChangelist) => list.paths.filter(path => currentPaths.has(path)).length;
@@ -392,14 +411,17 @@ function ManageChangelistsDialog({ changelists, changes, selectedPaths, initialI
   const unchanged = !creating && selected?.name === name.trim() && selected.description === description.trim();
 
   function choose(id: string) {
+    const next = changelists.find(list => list.id === id);
     setCreating(false);
-    setDeleteTarget(null);
+    if (next) {
+      setName(next.name);
+      setDescription(next.description);
+    }
     setSelectedId(id);
   }
 
   function startCreating() {
     setCreating(true);
-    setDeleteTarget(null);
     setName('');
     setDescription('');
     setMakeActive(true);
@@ -433,7 +455,7 @@ function ManageChangelistsDialog({ changelists, changes, selectedPaths, initialI
         <div className="changelist-editor">
           <label>Name<input autoFocus={creating} value={name} onChange={event => setName(event.target.value)} /></label>
           {duplicateName && <span className="changelist-validation">A changelist with this name already exists.</span>}
-          <label>Description<textarea rows={3} value={description} onChange={event => setDescription(event.target.value)} /></label>
+          <label>Description<textarea rows={2} value={description} onChange={event => setDescription(event.target.value)} /></label>
           {creating && <div className="changelist-options">
             <label><input type="checkbox" checked={makeActive} onChange={event => setMakeActive(event.target.checked)} /> Set active</label>
             <label><input type="checkbox" disabled={!selectedPaths.length} checked={moveSelected && selectedPaths.length > 0} onChange={event => setMoveSelected(event.target.checked)} /> Move included changes ({selectedPaths.length})</label>
@@ -444,20 +466,49 @@ function ManageChangelistsDialog({ changelists, changes, selectedPaths, initialI
               ? <strong>Active</strong>
               : <button type="button" onClick={() => postMessage({ type: 'setActiveChangelist', id: selected.id })}>Set Active</button>}
           </div>}
-          {!creating && selected && deleteTarget !== null && <div className="changelist-delete-confirm">
-            <span>Move assigned files to</span>
-            <select value={deleteTarget} onChange={event => setDeleteTarget(event.target.value)}>{otherLists.map(list => <option key={list.id} value={list.id}>{list.name}</option>)}</select>
-            <button type="button" className="danger" onClick={() => { postMessage({ type: 'deleteChangelist', id: selected.id, targetId: deleteTarget }); if (initialDelete) close(); else setDeleteTarget(null); }}>Delete</button>
-            <button type="button" onClick={() => setDeleteTarget(null)}>Cancel</button>
-          </div>}
         </div>
       </div>
       <footer>
-        {!creating && <button type="button" disabled={changelists.length < 2} onClick={() => setDeleteTarget(otherLists[0]?.id ?? '')}>Delete…</button>}
+        {!creating && <button type="button" disabled={!selected || !otherLists.length} onClick={() => selected && requestDelete(selected.id)}>{selected?.paths.length ? 'Delete…' : 'Delete'}</button>}
         <span />
         <button type="button" onClick={close}>Close</button>
         <button type="button" className="primary" disabled={!name.trim() || duplicateName || unchanged} onClick={save}>{creating ? 'Create' : 'Save'}</button>
       </footer>
+    </section>
+  </div>;
+}
+
+function DeleteChangelistDialog({ changelists, value, postMessage, close }: {
+  changelists: LocalChangelist[];
+  value: DeleteChangelistState;
+  postMessage(message: unknown): void;
+  close(): void;
+}) {
+  const selected = changelists.find(list => list.id === value.id);
+  const targets = changelists.filter(list => list.id !== value.id);
+  const [targetId, setTargetId] = useState(targets.some(list => list.id === value.targetId) ? value.targetId : targets[0]?.id ?? '');
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      close();
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [close]);
+
+  if (!selected || !targets.length) return null;
+  const assigned = selected.paths.length;
+  return <div className="commit-dialog-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}>
+    <section className="changelist-dialog delete-changelist-dialog" role="alertdialog" aria-modal="true" aria-label={`Delete ${selected.name}`}>
+      <header><strong>Delete Changelist</strong><button type="button" aria-label="Close" onClick={close}>×</button></header>
+      <div className="delete-changelist-body">
+        <strong>Delete “{selected.name}”?</strong>
+        <span>{assigned} assigned file{assigned === 1 ? '' : 's'} will be moved to:</span>
+        <select autoFocus value={targetId} onChange={event => setTargetId(event.target.value)}>{targets.map(list => <option key={list.id} value={list.id}>{list.name}</option>)}</select>
+      </div>
+      <footer><span /><button type="button" onClick={close}>Cancel</button><button type="button" className="danger" disabled={!targetId} onClick={() => { postMessage({ type: 'deleteChangelist', id: selected.id, targetId }); close(); }}>Delete</button></footer>
     </section>
   </div>;
 }
@@ -641,7 +692,7 @@ function ChangeGroupView({ group, busy, selected, rowSelection, visibleChanges, 
 }) {
   const conflict = group.kind === 'conflicts';
   const selectedCount = group.changes.filter(selected).length;
-  const allSelected = selectedCount === group.changes.length;
+  const allSelected = group.changes.length > 0 && selectedCount === group.changes.length;
   return <details
     className="commit-change-group"
     open
@@ -662,7 +713,7 @@ function ChangeGroupView({ group, busy, selected, rowSelection, visibleChanges, 
         ariaLabel={`${allSelected ? 'Exclude' : 'Include'} all ${group.title}`}
         checked={allSelected}
         indeterminate={selectedCount > 0 && !allSelected}
-        disabled={busy}
+        disabled={busy || group.changes.length === 0}
         onClick={event => event.stopPropagation()}
         onChange={() => setSelected(group.changes, !allSelected)}
       />}
@@ -677,9 +728,7 @@ function ChangeGroupView({ group, busy, selected, rowSelection, visibleChanges, 
         change={change}
         staged={selected(change)}
         rowSelected={rowSelection.has(change.path)}
-        dragPaths={rowSelection.has(change.path)
-          ? visibleChanges.filter(candidate => rowSelection.has(candidate.path) && !candidate.conflict && candidate.workingTree !== 'untracked').map(candidate => candidate.path)
-          : [change.path]}
+        dragPaths={draggedChangePaths(change, rowSelection, visibleChanges)}
         conflict={conflict}
         busy={busy}
         selectRow={selectRow}
@@ -688,6 +737,7 @@ function ChangeGroupView({ group, busy, selected, rowSelection, visibleChanges, 
         postMessage={postMessage}
         openFileMenu={openFileMenu}
       />)}
+      {!group.changes.length && <div className="changelist-group-empty">No files</div>}
     </div>
   </details>;
 }
@@ -786,7 +836,7 @@ function ChangelistContextMenu({ menu, listCount, close, edit, remove, setActive
   return <div className="commit-file-menu changelist-context-menu" role="menu" style={{ left: Math.max(4, left), top: Math.max(4, top) }} onMouseDown={event => event.stopPropagation()}>
     <button type="button" role="menuitem" onClick={edit}>Edit Changelist…</button>
     {!menu.changelist.active && <button type="button" role="menuitem" onClick={setActive}>Set Active Changelist</button>}
-    <button type="button" role="menuitem" disabled={listCount < 2} onClick={remove}>Delete Changelist…</button>
+    <button type="button" role="menuitem" disabled={listCount < 2} onClick={remove}>{menu.changelist.paths.length ? 'Delete Changelist…' : 'Delete Changelist'}</button>
   </div>;
 }
 
@@ -842,7 +892,12 @@ export function changeGroups(changes: readonly GitChange[], changelists: readonl
     ...listGroups,
     { id: 'untracked', kind: 'untracked', title: 'Unversioned Files', changes: changes.filter(change => change.workingTree === 'untracked').sort(compareIdeaFiles) }
   ];
-  return groups.filter(group => group.changes.length > 0);
+  return groups.filter(group => group.kind === 'changelist' || group.changes.length > 0);
+}
+
+export function draggedChangePaths(change: GitChange, rowSelection: ReadonlySet<string>, visibleChanges: readonly GitChange[]): string[] {
+  const changes = rowSelection.has(change.path) ? visibleChanges.filter(candidate => rowSelection.has(candidate.path)) : [change];
+  return changes.filter(candidate => !candidate.conflict && candidate.workingTree !== 'untracked').map(candidate => candidate.path);
 }
 
 export function moveTargetChangelists(changelists: readonly LocalChangelist[], paths: readonly string[]): LocalChangelist[] {

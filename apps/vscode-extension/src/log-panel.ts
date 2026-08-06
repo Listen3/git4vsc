@@ -581,7 +581,7 @@ class LogSession implements vscode.Disposable {
   }
 
   private async resetTo(hash: string): Promise<void> {
-    const mode = await this.dialogs.show({ kind: 'list', title: `Reset current branch to ${hash.slice(0, 8)}`, items: [
+    const mode = await this.dialogs.show({ kind: 'list', title: `Reset current branch to ${hash.slice(0, 8)}`, searchable: false, items: [
       { id: 'soft', label: 'Soft', description: 'Move HEAD; keep index and working tree' },
       { id: 'mixed', label: 'Mixed', description: 'Move HEAD and reset index; keep working tree' },
       { id: 'hard', label: 'Hard', description: 'Discard index and working tree changes' }
