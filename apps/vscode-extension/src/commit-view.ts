@@ -164,10 +164,8 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
     const targetBranch = upstream?.startsWith(`${remote}/`) ? upstream.slice(remote.length + 1) : branch;
     const preview = await vscode.window.withProgress({ location: vscode.ProgressLocation.SourceControl, title: 'Preparing push preview…' }, async () => {
       const commits = await repository.git.outgoingCommits(repository.location, branch, remote, upstream);
-      return Promise.all(commits.map(async commit => ({
-        commit,
-        files: (await repository.git.commitDetails(repository.location, commit.hash)).files
-      })));
+      const files = await repository.git.commitFiles(repository.location, commits);
+      return commits.map(commit => ({ commit, files: files.get(commit.hash) ?? [] }));
     });
     if (!preview.length) {
       if (resultNotificationsEnabled()) void vscode.window.showInformationMessage('Everything is up to date.');

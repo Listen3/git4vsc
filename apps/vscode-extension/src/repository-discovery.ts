@@ -1,5 +1,5 @@
 import { readdir } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 const ignoredDirectories = new Set(['.git', 'node_modules']);
 
@@ -24,4 +24,13 @@ export async function findWorkspaceRepositoryRoots(workspaceRoot: string, maxDep
 
   await visit(resolve(workspaceRoot), 0);
   return roots.sort((left, right) => left.localeCompare(right));
+}
+
+export function repositoryContainingPath<T extends { root: string }>(repositories: readonly T[], file: string): T | undefined {
+  return repositories
+    .filter(repository => {
+      const path = relative(repository.root, file);
+      return path !== '' && path !== '..' && !path.startsWith(`..${sep}`) && !isAbsolute(path);
+    })
+    .sort((left, right) => right.root.length - left.root.length)[0];
 }

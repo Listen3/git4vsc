@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
-import { findWorkspaceRepositoryRoots } from '../src/repository-discovery.js';
+import { findWorkspaceRepositoryRoots, repositoryContainingPath } from '../src/repository-discovery.js';
 
 const temporaryDirectories: string[] = [];
 
@@ -30,5 +30,14 @@ describe('workspace repository discovery', () => {
     await mkdir(join(root, 'node_modules', 'ignored', '.git'), { recursive: true });
 
     expect(await findWorkspaceRepositoryRoots(root)).toEqual([worktree]);
+  });
+
+  it('uses the deepest repository containing an editor file', () => {
+    const root = join('D:', 'workspace');
+    const nested = join(root, 'packages', 'app');
+    const repositories = [{ root }, { root: nested }];
+
+    expect(repositoryContainingPath(repositories, join(nested, 'src', 'index.ts'))).toBe(repositories[1]);
+    expect(repositoryContainingPath(repositories, join('D:', 'outside', 'index.ts'))).toBeUndefined();
   });
 });

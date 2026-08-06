@@ -131,7 +131,7 @@ function PathTreeRow({ entry, depth, selected, expanded, loading, onToggleSelect
       {entry.directory
         ? <button type="button" className={`path-tree-chevron${open ? ' open' : ''}`} aria-label={`${open ? 'Collapse' : 'Expand'} ${entry.name}`} onClick={() => onToggleExpanded(entry)}><PathChevronIcon /></button>
         : <span className="path-tree-chevron" />}
-      <label><input type="checkbox" checked={selected.has(entry.path)} onChange={() => onToggleSelected(entry.path)} /><span className={entry.directory ? 'path-folder-icon' : 'path-file-icon'} /> <span>{entry.name}</span></label>
+      <label><input type="checkbox" checked={selected.has(entry.path)} onChange={() => onToggleSelected(entry.path)} />{entry.directory && <span className="path-folder-icon" />}<span>{entry.name}</span></label>
       {loading.has(entry.path) && <span className="path-tree-loading">Loading…</span>}
     </div>
     {entry.directory && open && <div role="group">

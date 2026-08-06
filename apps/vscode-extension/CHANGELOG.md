@@ -4,6 +4,10 @@
 
 - Added changelist group actions for editing, activating, and deleting lists.
 - Streamlined moving files when no other changelist exists by opening Create and Move directly.
+- Fixed File History repository resolution for editor files and nested repositories.
+- Kept custom dialogs centered and bounded when the Git Log panel becomes short.
+- Load the selected repository first and discover other workspace repositories in the background.
+- Build Push Preview file trees with one batched Git query instead of per-commit detail requests.
 
 ## 0.1.3 - 2026-08-05
 

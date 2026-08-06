@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { relative } from 'node:path';
+import { dirname, relative } from 'node:path';
 import type { CommitSelection } from '@git4vsc/shared-types';
 import { RepositoryManager, type RepositoryController } from '@git4vsc/repo-state';
 import { BlameAnnotations } from './blame-annotations.js';
@@ -12,17 +12,16 @@ import { LogPanel } from './log-panel.js';
 import { notifyCommitResult } from './operation-notifications.js';
 import { SettingsPanel } from './settings-panel.js';
 import { isRepositoryIndex, repositoryInvalidations } from './repository-watch.js';
-import { findWorkspaceRepositoryRoots } from './repository-discovery.js';
+import { findWorkspaceRepositoryRoots, repositoryContainingPath } from './repository-discovery.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const manager = new RepositoryManager();
-  let initializingRepositories = true;
   const openRepository = async (path: string): Promise<RepositoryController> => {
     const repository = await manager.open(path);
     registerRepository(repository);
     return repository;
   };
-  const blameAnnotations = new BlameAnnotations(() => manager.all, path => openRepository(path));
+  const blameAnnotations = new BlameAnnotations(() => manager.all, path => openRepository(dirname(path)));
   const adapters: ScmRepositoryAdapter[] = [];
   const conflictTree = new ConflictTree(() => manager.all);
   const conflictResolver = new ConflictResolver(() => conflictTree.refresh());
@@ -84,7 +83,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     watchRepository(context, repository, syncViews);
     const unsubscribe = repository.onDidChange(syncViews);
     context.subscriptions.push({ dispose: unsubscribe });
-    if (!initializingRepositories) syncViews();
+    syncViews();
   };
   const openWorkspaceRepositories = async (folder: vscode.WorkspaceFolder) => {
     try {
@@ -92,21 +91,36 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     } catch {
       // A workspace folder can contain repositories without being one itself.
     }
-    for (const root of await findWorkspaceRepositoryRoots(folder.uri.fsPath)) {
-      try {
-        await openRepository(root);
-      } catch {
-        // One invalid nested repository must not prevent the others from opening.
-      }
+    const roots = await findWorkspaceRepositoryRoots(folder.uri.fsPath);
+    for (let index = 0; index < roots.length; index += 3) {
+      await Promise.allSettled(roots.slice(index, index + 3).map(root => openRepository(root)));
     }
   };
-  for (const folder of vscode.workspace.workspaceFolders ?? []) await openWorkspaceRepositories(folder);
-  initializingRepositories = false;
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const savedRoot = context.workspaceState.get<string>('git4vsc.commit.activeRoot');
+  const activeFile = vscode.window.activeTextEditor?.document.uri.scheme === 'file'
+    ? dirname(vscode.window.activeTextEditor.document.uri.fsPath)
+    : undefined;
+  const preferredPaths = [...new Set([
+    ...(savedRoot && vscode.workspace.getWorkspaceFolder(vscode.Uri.file(savedRoot)) ? [savedRoot] : []),
+    ...(activeFile && vscode.workspace.getWorkspaceFolder(vscode.Uri.file(activeFile)) ? [activeFile] : []),
+    ...folders.map(folder => folder.uri.fsPath)
+  ])];
+  let initialRepository: RepositoryController | undefined;
+  for (const path of preferredPaths) {
+    try {
+      initialRepository = await openRepository(path);
+      break;
+    } catch {
+      // Try the next current-context candidate before scanning nested folders.
+    }
+  }
   context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(event => {
     for (const folder of event.added) void openWorkspaceRepositories(folder);
   }));
   syncViews();
-  logPanel.initialize(manager.all[0]);
+  logPanel.initialize(initialRepository);
+  for (const folder of folders) void openWorkspaceRepositories(folder);
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
     if (!event.affectsConfiguration('git4vsc')) return;
     commitView.refresh();
@@ -149,7 +163,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('git4vsc.showFileHistory', async (value?: unknown) => {
       const uri = editorUri(value);
       if (!uri || uri.scheme !== 'file') return;
-      const repository = await openRepository(uri.fsPath);
+      const repository = repositoryContainingPath(manager.all, uri.fsPath) ?? await openRepository(dirname(uri.fsPath));
       const path = relative(repository.root, uri.fsPath).replaceAll('\\', '/');
       await commitView.select(repository);
       await logPanel.showFileHistory(repository, path);

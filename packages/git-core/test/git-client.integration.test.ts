@@ -71,7 +71,20 @@ describe('GitClient against generated repositories', () => {
     const location = await client.discover(fixtures.history);
     const commits = await client.outgoingCommits(location, 'rebased', 'origin', 'origin/main');
     expect(commits.map(commit => commit.subject)).toContain('before rebase');
+    const files = await client.commitFiles(location, commits);
+    expect(files.get(commits[0]!.hash)).toContainEqual({ path: 'rebase.txt', status: 'added' });
     expect(await client.commitCount(location, 'origin/main..rebased')).toBe(1);
+  });
+
+  it('loads files for multiple commits in one batch and compares merges to the first parent', async () => {
+    const location = await client.discover(fixtures.history);
+    const commits = (await client.log(location, 0, 100)).commits;
+    const selected = [commits.find(commit => commit.parents.length === 2)!, commits.find(commit => commit.subject === 'feature commit')!];
+    const files = await client.commitFiles(location, selected);
+
+    for (const commit of selected) {
+      expect(files.get(commit.hash)).toEqual((await client.commitDetails(location, commit.hash)).files);
+    }
   });
 
   it('manages local branch and tag refs', async () => {

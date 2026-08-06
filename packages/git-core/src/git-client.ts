@@ -133,6 +133,32 @@ export class GitClient {
     return parseLog(result.stdout);
   }
 
+  async commitFiles(location: RepositoryLocation, commits: readonly CommitSummary[]): Promise<Map<string, CommitFileChange[]>> {
+    if (!commits.length) return new Map();
+    const hashes = new Set(commits.map(commit => commit.hash));
+    const result = await this.runner.run([
+      '-C', location.root, 'diff-tree', '--stdin', '--root', '--diff-merges=first-parent', '--name-status', '-r', '-z', '-M', '-C'
+    ], { input: `${commits.map(commit => commit.hash).join('\n')}\n` });
+    const files = new Map<string, CommitFileChange[]>();
+    let hash: string | null = null;
+    let records: string[] = [];
+    const flush = () => {
+      if (hash && !files.has(hash)) files.set(hash, parseNameStatus(records.join('\0')));
+      records = [];
+    };
+    for (const field of result.stdout.split('\0')) {
+      if (hashes.has(field)) {
+        flush();
+        hash = field;
+      } else if (hash) {
+        records.push(field);
+      }
+    }
+    flush();
+    for (const commit of commits) files.set(commit.hash, files.get(commit.hash) ?? []);
+    return files;
+  }
+
   async commitCount(location: RepositoryLocation, range: string): Promise<number> {
     const result = await this.runner.run(['-C', location.root, 'rev-list', '--count', range]);
     return Number(result.stdout.trim());
