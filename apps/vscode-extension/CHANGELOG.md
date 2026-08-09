@@ -1,10 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.1.6 - 2026-08-09
 
 - Added a Worktrees panel for creating, opening, locking, pruning, and safely removing linked worktrees.
 - Added disk-backed Commit Log first-page caching with quiet background validation and repository prewarming.
 - Added a Git Blame hover action that opens the blamed revision in Commit Log.
+- Kept Git Blame annotations in a fixed left-side column for Markdown and wrapped documents instead of scattering labels through the text.
+- Graduated Git4VSC from Preview for its stable Marketplace listing.
 
 ## 0.1.5 - 2026-08-07
 

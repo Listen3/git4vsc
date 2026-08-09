@@ -8,7 +8,7 @@ import { pickUpdateStrategy } from './update-strategy.js';
 import { checkoutWithSmartFallback, createAndCheckoutWithSmartFallback, runSmartCheckoutFallback, updateWithSmartFallback } from './smart-operations.js';
 import { gitResourceUri } from './git-uri.js';
 
-type MenuAction = 'update' | 'commit' | 'push' | 'log' | 'stash' | 'stashes' | 'newBranch' | 'checkoutRevision' | 'resolve';
+type MenuAction = 'update' | 'commit' | 'push' | 'log' | 'stash' | 'stashes' | 'worktrees' | 'newBranch' | 'checkoutRevision' | 'resolve';
 type RefAction = 'checkout' | 'checkoutUpdate' | 'openWorktree' | 'update' | 'push' | 'log';
 
 interface MenuItem extends vscode.QuickPickItem {
@@ -69,6 +69,7 @@ export class BranchMenu {
       { label: '$(git-commit) Open Commit Log', action: 'log' },
       { label: '$(archive) Stash Changes...', description: status.changes.length ? `${status.changes.length} changes` : 'No local changes', action: 'stash' },
       { label: '$(list-tree) Stashes...', action: 'stashes' },
+      ...(worktrees.length > 1 ? [{ label: '$(multiple-windows) Manage Worktrees…', description: `${worktrees.length - 1} linked`, action: 'worktrees' as const }] : []),
       { label: '', kind: vscode.QuickPickItemKind.Separator },
       { label: '$(add) New Branch…', action: 'newBranch' },
       { label: '$(git-branch) Checkout Tag or Revision…', action: 'checkoutRevision' }
@@ -95,6 +96,10 @@ export class BranchMenu {
     if (action === 'push') return this.pushCurrent(repository);
     if (action === 'stash') return this.stashChanges(repository);
     if (action === 'stashes') return this.manageStashes(repository);
+    if (action === 'worktrees') {
+      await vscode.commands.executeCommand('git4vsc.openWorktrees', repository);
+      return;
+    }
     if (action === 'log') {
       await vscode.commands.executeCommand('git4vsc.openLog', repository);
       return;

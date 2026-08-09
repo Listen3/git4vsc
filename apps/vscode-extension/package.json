@@ -2,10 +2,9 @@
   "name": "git4vsc",
   "displayName": "Git4VSC",
   "description": "%extension.description%",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "publisher": "Listen",
   "license": "MIT",
-  "preview": true,
   "pricing": "Free",
   "categories": ["SCM Providers", "Visualization"],
   "keywords": [
@@ -45,7 +44,7 @@
     "build:webview": "vite build --config vite.config.ts",
     "build:extension": "tsup --config tsup.config.ts",
     "prepackage:vsix": "pnpm --filter \"@git4vsc/*\" build",
-    "package:vsix": "node -e \"require('node:fs').mkdirSync('../../artifacts',{recursive:true})\" && pnpm build && vsce package --no-dependencies --out ../../artifacts/git4vsc-0.1.5.vsix",
+    "package:vsix": "node -e \"require('node:fs').mkdirSync('../../artifacts',{recursive:true})\" && pnpm build && vsce package --no-dependencies --out ../../artifacts/git4vsc-0.1.6.vsix",
     "typecheck": "tsc --noEmit",
     "test:extension": "node ./test/runTest.cjs"
   },
@@ -71,7 +70,7 @@
       { "command": "git4vsc.showFileHistory", "title": "File History", "category": "Git4VSC" },
       { "command": "git4vsc.toggleBlameAnnotations", "title": "Annotate with Git Blame", "category": "Git4VSC" },
       { "command": "git4vsc.showBlameCommit", "title": "Show Blame Commit in Log", "category": "Git4VSC" },
-      { "command": "git4vsc.openWorktrees", "title": "Open Worktrees", "category": "Git4VSC", "icon": "$(multiple-windows)" },
+      { "command": "git4vsc.openWorktrees", "title": "Manage Worktrees", "category": "Git4VSC", "icon": "$(multiple-windows)" },
       { "command": "git4vsc.refreshWorktrees", "title": "Refresh Worktrees", "category": "Git4VSC", "icon": "$(refresh)" },
       { "command": "git4vsc.newWorktree", "title": "New Worktree", "category": "Git4VSC", "icon": "$(add)" },
       { "command": "git4vsc.openWorktree", "title": "Open Worktree", "category": "Git4VSC", "icon": "$(folder-opened)" },
@@ -207,22 +206,19 @@
       ],
       "panel": [
         { "id": "git4vscLogPanel", "title": "Git Log", "icon": "media/git4vsc.svg" },
-        { "id": "git4vscMergePanel", "title": "Git Merge", "icon": "media/git4vsc.svg" },
-        { "id": "git4vscWorktreePanel", "title": "Git Worktrees", "icon": "media/git4vsc.svg" }
+        { "id": "git4vscMergePanel", "title": "Git Merge", "icon": "media/git4vsc.svg" }
       ]
     },
     "views": {
       "git4vsc": [
-        { "type": "webview", "id": "git4vsc.repositories", "name": "Commit" }
+        { "type": "webview", "id": "git4vsc.repositories", "name": "Commit" },
+        { "id": "git4vsc.worktrees", "name": "Worktrees", "when": "git4vsc.hasLinkedWorktrees", "visibility": "collapsed" }
       ],
       "git4vscLogPanel": [
         { "type": "webview", "id": "git4vsc.logView", "name": "Log" }
       ],
       "git4vscMergePanel": [
         { "id": "git4vsc.conflicts", "name": "Merge Conflicts", "when": "git4vsc.hasConflicts" }
-      ],
-      "git4vscWorktreePanel": [
-        { "id": "git4vsc.worktrees", "name": "Worktrees" }
       ]
     },
     "menus": {

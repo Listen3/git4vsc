@@ -6,7 +6,7 @@ Focused Git workflows for Visual Studio Code.
 
 **[English](#english) · [简体中文](#简体中文)**
 
-> `0.1.5 Preview` — Ready for evaluating multi-repository commit, history, branch, push, blame, and conflict workflows.
+> `0.1.6` — A stable workflow for multi-repository commit, history, branch, push, worktree, blame, and conflict management.
 
 ## Product tour / 功能预览
 
@@ -35,13 +35,14 @@ Git4VSC brings a focused commit window, a topology-aware Commit Log, branch stat
 - **Safe push workflow:** Preview outgoing commits, protect branch patterns from Force Push, confirm history rewrites, and recover rejected pushes with Merge or Rebase.
 - **Commit Log:** Browse a topology graph with persistent selection, a disk-backed warm first page, virtual scrolling, relative dates, and adaptive columns.
 - **Multiple repositories:** Discover Git repositories at the workspace root or within three directory levels, then switch the active repository from Commit.
-- **Pending changes badge:** The Activity Bar badge totals uncommitted files across managed repositories, including added, modified, and deleted files.
+- **Pending changes badge:** The Activity Bar badge shows changed files in the selected repository, while its tooltip also reports the workspace-wide total.
 - **Powerful filtering:** Search text or hashes with regex, case matching, and recent history; combine Branch, User, Date, and custom Path filters.
 - **Commit and file actions:** Compare revisions, Cherry-Pick, Revert, Reset, create branches or tags, export patches, restore files, and apply selected file changes.
 - **Branch and Worktree workflows:** Manage branches, tags, remotes, and worktrees; create, open, lock, prune, or safely remove linked worktrees.
 - **Smart operations and Stash:** When local changes block Update or Checkout, stash and restore them automatically; create, apply, pop, drop, inspect, or branch from Git stashes.
 - **Guided conflicts:** Resolve files one by one in a Current / Result / Incoming column layout, then continue or abort Merge, Rebase, Cherry-Pick, or Revert.
 - **Git Blame:** Toggle time-colored annotations from the line-number menu and open the blamed commit in Commit Log from its hover.
+- **File History:** Open rename-aware history from the editor and continue working in the same Commit Log workspace.
 - **Optional AI messages:** Generate a commit message from the selected changes through your own OpenAI-compatible endpoint.
 
 ### Getting started
@@ -74,7 +75,7 @@ Ahead and behind counts appear in the Commit title, branch list, and status bar.
 
 Open **Git4VSC Settings → AI** to configure a Base URL, API key, model, language, and optional instructions. The API key is stored in VS Code SecretStorage. Git4VSC sends only the selected change context, and only when you explicitly request a message. The extension contains no telemetry.
 
-### Current preview scope
+### Current scope
 
 - Changelists organize and commit whole files. The existing hunk-patch engine remains internal so the Commit tree stays compact.
 - Worktrees have a dedicated panel for create, open, lock/unlock, prune, and directory-aware removal.
@@ -102,13 +103,14 @@ Git4VSC 为 VS Code 提供聚焦的 Commit 工具窗口、拓扑 Commit Log、�
 - **安全 Push：** 检查待推送提交和文件，保护指定分支免受 Force Push，在历史改写前确认，并用 Merge/Rebase 恢复被拒绝的 Push。
 - **Commit Log：** 浏览拓扑图，使用持久化首页缓存与静默预热，并保留选择、筛选、相对时间和自适应列。
 - **多仓库：** 自动发现工作区根目录及最多三层子目录中的 Git 仓库，并可在 Commit 中切换当前仓库。
-- **待提交角标：** Activity Bar 角标汇总所有已管理仓库中的新增、修改和删除文件。
+- **待提交角标：** Activity Bar 角标显示当前仓库的变更文件数量，悬浮时同时显示整个工作区的汇总数量。
 - **组合筛选：** Text or hash 支持正则、大小写匹配和最近搜索，并可组合 Branch、User、Date、Paths 条件。
 - **提交与文件操作：** 比较版本、Cherry-Pick、Revert、Reset、创建分支或 Tag、导出 Patch、恢复文件和选择性应用变更。
 - **分支与 Worktree：** 管理分支、Tag、Remote 和 Worktree，并支持创建、打开、锁定、Prune 与安全删除链接工作树。
 - **Smart Operation 与 Stash：** 本地修改阻塞 Update/Checkout 时自动暂存并恢复；支持创建、Apply、Pop、Drop、查看 Stash 或从 Stash 建分支。
 - **冲突流程：** 在 Current / Result / Incoming 三列 Merge Editor 中逐个解决文件，然后 Continue 或 Abort Merge、Rebase、Cherry-Pick、Revert。
 - **Git Blame：** 从编辑器行号菜单开关注释，悬浮时查看详情并在 Commit Log 中定位对应提交。
+- **文件历史：** 从编辑器打开支持重命名跟踪的 File History，并继续在同一个 Commit Log 工作区操作。
 - **可选 AI 消息：** 通过用户自己的 OpenAI-compatible 服务，根据本次选中变更生成提交信息。
 
 ### 快速开始
@@ -141,7 +143,7 @@ Commit 标题、分支列表和状态栏都会显示 ahead/behind 数量。长�
 
 打开 **Git4VSC Settings → AI** 配置 Base URL、API Key、模型、语言和额外指令。API Key 保存在 VS Code SecretStorage；只有用户主动生成时才会发送本次选中变更的上下文。扩展不包含遥测。
 
-### Preview 当前范围
+### 当前范围
 
 - Changelists 当前按整文件组织和提交；hunk patch 底层能力仍保留，但不在 Commit 文件树增加额外层级。
 - Worktrees 面板支持创建、打开、锁定/解锁、Prune 和删除。

@@ -6,7 +6,7 @@ import type { RepositoryController } from '@git4vsc/repo-state';
 export class BlameAnnotations implements vscode.Disposable {
   private readonly enabled = new Set<string>();
   private readonly cache = new Map<string, GitBlameLine[]>();
-  private readonly decoration = vscode.window.createTextEditorDecorationType({
+  private readonly columnDecoration = vscode.window.createTextEditorDecorationType({
     isWholeLine: true,
     before: {
       backgroundColor: new vscode.ThemeColor('editorGutter.background'),
@@ -22,6 +22,7 @@ export class BlameAnnotations implements vscode.Disposable {
         'border-right': '1px solid rgba(127, 127, 127, .28)',
         'font-size': '.86em',
         'font-variant-numeric': 'tabular-nums',
+        cursor: 'pointer',
         'white-space': 'pre'
       })
     }
@@ -37,6 +38,7 @@ export class BlameAnnotations implements vscode.Disposable {
       vscode.window.onDidChangeVisibleTextEditors(editors => {
         for (const editor of editors) this.applyCached(editor);
       }),
+      vscode.window.onDidChangeTextEditorSelection(event => this.openCommitOnClick(event)),
       vscode.workspace.onDidSaveTextDocument(document => {
         if (this.enabled.has(document.uri.toString())) void this.render(document);
       })
@@ -60,7 +62,7 @@ export class BlameAnnotations implements vscode.Disposable {
   }
 
   dispose(): void {
-    this.decoration.dispose();
+    this.columnDecoration.dispose();
     for (const subscription of this.subscriptions) subscription.dispose();
   }
 
@@ -95,31 +97,37 @@ export class BlameAnnotations implements vscode.Disposable {
       const local = /^0+$/.test(line.hash);
       const hover = new vscode.MarkdownString();
       hover.appendText(`${line.authorName} <${line.authorEmail}>\n${line.summary}\n${local ? 'Not committed' : line.hash}\n${formatExactTime(line.authorTime)}`);
-      if (!local) {
-        const args = encodeURIComponent(JSON.stringify([editor.document.uri.fsPath, line.hash]));
-        hover.appendMarkdown(`\n\n[$(git-commit) Show in Commit Log](command:git4vsc.showBlameCommit?${args})`);
-        hover.supportThemeIcons = true;
-        hover.isTrusted = { enabledCommands: ['git4vsc.showBlameCommit'] };
-      }
+      const lineNumber = line.line - 1;
+      const render = {
+        contentText: local ? ' '.repeat(17) : `${fit(formatBlameDay(line.authorTime), 10)} ${fit(line.authorName, 6)}`,
+        backgroundColor: local
+          ? new vscode.ThemeColor('editorGutter.background')
+          : backgrounds.get(line.authorTime) ?? new vscode.ThemeColor('editorGutter.background')
+      };
       return {
-        range: new vscode.Range(line.line - 1, 0, line.line - 1, 0),
+        range: new vscode.Range(lineNumber, 0, lineNumber, 0),
         hoverMessage: hover,
-        renderOptions: {
-          before: {
-            contentText: local ? ' '.repeat(17) : `${fit(formatBlameDay(line.authorTime), 10)} ${fit(line.authorName, 6)}`,
-            backgroundColor: local
-              ? new vscode.ThemeColor('editorGutter.background')
-              : backgrounds.get(line.authorTime) ?? new vscode.ThemeColor('editorGutter.background')
-          }
-        }
+        renderOptions: { before: render }
       } satisfies vscode.DecorationOptions;
     });
-    editor.setDecorations(this.decoration, options);
+    editor.setDecorations(this.columnDecoration, options);
+  }
+
+  private openCommitOnClick(event: vscode.TextEditorSelectionChangeEvent): void {
+    if (event.kind !== vscode.TextEditorSelectionChangeKind.Mouse || event.selections.length !== 1) return;
+    const selection = event.selections[0]!;
+    const key = event.textEditor.document.uri.toString();
+    if (!this.enabled.has(key) || !selection.isEmpty) return;
+    if (selection.active.character !== 0) return;
+    const blame = this.cache.get(key)?.find(line => line.line === selection.active.line + 1);
+    if (!blame || /^0+$/.test(blame.hash)) return;
+    void vscode.commands.executeCommand('git4vsc.showBlameCommit', event.textEditor.document.uri.fsPath, blame.hash);
   }
 
   private clear(key: string): void {
     for (const editor of vscode.window.visibleTextEditors) {
-      if (editor.document.uri.toString() === key) editor.setDecorations(this.decoration, []);
+      if (editor.document.uri.toString() !== key) continue;
+      editor.setDecorations(this.columnDecoration, []);
     }
   }
 

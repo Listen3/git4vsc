@@ -4,7 +4,7 @@ Git4VSC 是一个面向 Visual Studio Code 的本地 Git 工作流扩展。它�
 
 项目调用本机 Git CLI；仓库状态、提交图和主要界面由 TypeScript 与 React 实现。产品结构和交互参考了 JetBrains Git4Idea 与 IntelliJ Platform VCS Log 的公开行为，但不复制其代码、图标或专有素材。
 
-> 当前版本：`0.1.5 Preview`。日常提交、同步、历史浏览和冲突处理流程已经可用，并支持在一个工作区管理多个嵌套仓库。
+> 当前版本：`0.1.6`。日常提交、同步、历史浏览、Worktree 管理和冲突处理流程已经可用，并支持在一个工作区管理多个嵌套仓库。
 
 ## 功能预览
 
@@ -48,7 +48,7 @@ Git4VSC 是一个面向 Visual Studio Code 的本地 Git 工作流扩展。它�
 ### 分支、远程与仓库状态
 
 - 自动发现工作区根目录及最多三层子目录中的 Git 仓库，并在 Commit 工具窗口中切换当前仓库。
-- Activity Bar 角标汇总所有已管理仓库中尚未提交的文件数量，包括新增、修改和删除。
+- Activity Bar 角标显示当前仓库尚未提交的文件数量，悬浮时同时显示工作区内所有已管理仓库的汇总数量。
 - 管理本地/远程分支、收藏分支、Tracking、Tag 和 Remote。
 - 支持 Checkout、Checkout and Update、Checkout and Rebase、Merge、Rebase、Pull 和 Push。
 - Worktrees 面板支持创建、打开、锁定/解锁、Prune 和删除链接工作树；删除会同时移除物理目录和 Git Worktree 元数据，但保留分支。
@@ -171,7 +171,7 @@ apps/
 
 ## Marketplace 首发准备
 
-- [x] 中英文 Marketplace 说明、分类、关键词与 Preview 元数据
+- [x] 中英文 Marketplace 说明、分类、关键词与稳定版元数据
 - [x] Marketplace PNG 图标
 - [x] 类型检查、单元测试、真实 Git 仓库集成测试和 Extension Host 测试
 - [x] 添加产品截图和核心流程短 GIF

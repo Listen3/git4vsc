@@ -69,6 +69,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     selectRepository: repository => {
       logPanel.select(repository);
       worktreeManager.select(repository);
+      void vscode.commands.executeCommand('setContext', 'git4vsc.hasLinkedWorktrees', repository.snapshot.worktrees.length > 1);
     }
   });
   context.subscriptions.push(commitView, settingsPanel, blameAnnotations, vscode.window.registerWebviewViewProvider('git4vsc.repositories', commitView, { webviewOptions: { retainContextWhenHidden: true } }));
@@ -82,6 +83,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     commitView.refresh();
     conflictTree.refresh();
     worktreeManager.refresh();
+    const selected = commitView.selectedRepository() ?? manager.all[0];
+    void vscode.commands.executeCommand('setContext', 'git4vsc.hasLinkedWorktrees', Boolean(selected && selected.snapshot.worktrees.length > 1));
     void vscode.commands.executeCommand('setContext', 'git4vsc.hasConflicts', manager.all.some(candidate => candidate.snapshot.status?.changes.some(change => change.conflict)));
     void vscode.commands.executeCommand('setContext', 'git4vsc.operationInProgress', manager.all.some(candidate => candidate.snapshot.status?.phase !== 'normal' && candidate.snapshot.status?.phase !== 'detached'));
   };
@@ -179,8 +182,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await commitView.select(repository);
       await logPanel.showCommit(repository, hash);
     }),
-    vscode.commands.registerCommand('git4vsc.openWorktrees', async () => {
-      worktreeManager.select(selectedRepository());
+    vscode.commands.registerCommand('git4vsc.openWorktrees', async (value?: unknown) => {
+      const repository = selectedRepository(value);
+      if (!repository || repository.snapshot.worktrees.length < 2) {
+        void vscode.window.showInformationMessage('This repository has no linked worktrees.');
+        return;
+      }
+      worktreeManager.select(repository);
+      await vscode.commands.executeCommand('setContext', 'git4vsc.hasLinkedWorktrees', true);
       await vscode.commands.executeCommand('git4vsc.worktrees.focus');
     }),
     vscode.commands.registerCommand('git4vsc.refreshWorktrees', () => worktreeManager.refresh()),

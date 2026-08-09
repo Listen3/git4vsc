@@ -74,16 +74,24 @@ export function CommitLog({ commits, selectedHash, hasMore = false, loading = fa
     const oldSelectedHash = previousSelectedHash.current;
     previousCommits.current = commits;
     previousSelectedHash.current = selectedHash;
-    if (!element || oldCommits === commits) return;
+    if (!element || (oldCommits === commits && oldSelectedHash === selectedHash)) return;
 
     const firstVisible = Math.floor(element.scrollTop / rowHeight);
+    const nextSelectedIndex = selectedHash ? commits.findIndex(commit => commit.hash === selectedHash) : -1;
+    if (oldCommits === commits) {
+      const selectedTop = nextSelectedIndex * rowHeight;
+      if (nextSelectedIndex >= 0 && (selectedTop < element.scrollTop || selectedTop + rowHeight > element.scrollTop + element.clientHeight)) {
+        element.scrollTop = Math.max(0, selectedTop - (element.clientHeight - rowHeight) / 2);
+        setScrollTop(element.scrollTop);
+      }
+      return;
+    }
     const selectedIndex = oldSelectedHash ? oldCommits.findIndex(commit => commit.hash === oldSelectedHash) : -1;
     const selectedVisible = selectedIndex >= firstVisible && selectedIndex * rowHeight < element.scrollTop + element.clientHeight;
     const anchorIndex = selectedVisible ? selectedIndex : firstVisible;
     const anchor = oldCommits[anchorIndex];
     const anchorOffset = anchorIndex * rowHeight - element.scrollTop;
     const nextAnchorIndex = anchor ? commits.findIndex(commit => commit.hash === anchor.hash) : -1;
-    const nextSelectedIndex = selectedHash ? commits.findIndex(commit => commit.hash === selectedHash) : -1;
     if (nextAnchorIndex >= 0) element.scrollTop = nextAnchorIndex * rowHeight - anchorOffset;
     else if (nextSelectedIndex >= 0) element.scrollTop = nextSelectedIndex * rowHeight;
     setScrollTop(element.scrollTop);

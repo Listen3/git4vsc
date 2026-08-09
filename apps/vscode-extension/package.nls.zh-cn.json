@@ -1,3 +1,3 @@
 {
-  "extension.description": "为 VS Code 提供紧凑的 Git 提交、日志、分支、推送预览、冲突解决、Blame 与 AI 工作流。"
+  "extension.description": "为 VS Code 提供紧凑的 Git 提交、日志、分支、Worktree、推送预览、冲突、Blame 与 AI 工作流。"
 }
