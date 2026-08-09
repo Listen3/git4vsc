@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { join, resolve } from 'node:path';
-import { readFile, rename } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { GitClient } from '../src/git-client.js';
 import { createFixtureSet, type FixtureSet } from './git-fixtures.js';
 
@@ -119,6 +119,11 @@ describe('GitClient against generated repositories', () => {
     await client.unlockWorktree(location, worktree);
     await client.removeWorktree(location, worktree);
     expect((await client.worktrees(location)).some(item => resolve(item.path) === resolve(worktree))).toBe(false);
+    const invalidWorktree = join(fixtures.base, 'client-non-empty-worktree');
+    await mkdir(invalidWorktree);
+    await writeFile(join(invalidWorktree, 'existing.txt'), 'occupied');
+    await expect(client.addWorktree(location, invalidWorktree, 'HEAD', 'client-orphan-branch')).rejects.toThrow();
+    expect((await client.status(location)).refs.some(ref => ref.name === 'client-orphan-branch')).toBe(false);
     await client.removeRemote(location, 'origin');
     expect((await client.status(location)).refs.some(ref => ref.name.startsWith('client-'))).toBe(false);
   });

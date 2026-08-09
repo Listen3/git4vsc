@@ -6,6 +6,7 @@ import { OverlayScrollbar } from './OverlayScrollbar.js';
 export type RefAction =
   | 'copy' | 'toggleFavorite'
   | 'checkout' | 'checkoutUpdate' | 'checkoutRebase' | 'checkoutNew' | 'createBranch' | 'createTag' | 'newWorktree' | 'openWorktree'
+  | 'copyWorktreePath' | 'manageWorktrees' | 'lockWorktree' | 'unlockWorktree' | 'removeWorktree'
   | 'compare' | 'diffLocal' | 'rebaseOnto' | 'merge'
   | 'update' | 'push' | 'setUpstream' | 'pullMerge' | 'pullRebase'
   | 'rename' | 'delete';
@@ -138,7 +139,8 @@ export function buildBranchMenu(ref: GitRef | null, status: RepositoryStatus | n
     { id: 'newWorktree', label: 'New Worktree from Here…' }
   ];
   const current = ref.type === 'local-branch' && ref.name === status?.branch;
-  const otherWorktree = ref.type === 'local-branch' && worktrees.some(worktree => worktree.branch === ref.name && !samePath(worktree.path, status?.root));
+  const worktree = ref.type === 'local-branch' ? worktrees.find(candidate => candidate.branch === ref.name && !samePath(candidate.path, status?.root)) : undefined;
+  const otherWorktree = Boolean(worktree);
   const branch = ref.type === 'local-branch' || ref.type === 'remote-branch';
   const hasCurrentBranch = Boolean(status?.branch);
   const currentTag = ref.type === 'tag' && !hasCurrentBranch && ref.hash === status?.head;
@@ -164,8 +166,15 @@ export function buildBranchMenu(ref: GitRef | null, status: RepositoryStatus | n
 
   if (ref.type === 'local-branch') return joinMenuSections(
     common,
+    worktree ? [
+      { id: 'openWorktree', label: 'Open Worktree' },
+      { id: 'copyWorktreePath', label: 'Copy Worktree Path' },
+      { id: 'manageWorktrees', label: 'Manage Worktrees…' },
+      { id: worktree.locked ? 'unlockWorktree' : 'lockWorktree', label: worktree.locked ? 'Unlock Worktree' : 'Lock Worktree…' },
+      { id: 'removeWorktree', label: 'Remove Worktree…', disabled: worktree.locked }
+    ] : [],
     [
-      otherWorktree ? { id: 'openWorktree', label: 'Open Worktree' } : { id: 'checkout', label: 'Checkout' },
+      ...(!otherWorktree ? [{ id: 'checkout', label: 'Checkout' }] : []),
       { id: 'checkoutNew', label: 'Checkout as New Branch…' },
       ...(!otherWorktree && hasCurrentBranch ? [{ id: 'checkoutRebase', label: 'Checkout and Rebase onto Current…' }] : []),
       ...(!otherWorktree && ref.upstream ? [{ id: 'checkoutUpdate', label: 'Checkout and Update…' }] : []),

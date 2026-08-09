@@ -596,7 +596,15 @@ export class GitClient {
   }
 
   async addWorktree(location: RepositoryLocation, path: string, ref: string, newBranch?: string, detach = false): Promise<void> {
-    await this.runner.run(['-C', location.root, 'worktree', 'add', ...(newBranch ? ['-b', newBranch] : detach ? ['--detach'] : []), path, ref]);
+    const branchExisted = newBranch ? Boolean(await this.resolveOptionalRef(location, `refs/heads/${newBranch}`)) : false;
+    try {
+      await this.runner.run(['-C', location.root, 'worktree', 'add', ...(newBranch ? ['-b', newBranch] : detach ? ['--detach'] : []), path, ref]);
+    } catch (error) {
+      if (newBranch && !branchExisted && !(await this.worktrees(location)).some(worktree => worktree.branch === newBranch)) {
+        await this.deleteBranch(location, newBranch, true);
+      }
+      throw error;
+    }
   }
 
   async removeWorktree(location: RepositoryLocation, path: string, force = false): Promise<void> {

@@ -71,12 +71,22 @@ describe('branch context menus', () => {
     const worktree: GitWorktree = { path: '/repo-feature', head: 'feature-hash', branch: 'feature', main: false, detached: false, bare: false, locked: false, prunable: false };
     const menu = buildBranchMenu(refs[1]!, status, [], [worktree]);
     const enabled = menu.filter(item => !item.separator && !item.disabled).map(item => item.id);
-    expect(enabled).toContain('openWorktree');
+    expect(enabled).toEqual(expect.arrayContaining([
+      'openWorktree', 'copyWorktreePath', 'manageWorktrees', 'lockWorktree', 'removeWorktree'
+    ]));
     expect(enabled).not.toContain('checkout');
     expect(enabled).not.toContain('checkoutUpdate');
     expect(enabled).not.toContain('checkoutRebase');
     expect(menu.find(item => item.id === 'rename')?.disabled).toBe(true);
     expect(menu.find(item => item.id === 'delete')?.disabled).toBe(true);
+  });
+
+  it('offers unlock but not removal for a locked worktree', () => {
+    const worktree: GitWorktree = { path: '/repo-feature', head: 'feature-hash', branch: 'feature', main: false, detached: false, bare: false, locked: true, prunable: false };
+    const menu = buildBranchMenu(refs[1]!, status, [], [worktree]);
+    expect(menu.find(item => item.id === 'unlockWorktree')?.disabled).not.toBe(true);
+    expect(menu.find(item => item.id === 'lockWorktree')).toBeUndefined();
+    expect(menu.find(item => item.id === 'removeWorktree')?.disabled).toBe(true);
   });
 
   it('hides upstream-dependent actions for an untracked local branch', () => {

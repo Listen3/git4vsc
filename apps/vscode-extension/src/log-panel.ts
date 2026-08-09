@@ -12,6 +12,7 @@ import { readGeneralSettings } from './settings.js';
 import { configuredUpdateStrategy } from './update-strategy.js';
 import { checkoutWithSmartFallback, createAndCheckoutWithSmartFallback, runSmartCheckoutFallback, updateWithSmartFallback } from './smart-operations.js';
 import { LogCache } from './log-cache.js';
+import { worktreePath } from './worktree-path.js';
 
 type CommitAction = 'copyRevision' | 'copySubject' | 'createBranch' | 'createTag' | 'checkout' | 'compareLocal' | 'cherryPick' | 'revert' | 'reset';
 type CommitFileAction =
@@ -21,6 +22,7 @@ type CommitFileAction =
 type RefAction =
   | 'copy' | 'toggleFavorite'
   | 'checkout' | 'checkoutUpdate' | 'checkoutRebase' | 'checkoutNew' | 'createBranch' | 'createTag' | 'newWorktree' | 'openWorktree'
+  | 'copyWorktreePath' | 'manageWorktrees' | 'lockWorktree' | 'unlockWorktree' | 'removeWorktree'
   | 'compare' | 'diffLocal' | 'rebaseOnto' | 'merge'
   | 'update' | 'push' | 'setUpstream' | 'pullMerge' | 'pullRebase'
   | 'rename' | 'delete';
@@ -701,6 +703,21 @@ class LogSession implements vscode.Disposable {
       if (ref.type === 'local-branch') await this.openExistingWorktree(ref.name);
       return;
     }
+    const worktree = ref.type === 'local-branch' ? this.repository.worktreeForBranch(ref.name, true) : undefined;
+    if (worktree && action === 'copyWorktreePath') {
+      await vscode.env.clipboard.writeText(worktree.path);
+      return;
+    }
+    if (worktree && action === 'manageWorktrees') {
+      await vscode.commands.executeCommand('git4vsc.openWorktrees', this.repository);
+      return;
+    }
+    if (worktree && ['lockWorktree', 'unlockWorktree', 'removeWorktree'].includes(action)) {
+      const item = { repository: this.repository, worktree, current: false, open: Boolean(vscode.workspace.getWorkspaceFolder(vscode.Uri.file(worktree.path))) };
+      await vscode.commands.executeCommand(`git4vsc.${action === 'removeWorktree' ? 'deleteWorktree' : action}`, item);
+      this.worktreesChanged();
+      return;
+    }
     if (action === 'toggleFavorite') {
       if (this.favoriteRefs.has(ref.fullName)) this.favoriteRefs.delete(ref.fullName);
       else this.favoriteRefs.add(ref.fullName);
@@ -928,10 +945,11 @@ class LogSession implements vscode.Disposable {
   private async newWorktree(ref: GitRef | null): Promise<void> {
     if (ref?.type === 'local-branch' && await this.openExistingWorktree(ref.name)) return;
     if (ref?.type === 'local-branch' && ref.name !== this.repository.snapshot.status?.branch) {
-      const path = await this.pickWorktreePath(ref.name);
+      const path = await this.pickWorktreePath(ref.name, ref.name);
       if (!path) return;
       await this.repository.addWorktree(path, ref.fullName);
       this.worktreesChanged();
+      await vscode.commands.executeCommand('git4vsc.openWorktrees', this.repository);
       const open = await vscode.window.showInformationMessage(`Worktree created at ${path}.`, 'Open Worktree');
       if (open) await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(path), true);
       return;
@@ -953,10 +971,13 @@ class LogSession implements vscode.Disposable {
       void vscode.window.showWarningMessage(`Branch ${newBranch} already exists.`);
       return;
     }
-    const path = await this.pickWorktreePath(ref?.name ?? 'HEAD');
+    const path = await this.pickWorktreePath(ref?.name ?? 'HEAD', newBranch ?? ref?.name ?? 'HEAD');
     if (path) {
       await this.repository.addWorktree(path, ref?.fullName ?? 'HEAD', newBranch, mode === 'detached');
       this.worktreesChanged();
+      await vscode.commands.executeCommand('git4vsc.openWorktrees', this.repository);
+      const open = await vscode.window.showInformationMessage(`Worktree created at ${path}.`, 'Open Worktree');
+      if (open) await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(path), true);
     }
   }
 
@@ -1009,9 +1030,16 @@ class LogSession implements vscode.Disposable {
     return `git4vsc.favoriteRefs:${this.repository.root}`;
   }
 
-  private async pickWorktreePath(ref: string): Promise<string | undefined> {
+  private async pickWorktreePath(ref: string, directoryName: string): Promise<string | undefined> {
     const target = await vscode.window.showOpenDialog({ title: `New Worktree for ${ref}`, canSelectFiles: false, canSelectFolders: true, canSelectMany: false, openLabel: 'Use Empty Folder' });
-    return target?.[0]?.fsPath;
+    const selectedPath = target?.[0]?.fsPath;
+    if (!selectedPath) return undefined;
+    try {
+      return await worktreePath(selectedPath, directoryName);
+    } catch (error) {
+      void vscode.window.showWarningMessage(error instanceof Error ? error.message : String(error));
+      return undefined;
+    }
   }
 
   private async openExistingWorktree(branch: string): Promise<boolean> {

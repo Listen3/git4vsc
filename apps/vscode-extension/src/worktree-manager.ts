@@ -2,6 +2,7 @@ import { basename, resolve } from 'node:path';
 import * as vscode from 'vscode';
 import type { GitRef, GitWorktree } from '@git4vsc/shared-types';
 import type { RepositoryController } from '@git4vsc/repo-state';
+import { worktreePath } from './worktree-path.js';
 
 export interface WorktreeItem {
   repository: RepositoryController;
@@ -79,11 +80,13 @@ export class WorktreeManager implements vscode.TreeDataProvider<WorktreeItem>, v
 
     let ref: string;
     let newBranch: string | undefined;
+    let directoryName: string;
     if (mode.id === 'existing') {
       const occupied = new Set(worktrees.map(worktree => worktree.branch).filter(Boolean));
       const selected = await pickRef(status.refs.filter(candidate => candidate.type === 'local-branch' && !occupied.has(candidate.name)), 'Select an unused local branch');
       if (!selected) return;
       ref = selected.name;
+      directoryName = selected.name;
     } else {
       const selected = await pickRef([{ name: 'HEAD', fullName: 'HEAD', hash: status.head ?? '', type: 'head' }, ...status.refs], 'Select the source revision');
       if (!selected) return;
@@ -96,12 +99,21 @@ export class WorktreeManager implements vscode.TreeDataProvider<WorktreeItem>, v
         }))?.trim();
         if (!newBranch) return;
       }
+      directoryName = newBranch ?? selected.name;
     }
     const target = await vscode.window.showOpenDialog({ title: 'Select Worktree Location', canSelectFiles: false, canSelectFolders: true, canSelectMany: false, openLabel: 'Create Worktree Here' });
-    const path = target?.[0]?.fsPath;
-    if (!path) return;
+    const selectedPath = target?.[0]?.fsPath;
+    if (!selectedPath) return;
+    let path: string;
+    try {
+      path = await worktreePath(selectedPath, directoryName);
+    } catch (error) {
+      void vscode.window.showWarningMessage(message(error));
+      return;
+    }
     await repository.addWorktree(path, ref, newBranch, mode.id === 'detached');
     this.refresh();
+    await vscode.commands.executeCommand('git4vsc.openWorktrees', repository);
     const open = await vscode.window.showInformationMessage(`Worktree created at ${path}.`, 'Open Worktree');
     if (open) await this.openPath(path);
   }

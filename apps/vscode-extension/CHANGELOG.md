@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.7 - 2026-08-10
+
+- Created branch-named subfolders when a non-empty Worktree parent is selected, reported the final path, and prevented failed creation from leaving orphan branches.
+- Expanded the Worktrees view after creation and added branch-menu shortcuts for opening, copying, locking, unlocking, managing, and removing linked worktrees.
+
 ## 0.1.6 - 2026-08-09
 
 - Added a Worktrees panel for creating, opening, locking, pruning, and safely removing linked worktrees.
