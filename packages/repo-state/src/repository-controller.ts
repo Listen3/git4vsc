@@ -56,12 +56,20 @@ export class RepositoryController {
       this.invalid.clear();
       this.patch({ loading: parts, error: null });
       try {
+        const includeMetadata = parts.has('refs') || this.mutable.status === null;
         const [status, log] = await Promise.all([
-          parts.has('status') || parts.has('refs') ? this.git.status(this.location) : undefined,
+          parts.has('status') || parts.has('refs') ? this.git.status(this.location, includeMetadata) : undefined,
           parts.has('log') ? this.git.log(this.location) : undefined
         ]);
+        const nextStatus = status && !includeMetadata && this.mutable.status
+          ? {
+            ...status,
+            refs: this.mutable.status.refs.map(ref => ref.type === 'local-branch' && ref.name === status.branch && status.head ? { ...ref, hash: status.head } : ref),
+            shallow: this.mutable.status.shallow
+          }
+          : status;
         this.patch({
-          ...(status ? { status } : {}),
+          ...(nextStatus ? { status: nextStatus } : {}),
           ...(log ? { commits: log.commits } : {}),
           loading: new Set(),
           version: this.mutable.version + 1
@@ -107,15 +115,15 @@ export class RepositoryController {
   }
 
   commit(message: string, all = false): Promise<void> {
-    return this.runOperation('commit', () => this.git.commit(this.location, message, all), ['status', 'log', 'refs']);
+    return this.runOperation('commit', () => this.git.commit(this.location, message, all), ['status']);
   }
 
   commitPaths(message: string, paths: readonly string[]): Promise<void> {
-    return this.runOperation('commit', () => this.git.commitPaths(this.location, message, paths), ['status', 'log', 'refs']);
+    return this.runOperation('commit', () => this.git.commitPaths(this.location, message, paths), ['status']);
   }
 
   commitSelections(message: string, selections: readonly CommitSelection[]): Promise<void> {
-    return this.runOperation('commit', () => this.git.commitSelections(this.location, message, selections), ['status', 'log', 'refs']);
+    return this.runOperation('commit', () => this.git.commitSelections(this.location, message, selections), ['status']);
   }
 
   stashChanges(message: string, includeUntracked = true): Promise<void> {
@@ -261,7 +269,7 @@ export class RepositoryController {
   }
 
   pushBranch(branch: string, remote: string, targetBranch = branch, force = false): Promise<void> {
-    return this.runOperation('push-branch', () => this.git.pushBranch(this.location, branch, remote, targetBranch, force), ['status', 'log', 'refs']);
+    return this.runOperation('push-branch', () => this.git.pushBranch(this.location, branch, remote, targetBranch, force), ['status']);
   }
 
   pullBranch(remote: string, branch: string, rebase: boolean): Promise<void> {

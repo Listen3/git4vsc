@@ -12,6 +12,8 @@
 - Loaded the selected repository first while discovering other workspace repositories in the background.
 - Built Push Preview file trees with one batched Git query instead of per-commit detail requests.
 - Changed the Activity Bar badge to show the selected repository's changed-file count while retaining the workspace total in its tooltip.
+- Replaced the native repository selector with a compact themed menu showing cached ahead, behind, upstream, and changed-file status without extra Git queries.
+- Accelerated whole-file commits and post-commit/push refreshes by avoiding temporary indexes, unused log reloads, duplicate Git Log requests, and redundant remote lookups.
 - Removed outgoing-commit truncation and kept batched commit-file loading compatible with older Git versions.
 
 ## 0.1.3 - 2026-08-05

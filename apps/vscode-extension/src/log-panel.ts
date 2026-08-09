@@ -198,7 +198,12 @@ class LogSession implements vscode.Disposable {
 
   revealCommit(hash: string): void {
     this.preferredSelection = hash;
-    void this.loadLog(true);
+    if (this.commits.some(commit => commit.hash === hash)) {
+      this.preferredSelection = null;
+      void this.loadDetails(hash);
+    } else if (!this.logLoading) {
+      void this.loadLog(true);
+    }
   }
 
   dispose(): void {

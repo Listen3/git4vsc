@@ -11,6 +11,7 @@ class FakeGit {
   active = 0;
   maxActive = 0;
   statusCalls = 0;
+  statusMetadata: boolean[] = [];
   logCalls = 0;
   conflictOnMerge = false;
   conflictOnPull = false;
@@ -21,8 +22,9 @@ class FakeGit {
   stashDrops = 0;
   smartStashClears = 0;
 
-  async status(location: RepositoryLocation): Promise<RepositoryStatus> {
+  async status(location: RepositoryLocation, includeMetadata = true): Promise<RepositoryStatus> {
     this.statusCalls += 1;
+    this.statusMetadata.push(includeMetadata);
     const result = status(location.root);
     if (this.hasConflict) result.changes.push({ path: 'conflict.txt', index: 'unmerged', workingTree: 'unmerged', conflict: true });
     return result;
@@ -81,7 +83,8 @@ describe('RepositoryController', () => {
     await Promise.all([repository.commit('one'), repository.commit('two')]);
     expect(fake.maxActive).toBe(1);
     expect(fake.statusCalls).toBe(3);
-    expect(fake.logCalls).toBe(2);
+    expect(fake.statusMetadata).toEqual([true, false, false]);
+    expect(fake.logCalls).toBe(0);
     expect(repository.snapshot.operation).toBeNull();
   });
 

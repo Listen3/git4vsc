@@ -43,9 +43,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void vscode.window.showWarningMessage('Select at least one change before committing.');
       return false;
     }
-    await vscode.window.withProgress({ location: vscode.ProgressLocation.SourceControl, title: 'Committing…' }, () => selections
-      ? repository.commitSelections(message.trim(), selections)
-      : paths ? repository.commitPaths(message.trim(), paths) : repository.commit(message.trim(), all));
+    const wholePaths = selections?.every(selection => selection.hunkIds === undefined)
+      ? [...new Set(selections.flatMap(selection => [selection.originalPath, selection.path].filter((path): path is string => Boolean(path))))]
+      : null;
+    await vscode.window.withProgress({ location: vscode.ProgressLocation.SourceControl, title: 'Committing…' }, () => wholePaths
+      ? repository.commitPaths(message.trim(), wholePaths)
+      : selections ? repository.commitSelections(message.trim(), selections)
+        : paths ? repository.commitPaths(message.trim(), paths) : repository.commit(message.trim(), all));
     const head = repository.snapshot.status?.head ?? null;
     notifyCommitResult(head, message.trim());
     if (head) logPanel.revealCommit(repository, head);

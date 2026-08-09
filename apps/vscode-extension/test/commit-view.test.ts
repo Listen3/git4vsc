@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { GitChange } from '@git4vsc/shared-types';
-import { changeGroups, changeTone, compareIdeaFiles, draggedChangePaths, fileContextActions, moveTargetChangelists, nextRowSelection, selectedChangeSummary } from '../webview/commit-app.js';
+import { changeGroups, changeTone, compareIdeaFiles, draggedChangePaths, fileContextActions, moveTargetChangelists, nextRowSelection, repositoryStatusLabel, selectedChangeSummary } from '../webview/commit-app.js';
 
 describe('commit change groups', () => {
+  it('summarizes cached repository tracking state without extra Git work', () => {
+    expect(repositoryStatusLabel({ root: '/a', name: 'a', branch: 'main', changes: 3, ahead: 2, behind: 1, upstream: 'origin/main' })).toBe('1 behind, 2 ahead; 3 changed files');
+    expect(repositoryStatusLabel({ root: '/b', name: 'b', branch: 'topic', changes: 0, ahead: 0, behind: 0, upstream: null })).toBe('No upstream; 0 changed files');
+  });
+
   it('keeps tracked files in one stable group while selection changes', () => {
     const changes: GitChange[] = [
       { path: 'both.ts', index: 'modified', workingTree: 'modified', conflict: false },

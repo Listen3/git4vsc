@@ -139,7 +139,10 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
           root: candidate.root,
           name: path.basename(candidate.root),
           branch: candidate.snapshot.status?.branch ?? candidate.snapshot.status?.head?.slice(0, 8) ?? 'HEAD',
-          changes: candidate.snapshot.status?.changes.length ?? 0
+          changes: candidate.snapshot.status?.changes.length ?? 0,
+          ahead: candidate.snapshot.status?.ahead ?? 0,
+          behind: candidate.snapshot.status?.behind ?? 0,
+          upstream: candidate.snapshot.status?.upstream ?? null
         })),
         activeRoot: repository?.root ?? null,
         status: repository?.snapshot.status ?? null,

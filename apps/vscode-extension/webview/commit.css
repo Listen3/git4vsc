@@ -52,16 +52,50 @@ body.vscode-light[data-view='commit'] {
   border-bottom: 1px solid var(--vscode-sideBar-border, var(--git4vsc-border));
 }
 
-.commit-toolbar select {
+.repository-picker {
   min-width: 0;
   flex: 1;
+  position: relative;
+}
+
+.repository-picker > summary {
+  min-width: 0;
   height: 24px;
+  box-sizing: border-box;
   border: 1px solid var(--vscode-dropdown-border, transparent);
   border-radius: 2px;
-  padding: 0 5px;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
   color: var(--vscode-dropdown-foreground, inherit);
   background: var(--vscode-dropdown-background, #3c3c3c);
 }
+.repository-picker > summary::-webkit-details-marker { display: none; }
+.repository-picker > summary:focus, .repository-picker[open] > summary { border-color: var(--vscode-focusBorder, #007fd4); outline: 0; }
+.repository-picker > summary > span:first-child { min-width: 0; flex: 1; display: flex; gap: 6px; overflow: hidden; }
+.repository-picker > summary strong, .repository-picker > summary small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.repository-picker > summary strong { font-weight: 600; }
+.repository-picker > summary > span:first-child small { color: var(--git4vsc-commit-branch-foreground); }
+.repository-picker > summary > i { width: 6px; height: 6px; flex: 0 0 6px; margin: -3px 1px 0 2px; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: rotate(45deg); }
+.repository-picker-popup { position: absolute; z-index: 30; top: 27px; left: 0; width: min(440px, calc(100vw - 12px)); max-height: min(310px, calc(100vh - 48px)); }
+.repository-picker-menu { width: 100%; max-height: inherit; padding: 2px; border: 1px solid var(--vscode-menu-border, var(--git4vsc-border)); border-radius: 3px; overflow-y: auto; color: var(--vscode-menu-foreground, inherit); background: var(--vscode-menu-background, #252526); box-shadow: 0 5px 18px var(--vscode-widget-shadow, #0008); }
+.repository-picker-menu > button { width: 100%; height: 26px; padding: 1px 6px; border: 0; border-radius: 2px; display: flex; align-items: center; gap: 6px; color: inherit; background: transparent; text-align: left; font-size: 12px; }
+.repository-picker-menu > button:hover { color: var(--vscode-menu-selectionForeground, #fff); background: var(--vscode-menu-selectionBackground, #04395e); }
+.repository-picker-menu > button.selected { color: var(--vscode-list-activeSelectionForeground, #fff); background: var(--vscode-list-activeSelectionBackground, #04395e); }
+.repository-picker-name { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: 5px; }
+.repository-picker-name strong, .repository-picker-name small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.repository-picker-name strong { flex: 0 1 auto; }
+.repository-picker-name small { min-width: 45px; flex: 1; color: var(--vscode-descriptionForeground); }
+.repository-picker-menu > button:hover .repository-picker-name small, .repository-picker-menu > button.selected .repository-picker-name small { color: currentColor; opacity: .68; }
+.repository-indicators { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; }
+.repository-indicators small { font-size: 10px; white-space: nowrap; }
+.repository-indicators .behind { color: var(--git4vsc-change-modified); }
+.repository-indicators .ahead, .repository-indicators .synced { color: var(--git4vsc-change-added); }
+.repository-indicators .untracked-branch { color: var(--vscode-descriptionForeground); }
+.repository-indicators .repository-changes { min-width: 14px; padding: 0 3px; border-radius: 7px; color: var(--vscode-badge-foreground, #fff); background: var(--vscode-badge-background, #4d4d4d); text-align: center; }
+.repository-picker-menu > button:hover .repository-indicators small:not(.repository-changes), .repository-picker-menu > button.selected .repository-indicators small:not(.repository-changes) { color: currentColor; }
 
 .commit-toolbar-action {
   width: 25px;

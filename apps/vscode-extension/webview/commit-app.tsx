@@ -8,6 +8,9 @@ interface RepositoryChoice {
   name: string;
   branch: string;
   changes: number;
+  ahead: number;
+  behind: number;
+  upstream: string | null;
 }
 
 interface CommitViewState {
@@ -258,9 +261,7 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
     <OperationActivity label={state.activity} />
     <header className="commit-toolbar">
       {state.repositories.length > 1
-        ? <select aria-label="Repository" value={state.activeRoot ?? ''} onChange={event => postMessage({ type: 'selectRepository', root: event.target.value })}>
-          {state.repositories.map(repository => <option key={repository.root} value={repository.root}>{repository.name} · {repository.branch}</option>)}
-        </select>
+        ? <RepositoryPicker repositories={state.repositories} activeRoot={state.activeRoot} select={root => postMessage({ type: 'selectRepository', root })} />
         : <div className="commit-repository" title={state.repositories[0]?.root}>
           <span className="commit-repository-name">{state.repositories[0]?.name}</span>
           <span className="commit-branch">{state.repositories[0]?.branch}</span>
@@ -367,6 +368,78 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
       close={() => setMovePaths(null)}
     />}
   </main>;
+}
+
+function RepositoryPicker({ repositories, activeRoot, select }: {
+  repositories: readonly RepositoryChoice[];
+  activeRoot: string | null;
+  select(root: string): void;
+}) {
+  const picker = useRef<HTMLDetailsElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const active = repositories.find(repository => repository.root === activeRoot) ?? repositories[0]!;
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      if (picker.current && !picker.current.contains(event.target as Node)) picker.current.open = false;
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || !picker.current?.open) return;
+      event.preventDefault();
+      picker.current.open = false;
+      picker.current.querySelector('summary')?.focus();
+    };
+    window.addEventListener('mousedown', close);
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, []);
+
+  return <details ref={picker} className="repository-picker">
+    <summary title={`${active.name} · ${active.branch}`}>
+      <span><strong>{active.name}</strong><small>{active.branch}</small></span>
+      <RepositoryIndicators repository={active} compact />
+      <i />
+    </summary>
+    <div className="repository-picker-popup">
+      <div ref={menu} className="repository-picker-menu" role="listbox" aria-label="Repository">
+        {repositories.map(repository => <button
+          key={repository.root}
+          type="button"
+          role="option"
+          aria-selected={repository.root === active.root}
+          className={repository.root === active.root ? 'selected' : ''}
+          title={`${repository.root}\n${repositoryStatusLabel(repository)}`}
+          onClick={() => {
+            picker.current!.open = false;
+            if (repository.root !== active.root) select(repository.root);
+          }}
+        >
+          <span className="repository-picker-name"><strong>{repository.name}</strong><small>{repository.branch}</small></span>
+          <RepositoryIndicators repository={repository} />
+        </button>)}
+      </div>
+      <OverlayScrollbar targetRef={menu} />
+    </div>
+  </details>;
+}
+
+function RepositoryIndicators({ repository, compact = false }: { repository: RepositoryChoice; compact?: boolean }) {
+  return <span className={`repository-indicators${compact ? ' compact' : ''}`} aria-label={repositoryStatusLabel(repository)}>
+    {repository.behind > 0 && <small className="behind">↓{repository.behind}</small>}
+    {repository.ahead > 0 && <small className="ahead">↑{repository.ahead}</small>}
+    {!compact && repository.upstream && repository.ahead === 0 && repository.behind === 0 && <small className="synced">●</small>}
+    {!compact && !repository.upstream && <small className="untracked-branch">No upstream</small>}
+    {repository.changes > 0 && <small className="repository-changes">{repository.changes}</small>}
+  </span>;
+}
+
+export function repositoryStatusLabel(repository: RepositoryChoice): string {
+  const tracking = repository.upstream
+    ? repository.ahead || repository.behind ? `${repository.behind} behind, ${repository.ahead} ahead` : 'Up to date'
+    : 'No upstream';
+  return `${tracking}; ${repository.changes} changed ${repository.changes === 1 ? 'file' : 'files'}`;
 }
 
 function ManageChangelistsDialog({ changelists, changes, selectedPaths, initialId, postMessage, close, requestDelete }: {

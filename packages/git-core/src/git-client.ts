@@ -75,19 +75,19 @@ export class GitClient {
     return { root: root.stdout.trim(), gitDir: gitDir.stdout.trim() };
   }
 
-  async status(location: RepositoryLocation): Promise<RepositoryStatus> {
+  async status(location: RepositoryLocation, includeMetadata = true): Promise<RepositoryStatus> {
     const [statusResult, refsResult, shallowResult] = await Promise.all([
       this.runner.run(['-C', location.root, 'status', '--porcelain=v2', '-z', '--branch', '--untracked-files=all']),
-      this.runner.run(['-C', location.root, 'for-each-ref', '--format=%(refname)%09%(objectname)%09%(upstream:short)%09%(upstream:trackshort)', 'refs/heads', 'refs/remotes', 'refs/tags']),
-      this.runner.run(['-C', location.root, 'rev-parse', '--is-shallow-repository'])
+      includeMetadata ? this.runner.run(['-C', location.root, 'for-each-ref', '--format=%(refname)%09%(objectname)%09%(upstream:short)%09%(upstream:trackshort)', 'refs/heads', 'refs/remotes', 'refs/tags']) : null,
+      includeMetadata ? this.runner.run(['-C', location.root, 'rev-parse', '--is-shallow-repository']) : null
     ]);
     const parsed = parsePorcelainV2(statusResult.stdout);
     return {
       ...location,
       ...parsed,
       phase: await readPhase(location.gitDir, parsed.branch),
-      shallow: shallowResult.stdout.trim() === 'true',
-      refs: parseVisibleRefs(refsResult.stdout)
+      shallow: shallowResult?.stdout.trim() === 'true',
+      refs: refsResult ? parseVisibleRefs(refsResult.stdout) : []
     };
   }
 

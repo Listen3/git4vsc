@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import type { CommitFileChange, DialogListItem, PathTreeDialogRequest, PathTreeEntry, WebviewDialogRequest } from '@git4vsc/shared-types';
 import { formatCommitTime } from './commit-date.js';
+import { OverlayScrollbar } from './OverlayScrollbar.js';
 
 export function DialogHost({ dialog, onResolve, onExpandPath }: {
   dialog: WebviewDialogRequest | null;
@@ -8,6 +9,7 @@ export function DialogHost({ dialog, onResolve, onExpandPath }: {
   onExpandPath?(dialogId: number, path: string): void;
 }) {
   const frame = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const [query, setQuery] = useState('');
@@ -35,6 +37,10 @@ export function DialogHost({ dialog, onResolve, onExpandPath }: {
   if (!dialog) return null;
 
   const selectable = visibleItems.filter(item => !item.separator);
+  const compact = dialog.kind === 'list' && !searchable;
+  const frameStyle = compact
+    ? { '--dialog-list-height': `${Math.min(12, Math.max(1, visibleItems.length)) * 25}px` } as CSSProperties
+    : undefined;
   const move = (delta: number) => {
     if (!selectable.length) return;
     const current = selectable.findIndex(item => item.id === selectedId);
@@ -49,12 +55,12 @@ export function DialogHost({ dialog, onResolve, onExpandPath }: {
   };
 
   return <div className="dialog-backdrop" onPointerDown={event => { if (event.target === event.currentTarget) onResolve(null); }}>
-    <div ref={frame} className={`dialog-frame dialog-${dialog.kind}${dialog.kind === 'list' && !searchable ? ' dialog-compact-list' : ''}`} role="dialog" aria-modal="true" aria-labelledby={`dialog-title-${dialog.id}`} tabIndex={-1} onKeyDown={keydown}>
+    <div ref={frame} className={`dialog-frame dialog-${dialog.kind}${compact ? ' dialog-compact-list' : ''}`} style={frameStyle} role="dialog" aria-modal="true" aria-labelledby={`dialog-title-${dialog.id}`} tabIndex={-1} onKeyDown={keydown}>
       <header className="dialog-header"><strong id={`dialog-title-${dialog.id}`}>{dialog.title}</strong><button type="button" aria-label="Close" onClick={() => onResolve(null)}>×</button></header>
       {dialog.kind === 'list'
         ? <>
           {searchable && <div className="dialog-search"><span className="sidebar-search-icon" /><input ref={search} value={query} aria-label="Filter options" placeholder={dialog.placeholder ?? 'Search'} onChange={event => setQuery(event.target.value)} /></div>}
-          <div className="dialog-list" role="listbox">
+          <div ref={list} className="dialog-list" role="listbox">
             {visibleItems.map(item => item.separator
               ? <div key={item.id} className="dialog-list-separator">{item.label}</div>
               : <button key={item.id} type="button" role="option" aria-selected={item.id === selectedId} className={item.id === selectedId ? 'selected' : ''} onClick={() => setSelectedId(item.id)} onDoubleClick={() => onResolve(item.id)}>
@@ -62,6 +68,7 @@ export function DialogHost({ dialog, onResolve, onExpandPath }: {
               </button>)}
             {!selectable.length && <div className="dialog-empty">No matching items</div>}
           </div>
+          <OverlayScrollbar targetRef={list} />
           <footer className="dialog-footer"><button type="button" onClick={() => onResolve(null)}>Cancel</button><button type="button" className="dialog-primary" disabled={!selectedId} onClick={() => onResolve(selectedId)}>{dialog.acceptLabel ?? 'Select'}</button></footer>
         </>
         : dialog.kind === 'path-tree'

@@ -213,11 +213,11 @@ button { cursor: default; }
 .context-menu-separator { height: 1px; margin: 3px 5px; background: var(--vscode-menu-separatorBackground, var(--git4vsc-border)); }
 
 .dialog-backdrop { position: fixed; z-index: 3000; inset: 0; padding: 12px; display: grid; place-items: center; background: color-mix(in srgb, #000 34%, transparent); }
-.dialog-frame { width: clamp(420px, 68vw, 720px); max-width: 100%; max-height: 100%; border: 1px solid var(--vscode-menu-border, var(--git4vsc-border)); border-radius: 7px; display: flex; flex-direction: column; overflow: hidden; outline: 0; color: var(--git4vsc-foreground); background: var(--vscode-menu-background, #252526); box-shadow: 0 10px 38px #0009; }
-.dialog-compact-list { width: clamp(380px, 52vw, 560px); }
+.dialog-frame { position: relative; width: clamp(420px, 68vw, 720px); max-width: 100%; max-height: calc(100vh - 24px); border: 1px solid var(--vscode-menu-border, var(--git4vsc-border)); border-radius: 7px; display: flex; flex-direction: column; overflow: hidden; outline: 0; color: var(--git4vsc-foreground); background: var(--vscode-menu-background, #252526); box-shadow: 0 10px 38px #0009; }
+.dialog-compact-list { width: clamp(430px, 68vw, 680px); min-height: min(calc(82px + var(--dialog-list-height, 25px)), calc(100vh - 24px)); }
 .dialog-compact-list .dialog-header { height: 34px; flex-basis: 34px; padding-left: 11px; }
-.dialog-compact-list .dialog-list { min-height: 0; max-height: none; flex: 0 0 auto; padding: 4px 6px; overflow: visible; }
-.dialog-compact-list .dialog-list > button { min-height: 25px; padding-block: 2px; }
+.dialog-compact-list .dialog-list { min-height: 0; max-height: min(360px, calc(100vh - 96px)); flex: 0 0 auto; padding: 4px 6px; overflow: auto; }
+.dialog-compact-list .dialog-list > button { min-height: 25px; padding-block: 2px; grid-template-columns: minmax(110px, .8fr) minmax(210px, 1.2fr); }
 .dialog-compact-list .dialog-footer { height: 38px; flex-basis: 38px; padding: 5px 8px; }
 .dialog-compact-list .dialog-footer button { min-width: 66px; height: 26px; padding-inline: 10px; }
 .dialog-push-preview { width: clamp(650px, 88vw, 1040px); height: min(650px, 88vh); }

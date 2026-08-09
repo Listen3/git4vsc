@@ -210,10 +210,8 @@ export class BranchMenu {
 
   private async push(repository: RepositoryController, branch: string, upstream: string | null): Promise<void> {
     const preferred = upstream ? splitRemoteBranch(upstream)[0] : undefined;
-    const remotes = await repository.git.remotes(repository.location);
-    const remote = preferred ?? (remotes.length === 1
-      ? remotes[0]
-      : (await vscode.window.showQuickPick(remotes, { title: `Push ${branch}`, placeHolder: 'Select remote' })));
+    const remotes = preferred ? [] : await repository.git.remotes(repository.location);
+    const remote = preferred ?? (remotes.length === 1 ? remotes[0] : await vscode.window.showQuickPick(remotes, { title: `Push ${branch}`, placeHolder: 'Select remote' }));
     if (!remote) {
       void vscode.window.showWarningMessage('This repository has no configured remote.');
       return;
