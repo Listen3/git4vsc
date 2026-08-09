@@ -1,13 +1,20 @@
 import { isAbsolute, relative, resolve } from 'node:path';
 import type { RepositoryInvalidation } from '@git4vsc/shared-types';
 
-export function repositoryInvalidations(root: string, gitDir: string, changedPath: string): RepositoryInvalidation[] {
+export function repositoryInvalidations(root: string, gitDir: string, changedPath: string, commonDir = gitDir): RepositoryInvalidation[] {
   const gitPath = childPath(gitDir, changedPath);
   if (gitPath !== null) {
     if (gitPath === 'index') return ['status'];
+    if (gitPath.startsWith('worktrees/')) return ['worktrees', 'refs', 'log'];
     if (gitPath === 'HEAD' || gitPath === 'packed-refs' || gitPath === 'config' || gitPath.startsWith('refs/') || /^(MERGE_HEAD|CHERRY_PICK_HEAD|REVERT_HEAD|rebase-|sequencer\/)/.test(gitPath)) {
-      return ['status', 'refs', 'log'];
+      return resolve(gitDir) === resolve(commonDir) ? ['status', 'refs', 'log'] : ['status', 'refs', 'log', 'worktrees'];
     }
+    return [];
+  }
+  const commonPath = childPath(commonDir, changedPath);
+  if (commonPath !== null) {
+    if (commonPath.startsWith('worktrees/')) return ['worktrees', 'refs', 'log'];
+    if (commonPath === 'packed-refs' || commonPath === 'config' || commonPath.startsWith('refs/')) return ['status', 'refs', 'log'];
     return [];
   }
   return childPath(root, changedPath) === null ? [] : ['status'];

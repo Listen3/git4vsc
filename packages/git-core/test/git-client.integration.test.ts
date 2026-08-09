@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { readFile, rename } from 'node:fs/promises';
 import { GitClient } from '../src/git-client.js';
 import { createFixtureSet, type FixtureSet } from './git-fixtures.js';
@@ -110,7 +110,15 @@ describe('GitClient against generated repositories', () => {
     await client.deleteTag(location, 'client-tag');
     const worktree = join(fixtures.base, 'client-created-worktree');
     await client.addWorktree(location, worktree, 'HEAD');
-    expect((await client.status(await client.discover(worktree))).phase).toBe('detached');
+    const linkedLocation = await client.discover(worktree);
+    expect((await client.status(linkedLocation)).phase).toBe('detached');
+    expect(resolve(linkedLocation.commonDir!)).toBe(resolve(location.commonDir!));
+    expect((await client.worktrees(location)).some(item => resolve(item.path) === resolve(worktree) && item.detached)).toBe(true);
+    await client.lockWorktree(location, worktree, 'integration test');
+    expect((await client.worktrees(location)).find(item => resolve(item.path) === resolve(worktree))).toMatchObject({ locked: true, lockReason: 'integration test' });
+    await client.unlockWorktree(location, worktree);
+    await client.removeWorktree(location, worktree);
+    expect((await client.worktrees(location)).some(item => resolve(item.path) === resolve(worktree))).toBe(false);
     await client.removeRemote(location, 'origin');
     expect((await client.status(location)).refs.some(ref => ref.name.startsWith('client-'))).toBe(false);
   });

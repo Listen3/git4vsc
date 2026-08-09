@@ -28,4 +28,13 @@ describe('WebviewDialogController', () => {
     controller.resolve(id, ['src', 'README.md']);
     await expect(result).resolves.toEqual(['src', 'README.md']);
   });
+
+  it('returns the selected option together with its text input', async () => {
+    const messages: unknown[] = [];
+    const controller = new WebviewDialogController(message => { messages.push(message); return Promise.resolve(true); });
+    const result = controller.show({ kind: 'list', title: 'New Worktree', searchable: false, input: { label: 'Branch name', requiredFor: ['branch'] }, items: [{ id: 'branch', label: 'Create New Branch' }] });
+    const id = (messages[0] as { dialog: { id: number } }).dialog.id;
+    controller.resolve(id, { id: 'branch', input: 'feature/worktree' });
+    await expect(result).resolves.toEqual({ id: 'branch', input: 'feature/worktree' });
+  });
 });

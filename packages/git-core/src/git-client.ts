@@ -1,14 +1,15 @@
 import { access, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CommitDetails, CommitFileChange, CommitPage, CommitSelection, CommitSummary, GitBlameLine, GitChange, GitDiffHunk, GitStashEntry, LogQuery, MergeConflict, RepositoryPhase, RepositoryStatus } from '@git4vsc/shared-types';
+import type { CommitDetails, CommitFileChange, CommitPage, CommitSelection, CommitSummary, GitBlameLine, GitChange, GitDiffHunk, GitStashEntry, GitWorktree, LogQuery, MergeConflict, RepositoryPhase, RepositoryStatus } from '@git4vsc/shared-types';
 import { CommandRunner } from './command-runner.js';
-import { parseBlame, parseLog, parseNameStatus, parsePorcelainV2, parseRefs, parseUnmergedIndex } from './parsers.js';
+import { parseBlame, parseLog, parseNameStatus, parsePorcelainV2, parseRefs, parseUnmergedIndex, parseWorktrees } from './parsers.js';
 import { parseFilePatch, selectPatchHunks } from './partial-commit.js';
 
 export interface RepositoryLocation {
   root: string;
   gitDir: string;
+  commonDir?: string;
 }
 
 export interface CommitContextFile {
@@ -68,11 +69,12 @@ export class GitClient {
   constructor(readonly runner = new CommandRunner()) {}
 
   async discover(path: string): Promise<RepositoryLocation> {
-    const [root, gitDir] = await Promise.all([
+    const [root, gitDir, commonDir] = await Promise.all([
       this.runner.run(['-C', path, 'rev-parse', '--show-toplevel']),
-      this.runner.run(['-C', path, 'rev-parse', '--absolute-git-dir'])
+      this.runner.run(['-C', path, 'rev-parse', '--absolute-git-dir']),
+      this.runner.run(['-C', path, 'rev-parse', '--path-format=absolute', '--git-common-dir'])
     ]);
-    return { root: root.stdout.trim(), gitDir: gitDir.stdout.trim() };
+    return { root: root.stdout.trim(), gitDir: gitDir.stdout.trim(), commonDir: commonDir.stdout.trim() };
   }
 
   async status(location: RepositoryLocation, includeMetadata = true): Promise<RepositoryStatus> {
@@ -588,8 +590,29 @@ export class GitClient {
     await this.runner.run(['-C', location.root, 'push', remote, `refs/tags/${name}`]);
   }
 
-  async addWorktree(location: RepositoryLocation, path: string, ref: string, newBranch?: string): Promise<void> {
-    await this.runner.run(['-C', location.root, 'worktree', 'add', ...(newBranch ? ['-b', newBranch] : ['--detach']), path, ref]);
+  async worktrees(location: RepositoryLocation): Promise<GitWorktree[]> {
+    const result = await this.runner.run(['-C', location.root, 'worktree', 'list', '--porcelain', '-z']);
+    return parseWorktrees(result.stdout);
+  }
+
+  async addWorktree(location: RepositoryLocation, path: string, ref: string, newBranch?: string, detach = false): Promise<void> {
+    await this.runner.run(['-C', location.root, 'worktree', 'add', ...(newBranch ? ['-b', newBranch] : detach ? ['--detach'] : []), path, ref]);
+  }
+
+  async removeWorktree(location: RepositoryLocation, path: string, force = false): Promise<void> {
+    await this.runner.run(['-C', location.root, 'worktree', 'remove', ...(force ? ['--force'] : []), path]);
+  }
+
+  async pruneWorktrees(location: RepositoryLocation): Promise<void> {
+    await this.runner.run(['-C', location.root, 'worktree', 'prune']);
+  }
+
+  async lockWorktree(location: RepositoryLocation, path: string, reason?: string): Promise<void> {
+    await this.runner.run(['-C', location.root, 'worktree', 'lock', ...(reason ? ['--reason', reason] : []), path]);
+  }
+
+  async unlockWorktree(location: RepositoryLocation, path: string): Promise<void> {
+    await this.runner.run(['-C', location.root, 'worktree', 'unlock', path]);
   }
 
   async cherryPick(location: RepositoryLocation, hash: string): Promise<void> {

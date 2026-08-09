@@ -95,6 +95,12 @@ export class BlameAnnotations implements vscode.Disposable {
       const local = /^0+$/.test(line.hash);
       const hover = new vscode.MarkdownString();
       hover.appendText(`${line.authorName} <${line.authorEmail}>\n${line.summary}\n${local ? 'Not committed' : line.hash}\n${formatExactTime(line.authorTime)}`);
+      if (!local) {
+        const args = encodeURIComponent(JSON.stringify([editor.document.uri.fsPath, line.hash]));
+        hover.appendMarkdown(`\n\n[$(git-commit) Show in Commit Log](command:git4vsc.showBlameCommit?${args})`);
+        hover.supportThemeIcons = true;
+        hover.isTrusted = { enabledCommands: ['git4vsc.showBlameCommit'] };
+      }
       return {
         range: new vscode.Range(line.line - 1, 0, line.line - 1, 0),
         hoverMessage: hover,

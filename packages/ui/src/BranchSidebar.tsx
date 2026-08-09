@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
-import type { GitRef, RepositoryStatus } from '@git4vsc/shared-types';
+import type { GitRef, GitWorktree, RepositoryStatus } from '@git4vsc/shared-types';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu.js';
 import { OverlayScrollbar } from './OverlayScrollbar.js';
 
 export type RefAction =
   | 'copy' | 'toggleFavorite'
-  | 'checkout' | 'checkoutUpdate' | 'checkoutRebase' | 'checkoutNew' | 'createBranch' | 'createTag' | 'newWorktree'
+  | 'checkout' | 'checkoutUpdate' | 'checkoutRebase' | 'checkoutNew' | 'createBranch' | 'createTag' | 'newWorktree' | 'openWorktree'
   | 'compare' | 'diffLocal' | 'rebaseOnto' | 'merge'
   | 'update' | 'push' | 'setUpstream' | 'pullMerge' | 'pullRebase'
   | 'rename' | 'delete';
@@ -48,8 +48,9 @@ export function groupRefsByDirectory(refs: readonly GitRef[], prefix = ''): { re
   return { refs: root.refs, directories: [...root.directories.values()].sort((a, b) => a.name.localeCompare(b.name)).map(freeze) };
 }
 
-export function BranchSidebar({ status, activeRef, favoriteRefs = [], onSelectRef, onRefAction, onRemoteAction }: {
+export function BranchSidebar({ status, worktrees = [], activeRef, favoriteRefs = [], onSelectRef, onRefAction, onRemoteAction }: {
   status: RepositoryStatus | null;
+  worktrees?: readonly GitWorktree[] | undefined;
   activeRef: string | null;
   favoriteRefs?: readonly string[] | undefined;
   onSelectRef?: ((ref: string | null) => void) | undefined;
@@ -85,8 +86,11 @@ export function BranchSidebar({ status, activeRef, favoriteRefs = [], onSelectRe
     setRemoteMenu({ x: event.clientX, y: event.clientY, remote });
   }
 
-  const menuItems: ContextMenuItem[] = menu ? buildBranchMenu(menu.ref, status, favoriteRefs) : [];
-  const renderLocal = (ref: GitRef, label: string) => <BranchItem key={ref.fullName} label={label} active={activeRef === ref.fullName} icon={ref.name === status?.branch ? '●' : '◇'} current={ref.name === status?.branch} favorite={favoriteRefs.includes(ref.fullName)} updateAvailable={hasRemoteUpdate(ref, status)} ahead={ref.name === status?.branch ? status?.ahead ?? 0 : 0} behind={ref.name === status?.branch ? status?.behind ?? 0 : 0} upstream={ref.name === status?.branch ? status?.upstream : ref.upstream} onClick={() => onSelectRef?.(ref.fullName)} onContextMenu={event => openMenu(event, ref)} />;
+  const menuItems: ContextMenuItem[] = menu ? buildBranchMenu(menu.ref, status, favoriteRefs, worktrees) : [];
+  const renderLocal = (ref: GitRef, label: string) => {
+    const worktree = worktrees.find(candidate => candidate.branch === ref.name && !samePath(candidate.path, status?.root));
+    return <BranchItem key={ref.fullName} label={label} active={activeRef === ref.fullName} icon={ref.name === status?.branch ? '●' : '◇'} current={ref.name === status?.branch} worktree={worktree} favorite={favoriteRefs.includes(ref.fullName)} updateAvailable={hasRemoteUpdate(ref, status)} ahead={ref.name === status?.branch ? status?.ahead ?? 0 : 0} behind={ref.name === status?.branch ? status?.behind ?? 0 : 0} upstream={ref.name === status?.branch ? status?.upstream : ref.upstream} onClick={() => onSelectRef?.(ref.fullName)} onContextMenu={event => openMenu(event, ref)} />;
+  };
   const renderRemote = (ref: GitRef, label: string) => <BranchItem key={ref.fullName} label={label} active={activeRef === ref.fullName} icon="◇" favorite={favoriteRefs.includes(ref.fullName)} onClick={() => onSelectRef?.(ref.fullName)} onContextMenu={event => openMenu(event, ref)} />;
   const renderTag = (ref: GitRef, label: string) => <BranchItem key={ref.fullName} label={label} active={activeRef === ref.fullName} icon="◆" onClick={() => onSelectRef?.(ref.fullName)} onContextMenu={event => openMenu(event, ref)} />;
 
@@ -125,7 +129,7 @@ export function BranchSidebar({ status, activeRef, favoriteRefs = [], onSelectRe
   );
 }
 
-export function buildBranchMenu(ref: GitRef | null, status: RepositoryStatus | null, favoriteRefs: readonly string[]): ContextMenuItem[] {
+export function buildBranchMenu(ref: GitRef | null, status: RepositoryStatus | null, favoriteRefs: readonly string[], worktrees: readonly GitWorktree[] = []): ContextMenuItem[] {
   if (!ref) return [
     { id: 'copy', label: 'Copy HEAD Revision' },
     { id: 'separator-1', separator: true },
@@ -134,6 +138,7 @@ export function buildBranchMenu(ref: GitRef | null, status: RepositoryStatus | n
     { id: 'newWorktree', label: 'New Worktree from Here…' }
   ];
   const current = ref.type === 'local-branch' && ref.name === status?.branch;
+  const otherWorktree = ref.type === 'local-branch' && worktrees.some(worktree => worktree.branch === ref.name && !samePath(worktree.path, status?.root));
   const branch = ref.type === 'local-branch' || ref.type === 'remote-branch';
   const hasCurrentBranch = Boolean(status?.branch);
   const currentTag = ref.type === 'tag' && !hasCurrentBranch && ref.hash === status?.head;
@@ -160,10 +165,10 @@ export function buildBranchMenu(ref: GitRef | null, status: RepositoryStatus | n
   if (ref.type === 'local-branch') return joinMenuSections(
     common,
     [
-      { id: 'checkout', label: 'Checkout' },
+      otherWorktree ? { id: 'openWorktree', label: 'Open Worktree' } : { id: 'checkout', label: 'Checkout' },
       { id: 'checkoutNew', label: 'Checkout as New Branch…' },
-      ...(hasCurrentBranch ? [{ id: 'checkoutRebase', label: 'Checkout and Rebase onto Current…' }] : []),
-      ...(ref.upstream ? [{ id: 'checkoutUpdate', label: 'Checkout and Update…' }] : []),
+      ...(!otherWorktree && hasCurrentBranch ? [{ id: 'checkoutRebase', label: 'Checkout and Rebase onto Current…' }] : []),
+      ...(!otherWorktree && ref.upstream ? [{ id: 'checkoutUpdate', label: 'Checkout and Update…' }] : []),
       { id: 'newWorktree', label: 'New Worktree…' }
     ],
     [
@@ -180,8 +185,8 @@ export function buildBranchMenu(ref: GitRef | null, status: RepositoryStatus | n
       { id: 'setUpstream', label: 'Set Tracked Branch…' }
     ],
     [
-      { id: 'rename', label: 'Rename Branch…' },
-      { id: 'delete', label: 'Delete Branch…' }
+      { id: 'rename', label: 'Rename Branch…', disabled: otherWorktree },
+      { id: 'delete', label: 'Delete Branch…', disabled: otherWorktree }
     ]
   );
 
@@ -257,11 +262,12 @@ function BranchGroup({ label, count, nested = false, defaultOpen = true, forceOp
   );
 }
 
-function BranchItem({ label, icon, active, current, favorite, updateAvailable, ahead = 0, behind = 0, upstream, onClick, onContextMenu }: {
+function BranchItem({ label, icon, active, current, worktree, favorite, updateAvailable, ahead = 0, behind = 0, upstream, onClick, onContextMenu }: {
   label: string;
   icon: string;
   active?: boolean;
   current?: boolean;
+  worktree?: GitWorktree | undefined;
   favorite?: boolean;
   updateAvailable?: boolean;
   ahead?: number;
@@ -271,11 +277,21 @@ function BranchItem({ label, icon, active, current, favorite, updateAvailable, a
   onContextMenu?: ((event: MouseEvent) => void) | undefined;
 }) {
   return <button type="button" className={`branch-item${active ? ' active' : ''}${current ? ' current' : ''}`} onClick={onClick} onContextMenu={onContextMenu}>
-    <span className="branch-icon">{icon}</span><span className="branch-label">{label}</span>
+    <span className={`branch-icon${worktree ? ' branch-worktree-icon' : ''}`} title={worktree ? `Checked out in ${worktree.path}` : undefined}>{worktree ? <WorktreeBranchIcon /> : icon}</span><span className="branch-label">{label}</span>
     <span className="branch-indicators">
       {behind > 0 ? <span className="branch-behind" title={`${behind} commit${behind === 1 ? '' : 's'} behind ${upstream ?? 'upstream'}`}>↘{behind}</span> : updateAvailable && <span className="branch-behind" title="Updates available">↘</span>}
       {ahead > 0 && <span className="branch-ahead" title={`${ahead} commit${ahead === 1 ? '' : 's'} ahead of ${upstream ?? 'upstream'} and ready to push`}>↗{ahead}</span>}
       {favorite && <span className="branch-favorite">★</span>}
     </span>
   </button>;
+}
+
+function WorktreeBranchIcon() {
+  return <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3.4v5.2M3 7.2c0-1.5 1.2-2.7 2.7-2.7h1.9" /><circle cx="3" cy="2" r="1.2" /><circle cx="3" cy="10" r="1.2" /><circle cx="9" cy="4.5" r="1.2" /></svg>;
+}
+
+function samePath(left: string, right?: string): boolean {
+  if (!right) return false;
+  const normalize = (value: string) => value.replaceAll('\\', '/').replace(/\/$/, '');
+  return normalize(left) === normalize(right);
 }

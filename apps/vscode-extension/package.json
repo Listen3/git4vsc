@@ -70,6 +70,16 @@
       { "command": "git4vsc.refresh", "title": "Refresh", "category": "Git4VSC", "icon": "$(refresh)" },
       { "command": "git4vsc.showFileHistory", "title": "File History", "category": "Git4VSC" },
       { "command": "git4vsc.toggleBlameAnnotations", "title": "Annotate with Git Blame", "category": "Git4VSC" },
+      { "command": "git4vsc.showBlameCommit", "title": "Show Blame Commit in Log", "category": "Git4VSC" },
+      { "command": "git4vsc.openWorktrees", "title": "Open Worktrees", "category": "Git4VSC", "icon": "$(multiple-windows)" },
+      { "command": "git4vsc.refreshWorktrees", "title": "Refresh Worktrees", "category": "Git4VSC", "icon": "$(refresh)" },
+      { "command": "git4vsc.newWorktree", "title": "New Worktree", "category": "Git4VSC", "icon": "$(add)" },
+      { "command": "git4vsc.openWorktree", "title": "Open Worktree", "category": "Git4VSC", "icon": "$(folder-opened)" },
+      { "command": "git4vsc.deleteWorktree", "title": "Delete Worktree", "category": "Git4VSC", "icon": "$(trash)" },
+      { "command": "git4vsc.pruneWorktrees", "title": "Prune Missing Worktrees", "category": "Git4VSC", "icon": "$(clear-all)" },
+      { "command": "git4vsc.lockWorktree", "title": "Lock Worktree", "category": "Git4VSC", "icon": "$(lock)" },
+      { "command": "git4vsc.unlockWorktree", "title": "Unlock Worktree", "category": "Git4VSC", "icon": "$(unlock)" },
+      { "command": "git4vsc.copyWorktreePath", "title": "Copy Worktree Path", "category": "Git4VSC", "icon": "$(copy)" },
       { "command": "git4vsc.stage", "title": "Stage Changes", "category": "Git4VSC", "icon": "$(add)" },
       { "command": "git4vsc.unstage", "title": "Unstage Changes", "category": "Git4VSC", "icon": "$(remove)" },
       { "command": "git4vsc.commit", "title": "Commit Staged Changes", "category": "Git4VSC", "icon": "$(check)" },
@@ -197,7 +207,8 @@
       ],
       "panel": [
         { "id": "git4vscLogPanel", "title": "Git Log", "icon": "media/git4vsc.svg" },
-        { "id": "git4vscMergePanel", "title": "Git Merge", "icon": "media/git4vsc.svg" }
+        { "id": "git4vscMergePanel", "title": "Git Merge", "icon": "media/git4vsc.svg" },
+        { "id": "git4vscWorktreePanel", "title": "Git Worktrees", "icon": "media/git4vsc.svg" }
       ]
     },
     "views": {
@@ -209,6 +220,9 @@
       ],
       "git4vscMergePanel": [
         { "id": "git4vsc.conflicts", "name": "Merge Conflicts", "when": "git4vsc.hasConflicts" }
+      ],
+      "git4vscWorktreePanel": [
+        { "id": "git4vsc.worktrees", "name": "Worktrees" }
       ]
     },
     "menus": {
@@ -251,18 +265,32 @@
         { "command": "git4vsc.operationStatus", "when": "view == git4vsc.logView && git4vsc.busy", "group": "navigation@1" },
         { "command": "git4vsc.openSettings", "when": "view == git4vsc.logView", "group": "navigation@99" },
         { "command": "git4vsc.resolveConflicts", "when": "view == git4vsc.conflicts", "group": "navigation@1" },
-        { "command": "git4vsc.abortOperation", "when": "view == git4vsc.conflicts", "group": "navigation@2" }
+        { "command": "git4vsc.abortOperation", "when": "view == git4vsc.conflicts", "group": "navigation@2" },
+        { "command": "git4vsc.newWorktree", "when": "view == git4vsc.worktrees", "group": "navigation@1" },
+        { "command": "git4vsc.refreshWorktrees", "when": "view == git4vsc.worktrees", "group": "navigation@2" },
+        { "command": "git4vsc.pruneWorktrees", "when": "view == git4vsc.worktrees", "group": "navigation@3" }
       ],
       "commandPalette": [
         { "command": "git4vsc.updateCurrentBranchAvailable", "when": "false" },
-        { "command": "git4vsc.pushCurrentBranchAvailable", "when": "false" }
+        { "command": "git4vsc.pushCurrentBranchAvailable", "when": "false" },
+        { "command": "git4vsc.openWorktree", "when": "false" },
+        { "command": "git4vsc.deleteWorktree", "when": "false" },
+        { "command": "git4vsc.lockWorktree", "when": "false" },
+        { "command": "git4vsc.unlockWorktree", "when": "false" },
+        { "command": "git4vsc.copyWorktreePath", "when": "false" }
       ],
       "view/item/context": [
         { "command": "git4vsc.openConflict", "when": "view == git4vsc.conflicts && viewItem == git4vsc.conflict", "group": "inline@1" },
         { "command": "git4vsc.markConflictResolved", "when": "view == git4vsc.conflicts && viewItem == git4vsc.conflict", "group": "inline@2" },
         { "command": "git4vsc.acceptCurrent", "when": "view == git4vsc.conflicts && viewItem == git4vsc.conflict", "group": "conflict@10" },
         { "command": "git4vsc.acceptIncoming", "when": "view == git4vsc.conflicts && viewItem == git4vsc.conflict", "group": "conflict@20" },
-        { "command": "git4vsc.restartConflict", "when": "view == git4vsc.conflicts && viewItem == git4vsc.conflict", "group": "conflict@30" }
+        { "command": "git4vsc.restartConflict", "when": "view == git4vsc.conflicts && viewItem == git4vsc.conflict", "group": "conflict@30" },
+        { "command": "git4vsc.openWorktree", "when": "view == git4vsc.worktrees && viewItem =~ /git4vsc\\.worktree\\.(main|linked|locked)/", "group": "inline@1" },
+        { "command": "git4vsc.openWorktree", "when": "view == git4vsc.worktrees && viewItem =~ /git4vsc\\.worktree\\.(main|linked|locked)/", "group": "navigation@1" },
+        { "command": "git4vsc.copyWorktreePath", "when": "view == git4vsc.worktrees", "group": "navigation@2" },
+        { "command": "git4vsc.lockWorktree", "when": "view == git4vsc.worktrees && viewItem == git4vsc.worktree.linked", "group": "manage@1" },
+        { "command": "git4vsc.unlockWorktree", "when": "view == git4vsc.worktrees && viewItem == git4vsc.worktree.locked", "group": "manage@1" },
+        { "command": "git4vsc.deleteWorktree", "when": "view == git4vsc.worktrees && viewItem == git4vsc.worktree.linked", "group": "manage@2" }
       ]
     },
     "colors": [

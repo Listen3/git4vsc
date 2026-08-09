@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GitClient, RepositoryLocation } from '@git4vsc/git-core';
-import type { CommitPage, RepositoryStatus } from '@git4vsc/shared-types';
+import type { CommitPage, GitWorktree, RepositoryStatus } from '@git4vsc/shared-types';
 import { RepositoryManager } from '../src/repository-manager.js';
 
 class FakeGit {
@@ -19,6 +19,8 @@ class FakeGit {
   async log(): Promise<CommitPage> {
     return { commits: [], offset: 0, hasMore: false };
   }
+
+  async worktrees(): Promise<GitWorktree[]> { return []; }
 }
 
 describe('RepositoryManager', () => {

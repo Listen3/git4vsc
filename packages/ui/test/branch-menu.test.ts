@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { GitRef, RepositoryStatus } from '@git4vsc/shared-types';
+import type { GitRef, GitWorktree, RepositoryStatus } from '@git4vsc/shared-types';
 import { buildBranchMenu, groupRefsByDirectory, hasRemoteUpdate } from '../src/BranchSidebar.js';
 
 const refs: GitRef[] = [
@@ -65,6 +65,18 @@ describe('branch context menus', () => {
       'compare', 'diffLocal', 'rebaseOnto', 'merge',
       'update', 'push', 'setUpstream', 'rename', 'delete'
     ]);
+  });
+
+  it('opens a branch already checked out in another worktree and blocks branch mutation', () => {
+    const worktree: GitWorktree = { path: '/repo-feature', head: 'feature-hash', branch: 'feature', main: false, detached: false, bare: false, locked: false, prunable: false };
+    const menu = buildBranchMenu(refs[1]!, status, [], [worktree]);
+    const enabled = menu.filter(item => !item.separator && !item.disabled).map(item => item.id);
+    expect(enabled).toContain('openWorktree');
+    expect(enabled).not.toContain('checkout');
+    expect(enabled).not.toContain('checkoutUpdate');
+    expect(enabled).not.toContain('checkoutRebase');
+    expect(menu.find(item => item.id === 'rename')?.disabled).toBe(true);
+    expect(menu.find(item => item.id === 'delete')?.disabled).toBe(true);
   });
 
   it('hides upstream-dependent actions for an untracked local branch', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CommitPage, RepositoryStatus } from '@git4vsc/shared-types';
+import type { CommitPage, GitWorktree, RepositoryStatus } from '@git4vsc/shared-types';
 import type { GitClient, RepositoryLocation } from '@git4vsc/git-core';
 import { RepositoryController } from '../src/repository-controller.js';
 
@@ -13,6 +13,7 @@ class FakeGit {
   statusCalls = 0;
   statusMetadata: boolean[] = [];
   logCalls = 0;
+  worktreeCalls = 0;
   conflictOnMerge = false;
   conflictOnPull = false;
   hasConflict = false;
@@ -30,6 +31,10 @@ class FakeGit {
     return result;
   }
   async log(_location: RepositoryLocation): Promise<CommitPage> { this.logCalls += 1; return { commits: [], offset: 0, hasMore: false }; }
+  async worktrees(location: RepositoryLocation): Promise<GitWorktree[]> {
+    this.worktreeCalls += 1;
+    return [{ path: location.root, head: 'a', branch: 'main', main: true, detached: false, bare: false, locked: false, prunable: false }];
+  }
   async stage(): Promise<void> { await this.write(); }
   async unstage(): Promise<void> { await this.write(); }
   async commit(): Promise<void> { await this.write(); }
@@ -86,6 +91,7 @@ describe('RepositoryController', () => {
     expect(fake.statusMetadata).toEqual([true, false, false]);
     expect(fake.logCalls).toBe(0);
     expect(repository.snapshot.operation).toBeNull();
+    expect(repository.worktreeForBranch('main', true)).toBeUndefined();
   });
 
   it('does not share operation locks between repositories', async () => {

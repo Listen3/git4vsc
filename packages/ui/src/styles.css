@@ -81,6 +81,9 @@ button { cursor: default; }
 .branch-item { width: 100%; height: 22px; border: 0; border-radius: 2px; padding: 0 6px; display: flex; align-items: center; gap: 6px; background: transparent; text-align: left; white-space: nowrap; overflow: hidden; }
 .branch-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .branch-indicators { margin-left: auto; display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 500; line-height: 1; }
+.branch-worktree-icon { color: var(--vscode-gitDecoration-untrackedResourceForeground, #73c991); }
+.branch-worktree-icon svg { width: 13px; height: 13px; display: block; overflow: visible; fill: currentColor; stroke: currentColor; stroke-width: 1.15; stroke-linecap: round; stroke-linejoin: round; }
+.branch-worktree-icon svg path { fill: none; }
 .branch-behind { color: var(--git4vsc-update-indicator); }
 .branch-ahead { color: var(--vscode-gitDecoration-addedResourceForeground, #81b88b); }
 .branch-favorite { color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d); font-size: 10px; }
@@ -214,9 +217,12 @@ button { cursor: default; }
 
 .dialog-backdrop { position: fixed; z-index: 3000; inset: 0; padding: 12px; display: grid; place-items: center; background: color-mix(in srgb, #000 34%, transparent); }
 .dialog-frame { position: relative; width: clamp(420px, 68vw, 720px); max-width: 100%; max-height: calc(100vh - 24px); border: 1px solid var(--vscode-menu-border, var(--git4vsc-border)); border-radius: 7px; display: flex; flex-direction: column; overflow: hidden; outline: 0; color: var(--git4vsc-foreground); background: var(--vscode-menu-background, #252526); box-shadow: 0 10px 38px #0009; }
-.dialog-compact-list { width: clamp(430px, 68vw, 680px); min-height: min(calc(82px + var(--dialog-list-height, 25px)), calc(100vh - 24px)); }
+.dialog-list-frame:not(.dialog-compact-list) { height: min(calc(133px + var(--dialog-list-height, 120px)), calc(100vh - 24px)); min-height: 0; }
+.dialog-compact-list { width: clamp(430px, 68vw, 680px); height: min(calc(82px + var(--dialog-list-height, 25px)), calc(100vh - 24px)); min-height: 0; }
+.dialog-compact-list.dialog-with-input { height: min(calc(130px + var(--dialog-list-height, 25px)), calc(100vh - 24px)); }
 .dialog-compact-list .dialog-header { height: 34px; flex-basis: 34px; padding-left: 11px; }
-.dialog-compact-list .dialog-list { min-height: 0; max-height: min(360px, calc(100vh - 96px)); flex: 0 0 auto; padding: 4px 6px; overflow: auto; }
+.dialog-compact-list .dialog-list-body { min-height: 0; max-height: none; flex: 1 1 auto; }
+.dialog-compact-list .dialog-list { min-height: 0; max-height: none; padding: 4px 6px; }
 .dialog-compact-list .dialog-list > button { min-height: 25px; padding-block: 2px; grid-template-columns: minmax(110px, .8fr) minmax(210px, 1.2fr); }
 .dialog-compact-list .dialog-footer { height: 38px; flex-basis: 38px; padding: 5px 8px; }
 .dialog-compact-list .dialog-footer button { min-width: 66px; height: 26px; padding-inline: 10px; }
@@ -229,7 +235,12 @@ button { cursor: default; }
 .dialog-search { height: 30px; flex: 0 0 30px; margin: 7px 8px 5px; padding: 0 7px; border: 1px solid var(--vscode-input-border, var(--git4vsc-border)); display: flex; align-items: center; gap: 5px; color: var(--vscode-input-foreground, inherit); background: var(--vscode-input-background, #3c3c3c); }
 .dialog-search:focus-within { border-color: var(--vscode-focusBorder, #007fd4); }
 .dialog-search input { min-width: 0; flex: 1; border: 0; outline: 0; color: inherit; background: transparent; }
-.dialog-list { min-height: 120px; max-height: min(520px, calc(100vh - 140px)); padding: 2px 6px 6px; overflow: auto; }
+.dialog-list-input { height: 43px; flex: 0 0 43px; padding: 4px 8px 5px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 9px; color: var(--vscode-descriptionForeground); }
+.dialog-list-input input { height: 28px; min-width: 0; padding: 0 7px; border: 1px solid var(--vscode-input-border, var(--git4vsc-border)); outline: 0; color: var(--vscode-input-foreground, inherit); background: var(--vscode-input-background, #3c3c3c); }
+.dialog-list-input input:focus { border-color: var(--vscode-focusBorder, #007fd4); }
+.dialog-list-input input:disabled { opacity: .55; }
+.dialog-list-body { position: relative; min-height: 0; max-height: min(520px, calc(100vh - 140px)); flex: 1 1 auto; display: flex; overflow: hidden; }
+.dialog-list { width: 100%; min-height: 0; flex: 1 1 auto; padding: 2px 6px 6px; overflow: auto; }
 .dialog-list > button { width: 100%; min-height: 27px; padding: 3px 8px; border: 0; border-radius: 2px; display: grid; grid-template-columns: minmax(120px, 1fr) auto; align-items: center; column-gap: 8px; color: inherit; background: transparent; text-align: left; }
 .dialog-list > button:hover { background: var(--vscode-list-hoverBackground, #2a2d2e); }
 .dialog-list > button.selected { color: var(--vscode-list-activeSelectionForeground, #fff); background: var(--vscode-list-activeSelectionBackground, #04395e); }

@@ -11,6 +11,7 @@ import { operationActivity } from './repository-status.js';
 import { readGeneralSettings } from './settings.js';
 import { configuredUpdateStrategy } from './update-strategy.js';
 import { checkoutWithSmartFallback, createAndCheckoutWithSmartFallback, runSmartCheckoutFallback, updateWithSmartFallback } from './smart-operations.js';
+import { LogCache } from './log-cache.js';
 
 type CommitAction = 'copyRevision' | 'copySubject' | 'createBranch' | 'createTag' | 'checkout' | 'compareLocal' | 'cherryPick' | 'revert' | 'reset';
 type CommitFileAction =
@@ -19,7 +20,7 @@ type CommitFileAction =
   | 'createPatch' | 'getFromRevision' | 'historyUpToHere' | 'showChangesToParent' | 'copyPath';
 type RefAction =
   | 'copy' | 'toggleFavorite'
-  | 'checkout' | 'checkoutUpdate' | 'checkoutRebase' | 'checkoutNew' | 'createBranch' | 'createTag' | 'newWorktree'
+  | 'checkout' | 'checkoutUpdate' | 'checkoutRebase' | 'checkoutNew' | 'createBranch' | 'createTag' | 'newWorktree' | 'openWorktree'
   | 'compare' | 'diffLocal' | 'rebaseOnto' | 'merge'
   | 'update' | 'push' | 'setUpstream' | 'pullMerge' | 'pullRebase'
   | 'rename' | 'delete';
@@ -33,12 +34,17 @@ export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
   private view: vscode.WebviewView | null = null;
   private repository: RepositoryController | null = null;
   private session: LogSession | null = null;
+  private readonly cache: LogCache;
+  private prewarmTail = Promise.resolve();
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly defaultRepository: () => RepositoryController | undefined,
-    private readonly previewPush: PreviewPush
-  ) {}
+    private readonly previewPush: PreviewPush,
+    private readonly worktreesChanged: () => void = () => undefined
+  ) {
+    this.cache = new LogCache(context.storageUri?.fsPath);
+  }
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
@@ -99,8 +105,28 @@ export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
     this.session?.refresh();
   }
 
+  prewarm(repository: RepositoryController): void {
+    this.prewarmTail = this.prewarmTail.then(async () => {
+      await delay(750);
+      const head = repository.snapshot.status?.head;
+      if (!head || repository.snapshot.operation || await this.cache.read(repository.root, head)) return;
+      const page = await repository.git.log(repository.location, 0, 200, { ref: head });
+      if (repository.snapshot.status?.head === head) await this.cache.write(repository.root, head, page);
+    }).catch(() => undefined);
+  }
+
   revealCommit(repository: RepositoryController, hash: string): void {
     if (this.repository === repository) this.session?.revealCommit(hash);
+  }
+
+  async showCommit(repository: RepositoryController, hash: string): Promise<void> {
+    const changed = this.repository !== repository;
+    this.repository = repository;
+    if (changed) this.attach();
+    await vscode.commands.executeCommand('git4vsc.logView.focus');
+    this.view?.show(true);
+    if (!this.session) this.attach();
+    this.session?.showCommit(hash);
   }
 
   dispose(): void {
@@ -111,7 +137,7 @@ export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
   private attach(fileHistoryPath: string | null = null): void {
     if (!this.view || !this.repository) return;
     this.session?.dispose();
-    this.session = new LogSession(this.context, this.repository, this.view, this.previewPush, fileHistoryPath);
+    this.session = new LogSession(this.context, this.repository, this.view, this.previewPush, this.cache, this.worktreesChanged, fileHistoryPath);
   }
 }
 
@@ -129,6 +155,7 @@ class LogSession implements vscode.Disposable {
   private details: CommitDetails | null = null;
   private hasMore = false;
   private logLoading = false;
+  private quietLogLoading = false;
   private detailsLoading = false;
   private localError: string | null = null;
   private logRequest = 0;
@@ -145,6 +172,8 @@ class LogSession implements vscode.Disposable {
     private readonly repository: RepositoryController,
     private readonly view: vscode.WebviewView,
     private readonly previewPush: PreviewPush,
+    private readonly cache: LogCache,
+    private readonly worktreesChanged: () => void,
     fileHistoryPath: string | null = null
   ) {
     const saved = context.workspaceState.get<Partial<PersistedLogState>>(this.stateKey());
@@ -171,7 +200,7 @@ class LogSession implements vscode.Disposable {
       }
     });
     this.messageSubscription = view.webview.onDidReceiveMessage(message => void this.handleMessage(message));
-    void this.loadLog(true);
+    void this.initializeLog();
   }
 
   refresh(): void {
@@ -184,7 +213,26 @@ class LogSession implements vscode.Disposable {
     this.activeRef = 'HEAD';
     this.filters = this.mainFilters;
     this.updateTitle();
-    void this.loadLog(true);
+    void this.initializeLog();
+  }
+
+  private async initializeLog(): Promise<void> {
+    const request = this.logRequest;
+    const head = this.repository.snapshot.status?.head;
+    const cached = head && this.cacheable() ? await this.cache.read(this.repository.root, head) : null;
+    if (request !== this.logRequest) return;
+    if (!cached) {
+      await this.loadLog(true);
+      return;
+    }
+    this.commits = cached.commits;
+    this.users = logUsers(cached.commits, []);
+    this.hasMore = cached.hasMore;
+    this.selectedHash = selectionAfterLogReload(cached.commits, this.selectedHash);
+    this.postSnapshot();
+    const validation = this.loadLog(true, true);
+    if (this.selectedHash) void this.loadDetails(this.selectedHash);
+    await validation;
   }
 
   showFileHistory(path: string): void {
@@ -204,6 +252,23 @@ class LogSession implements vscode.Disposable {
     } else if (!this.logLoading) {
       void this.loadLog(true);
     }
+  }
+
+  showCommit(hash: string): void {
+    if (this.fileHistoryPath) {
+      this.fileHistoryPath = null;
+      this.activeRef = 'HEAD';
+      this.filters = this.mainFilters;
+      this.updateTitle();
+    }
+    if (this.commits.some(commit => commit.hash === hash)) {
+      this.preferredSelection = null;
+      void this.loadDetails(hash);
+      return;
+    }
+    this.preferredSelection = hash;
+    this.filters = { ...this.mainFilters, text: hash, regex: false, caseSensitive: false };
+    void this.loadLog(true);
   }
 
   dispose(): void {
@@ -305,15 +370,18 @@ class LogSession implements vscode.Disposable {
     })).sort((left, right) => Number(right.directory) - Number(left.directory) || left.name.localeCompare(right.name));
   }
 
-  private async loadLog(reset: boolean): Promise<void> {
+  private async loadLog(reset: boolean, quiet = false): Promise<void> {
     if (!reset && (this.logLoading || !this.hasMore)) return;
     const request = ++this.logRequest;
     const limit = reset ? Math.max(200, this.commits.length) : 200;
     this.logLoading = true;
+    this.quietLogLoading = quiet;
     this.localError = null;
-    this.postSnapshot();
+    if (!quiet) this.postSnapshot();
     try {
+      const cacheHead = reset && this.cacheable() ? this.repository.snapshot.status?.head : null;
       const query = logQueryFromFilters(this.filters, this.activeRef);
+      if (cacheHead) query.ref = cacheHead;
       if (this.fileHistoryPath) {
         query.followRenames = true;
         query.paths = [this.fileHistoryPath];
@@ -325,6 +393,10 @@ class LogSession implements vscode.Disposable {
       this.users = logUsers(next, this.users);
       this.hasMore = page.hasMore;
       this.logLoading = false;
+      this.quietLogLoading = false;
+      if (cacheHead && this.repository.snapshot.status?.head === cacheHead) {
+        void this.cache.write(this.repository.root, cacheHead, { commits: next, offset: 0, hasMore: page.hasMore }).catch(() => undefined);
+      }
       if (!reset) {
         this.postSnapshot();
         return;
@@ -345,6 +417,7 @@ class LogSession implements vscode.Disposable {
     } catch (error) {
       if (request !== this.logRequest) return;
       this.logLoading = false;
+      this.quietLogLoading = false;
       throw error;
     }
   }
@@ -495,6 +568,7 @@ class LogSession implements vscode.Disposable {
     const parent = await this.dialogs.show({
       kind: 'list',
       title: `Show ${change.path} Changes to Parent`,
+      searchable: this.details.parents.length > 3,
       items: this.details.parents.map((hash, index) => ({ id: hash, label: `Parent ${index + 1}`, description: hash.slice(0, 12) }))
     });
     if (typeof parent !== 'string') return;
@@ -623,6 +697,10 @@ class LogSession implements vscode.Disposable {
       return;
     }
     if (!ref) return;
+    if (action === 'openWorktree') {
+      if (ref.type === 'local-branch') await this.openExistingWorktree(ref.name);
+      return;
+    }
     if (action === 'toggleFavorite') {
       if (this.favoriteRefs.has(ref.fullName)) this.favoriteRefs.delete(ref.fullName);
       else this.favoriteRefs.add(ref.fullName);
@@ -638,6 +716,7 @@ class LogSession implements vscode.Disposable {
     }
     if (action === 'checkoutUpdate') {
       if (ref.type !== 'local-branch') return;
+      if (await this.openExistingWorktree(ref.name)) return;
       const upstream = await this.repository.git.branchUpstream(this.repository.location, ref.name);
       if (!upstream) {
         void vscode.window.showWarningMessage(`${ref.name} has no tracked branch.`);
@@ -652,12 +731,14 @@ class LogSession implements vscode.Disposable {
     if (action === 'checkoutRebase') {
       const current = this.repository.snapshot.status?.branch;
       if (!current) return;
+      if (ref.type === 'local-branch' && await this.openExistingWorktree(ref.name)) return;
       const confirmed = await vscode.window.showWarningMessage(`Rebase ${ref.name} onto ${current} and check it out?`, { modal: true }, 'Checkout and Rebase');
       if (!confirmed) return;
       if (ref.type === 'local-branch') await runSmartCheckoutFallback(this.repository, ref.name, () => this.repository.checkoutAndRebase(ref.name, current), () => this.repository.smartCheckoutAndRebase(ref.name, current));
       else if (ref.type === 'remote-branch') {
         const local = await this.localBranchForRemote(ref);
         if (!local) return;
+        if (local.exists && await this.openExistingWorktree(local.name)) return;
         if (local.exists) await runSmartCheckoutFallback(this.repository, local.name, () => this.repository.checkoutAndRebase(local.name, current), () => this.repository.smartCheckoutAndRebase(local.name, current));
         else await runSmartCheckoutFallback(this.repository, local.name, () => this.repository.checkoutRemoteAndRebase(local.name, ref.name, current), () => this.repository.smartCheckoutRemoteAndRebase(local.name, ref.name, current));
       }
@@ -676,9 +757,11 @@ class LogSession implements vscode.Disposable {
       if (ref.type === 'remote-branch') {
         const local = await this.localBranchForRemote(ref);
         if (!local) return;
+        if (local.exists && await this.openExistingWorktree(local.name)) return;
         if (local.exists) await checkoutWithSmartFallback(this.repository, local.name);
         else await createAndCheckoutWithSmartFallback(this.repository, local.name, ref.fullName, true);
       } else {
+        if (ref.type === 'local-branch' && await this.openExistingWorktree(ref.name)) return;
         await checkoutWithSmartFallback(this.repository, ref.name, ref.type === 'tag');
       }
       await this.resolveConflictsIfNeeded();
@@ -756,6 +839,7 @@ class LogSession implements vscode.Disposable {
 
   private async updateSelectedBranch(ref: GitRef): Promise<void> {
     if (ref.type !== 'local-branch') return;
+    if (await this.openExistingWorktree(ref.name)) return;
     const upstream = await this.repository.git.branchUpstream(this.repository.location, ref.name);
     if (!upstream) {
       void vscode.window.showWarningMessage(`${ref.name} has no tracked branch. Use “Set Tracked Branch” first.`);
@@ -765,7 +849,7 @@ class LogSession implements vscode.Disposable {
     if (ref.name === this.repository.snapshot.status?.branch) {
       const [remote, branch] = splitRemoteBranch(upstream);
       const configured = configuredUpdateStrategy();
-      const strategy = configured === 'ask' ? await this.dialogs.show({ kind: 'list', title: 'Update Project', items: [
+      const strategy = configured === 'ask' ? await this.dialogs.show({ kind: 'list', title: 'Update Project', searchable: false, items: [
         { id: 'merge', label: 'Merge incoming changes into the current branch', description: 'Default' },
         { id: 'rebase', label: 'Rebase the current branch on top of incoming changes' }
       ], acceptLabel: 'Update' }) : configured;
@@ -819,12 +903,14 @@ class LogSession implements vscode.Disposable {
 
   private async renameBranch(ref: GitRef): Promise<void> {
     if (ref.type !== 'local-branch') return;
+    if (await this.openExistingWorktree(ref.name)) return;
     const name = await this.branchName(`Rename Branch ${ref.name}`, ref.name);
     if (name && name !== ref.name) await this.repository.renameBranch(ref.name, name);
   }
 
   private async deleteRef(ref: GitRef): Promise<void> {
     if (ref.type === 'local-branch') {
+      if (await this.openExistingWorktree(ref.name)) return;
       const choice = await vscode.window.showWarningMessage(`Delete local branch ${ref.name}?`, { modal: true, detail: 'Normal delete refuses to remove an unmerged branch. Force delete discards the branch ref even when unmerged.' }, 'Delete', 'Force Delete');
       if (choice) await this.repository.deleteBranch(ref.name, choice === 'Force Delete');
       return;
@@ -840,16 +926,38 @@ class LogSession implements vscode.Disposable {
   }
 
   private async newWorktree(ref: GitRef | null): Promise<void> {
-    const mode = await this.dialogs.show({ kind: 'list', title: `New Worktree for ${ref?.name ?? 'HEAD'}`, items: [
+    if (ref?.type === 'local-branch' && await this.openExistingWorktree(ref.name)) return;
+    if (ref?.type === 'local-branch' && ref.name !== this.repository.snapshot.status?.branch) {
+      const path = await this.pickWorktreePath(ref.name);
+      if (!path) return;
+      await this.repository.addWorktree(path, ref.fullName);
+      this.worktreesChanged();
+      const open = await vscode.window.showInformationMessage(`Worktree created at ${path}.`, 'Open Worktree');
+      if (open) await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(path), true);
+      return;
+    }
+    const selection = await this.dialogs.show({ kind: 'list', title: `New Worktree for ${ref?.name ?? 'HEAD'}`, searchable: false, input: {
+      label: 'Branch name',
+      placeholder: 'Enter a new branch name',
+      enabledFor: ['branch'],
+      requiredFor: ['branch']
+    }, items: [
       { id: 'branch', label: 'Create New Branch', description: 'Create and check out a new branch in the worktree' },
       { id: 'detached', label: 'Detached HEAD', description: 'Open the selected revision without owning a branch' }
     ], acceptLabel: 'Continue' });
+    if (!selection) return;
+    const mode = selection.id;
     if (mode !== 'branch' && mode !== 'detached') return;
-    const newBranch = mode === 'branch' ? await this.branchName('New Worktree Branch') : undefined;
-    if (mode === 'branch' && !newBranch) return;
-    const target = await vscode.window.showOpenDialog({ title: `New Worktree for ${ref?.name ?? 'HEAD'}`, canSelectFiles: false, canSelectFolders: true, canSelectMany: false, openLabel: 'Use Empty Folder' });
-    const path = target?.[0]?.fsPath;
-    if (path) await this.repository.addWorktree(path, ref?.fullName ?? 'HEAD', newBranch);
+    const newBranch = mode === 'branch' ? selection.input.trim() : undefined;
+    if (newBranch && this.repository.snapshot.status?.refs.some(candidate => candidate.type === 'local-branch' && candidate.name === newBranch)) {
+      void vscode.window.showWarningMessage(`Branch ${newBranch} already exists.`);
+      return;
+    }
+    const path = await this.pickWorktreePath(ref?.name ?? 'HEAD');
+    if (path) {
+      await this.repository.addWorktree(path, ref?.fullName ?? 'HEAD', newBranch, mode === 'detached');
+      this.worktreesChanged();
+    }
   }
 
   private async branchName(title: string, value?: string): Promise<string | undefined> {
@@ -901,6 +1009,18 @@ class LogSession implements vscode.Disposable {
     return `git4vsc.favoriteRefs:${this.repository.root}`;
   }
 
+  private async pickWorktreePath(ref: string): Promise<string | undefined> {
+    const target = await vscode.window.showOpenDialog({ title: `New Worktree for ${ref}`, canSelectFiles: false, canSelectFolders: true, canSelectMany: false, openLabel: 'Use Empty Folder' });
+    return target?.[0]?.fsPath;
+  }
+
+  private async openExistingWorktree(branch: string): Promise<boolean> {
+    const worktree = this.repository.worktreeForBranch(branch, true);
+    if (!worktree) return false;
+    await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(worktree.path), true);
+    return true;
+  }
+
   private prefetchAround(hash: string): void {
     const index = this.commits.findIndex(commit => commit.hash === hash);
     for (const commit of this.commits.slice(Math.max(0, index - 1), index + 3)) {
@@ -944,6 +1064,12 @@ class LogSession implements vscode.Disposable {
     return this.repository.snapshot.status?.refs.find(ref => ref.fullName === fullName);
   }
 
+  private cacheable(): boolean {
+    return !this.fileHistoryPath && this.activeRef === 'HEAD'
+      && !this.filters.text && !this.filters.regex && !this.filters.caseSensitive
+      && !this.filters.user && this.filters.date === 'all' && !this.filters.path;
+  }
+
   private postSnapshot(): void {
     const snapshot = this.repository.snapshot;
     const settings = readGeneralSettings();
@@ -951,6 +1077,7 @@ class LogSession implements vscode.Disposable {
       type: 'snapshot',
       state: {
         status: snapshot.status,
+        worktrees: snapshot.worktrees,
         commits: this.commits,
         activeRef: this.activeRef,
         favoriteRefs: [...this.favoriteRefs],
@@ -961,8 +1088,8 @@ class LogSession implements vscode.Disposable {
         selectedHash: this.selectedHash,
         details: this.details,
         hasMore: this.hasMore,
-        loading: this.logLoading,
-        activity: settings.showOperationProgress ? (snapshot.operation ? operationActivity(snapshot.operation) : this.logLoading ? 'Refreshing…' : null) : null,
+        loading: this.logLoading && !this.quietLogLoading,
+        activity: settings.showOperationProgress ? (snapshot.operation ? operationActivity(snapshot.operation) : this.logLoading && !this.quietLogLoading ? 'Refreshing…' : null) : null,
         detailsLoading: this.detailsLoading,
         error: this.localError ?? snapshot.error
       }
@@ -976,7 +1103,7 @@ class LogSession implements vscode.Disposable {
   }
 
   private html(context: vscode.ExtensionContext, webview: vscode.Webview): string {
-    const cacheKey = `${context.extension.packageJSON.version}-${Date.now()}`;
+    const cacheKey = context.extension.packageJSON.version;
     const script = webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview', 'assets', 'main.js')).with({ query: `v=${cacheKey}` });
     const style = webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview', 'assets', 'main.css')).with({ query: `v=${cacheKey}` });
     return `<!doctype html>
@@ -1006,6 +1133,10 @@ function isLogFilters(value: unknown): value is LogFilters {
   return typeof filters.text === 'string' && typeof filters.regex === 'boolean' && typeof filters.caseSensitive === 'boolean'
     && typeof filters.user === 'string' && typeof filters.path === 'string'
     && ['all', 'today', 'yesterday', 'week', 'month'].includes(String(filters.date));
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise(resolveDelay => setTimeout(resolveDelay, milliseconds));
 }
 
 function repositoryLogIdentity(status: RepositoryStatus | null): string {

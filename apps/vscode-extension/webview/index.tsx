@@ -2,7 +2,7 @@ import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { DialogHost, RepositoryPanel, updatePathTreeEntries } from '@git4vsc/ui';
 import '@git4vsc/ui/styles.css';
-import type { CommitDetails, CommitFileChange, CommitSummary, GitRef, LogFilters, PathTreeEntry, RepositoryStatus, WebviewDialogRequest } from '@git4vsc/shared-types';
+import type { CommitDetails, CommitFileChange, CommitSummary, GitRef, GitWorktree, LogFilters, PathTreeEntry, RepositoryStatus, WebviewDialogRequest } from '@git4vsc/shared-types';
 import type { CommitAction, CommitColumnVisibility, CommitColumnWidths, CommitFileAction, LogViewOptions, RefAction, RemoteAction } from '@git4vsc/ui';
 import { CommitApp } from './commit-app.js';
 import { SettingsApp } from './settings-app.js';
@@ -23,6 +23,7 @@ const restoredState = vscode.getState();
 
 interface ViewState {
   status: RepositoryStatus | null;
+  worktrees: GitWorktree[];
   commits: CommitSummary[];
   activeRef: string | null;
   favoriteRefs: string[];
@@ -39,7 +40,7 @@ interface ViewState {
 }
 
 function LogApp() {
-  const [state, setState] = useState<ViewState>({ status: null, commits: [], activeRef: 'HEAD', favoriteRefs: [], filters: { text: '', regex: false, caseSensitive: false, user: '', date: 'all', path: '' }, searchHistory: [], users: [], selectedHash: null, details: null, hasMore: false, loading: true, activity: 'Refreshing…', detailsLoading: false, error: null });
+  const [state, setState] = useState<ViewState>({ status: null, worktrees: [], commits: [], activeRef: 'HEAD', favoriteRefs: [], filters: { text: '', regex: false, caseSensitive: false, user: '', date: 'all', path: '' }, searchHistory: [], users: [], selectedHash: null, details: null, hasMore: false, loading: true, activity: 'Refreshing…', detailsLoading: false, error: null });
   const [commitColumnWidths, setCommitColumnWidths] = useState(restoredState?.commitColumnWidths);
   const [commitColumnVisibility, setCommitColumnVisibility] = useState(restoredState?.commitColumnVisibility);
   const [viewOptions, setViewOptions] = useState<LogViewOptions>(restoredState?.viewOptions ?? { groupByDirectory: true, showDetails: true });

@@ -1,6 +1,6 @@
 import { basename } from 'node:path';
 import * as vscode from 'vscode';
-import type { GitRef, RepositoryStatus } from '@git4vsc/shared-types';
+import type { GitRef, GitWorktree, RepositoryStatus } from '@git4vsc/shared-types';
 import type { RepositoryController } from '@git4vsc/repo-state';
 import { operationLabel } from './repository-status.js';
 import { notifyUpdateResult } from './operation-notifications.js';
@@ -9,7 +9,7 @@ import { checkoutWithSmartFallback, createAndCheckoutWithSmartFallback, runSmart
 import { gitResourceUri } from './git-uri.js';
 
 type MenuAction = 'update' | 'commit' | 'push' | 'log' | 'stash' | 'stashes' | 'newBranch' | 'checkoutRevision' | 'resolve';
-type RefAction = 'checkout' | 'checkoutUpdate' | 'update' | 'push' | 'log';
+type RefAction = 'checkout' | 'checkoutUpdate' | 'openWorktree' | 'update' | 'push' | 'log';
 
 interface MenuItem extends vscode.QuickPickItem {
   action?: MenuAction;
@@ -26,7 +26,7 @@ export class BranchMenu {
   async show(repository: RepositoryController): Promise<void> {
     const status = repository.snapshot.status;
     if (!status) return;
-    const picked = await vscode.window.showQuickPick(this.items(status, repository.snapshot.operation), {
+    const picked = await vscode.window.showQuickPick(this.items(status, repository.snapshot.operation, repository.snapshot.worktrees), {
       title: `Git4VSC · ${basename(repository.root)}`,
       placeHolder: 'Search branches and actions',
       matchOnDescription: true,
@@ -52,7 +52,7 @@ export class BranchMenu {
     await notifyUpdateResult(repository, before, status.upstream);
   }
 
-  private items(status: RepositoryStatus, operation: string | null): MenuItem[] {
+  private items(status: RepositoryStatus, operation: string | null, worktrees: readonly GitWorktree[]): MenuItem[] {
     const conflicts = status.changes.filter(change => change.conflict).length;
     const current = status.refs.find(ref => ref.type === 'local-branch' && ref.name === status.branch);
     const locals = status.refs.filter(ref => ref.type === 'local-branch' && ref !== current).sort(byName);
@@ -80,7 +80,7 @@ export class BranchMenu {
         { label: `$(star-full) ${current.name}`, description: current.upstream ?? status.upstream ?? '', detail: syncDetail(status), ref: current }
       );
     }
-    appendRefs(items, 'Local', locals);
+    appendRefs(items, 'Local', locals, worktrees);
     appendRefs(items, 'Remote', remotes);
     appendRefs(items, 'Tags', tags);
     return items;
@@ -178,10 +178,13 @@ export class BranchMenu {
 
   private async showRefActions(repository: RepositoryController, ref: GitRef): Promise<void> {
     const current = ref.type === 'local-branch' && ref.name === repository.snapshot.status?.branch;
+    const worktree = ref.type === 'local-branch' ? repository.worktreeForBranch(ref.name, true) : undefined;
     const upstream = ref.type === 'local-branch' ? ref.upstream ?? await repository.git.branchUpstream(repository.location, ref.name) : null;
     const actions: RefMenuItem[] = [];
-    if (!current) actions.push({ label: '$(git-branch) Checkout', action: 'checkout' });
-    if (ref.type === 'local-branch' && upstream) {
+    if (!current) actions.push(worktree
+      ? { label: '$(window) Open Worktree', description: worktree.path, action: 'openWorktree' }
+      : { label: '$(git-branch) Checkout', action: 'checkout' });
+    if (ref.type === 'local-branch' && upstream && !worktree) {
       actions.push({ label: current ? '$(sync) Update from Tracked Branch' : '$(sync) Update Branch', description: upstream, action: current ? 'update' : 'checkoutUpdate' });
     }
     if (ref.type === 'local-branch') actions.push({ label: '$(cloud-upload) Push…', description: upstream ?? 'Select remote', action: 'push' });
@@ -189,6 +192,10 @@ export class BranchMenu {
 
     const picked = await vscode.window.showQuickPick(actions, { title: ref.name, placeHolder: 'Select branch action' });
     if (!picked) return;
+    if (picked.action === 'openWorktree' && worktree) {
+      await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(worktree.path), true);
+      return;
+    }
     if (picked.action === 'checkout') return this.checkout(repository, ref);
     if (picked.action === 'update') return this.update(repository);
     if (picked.action === 'checkoutUpdate' && upstream) {
@@ -221,6 +228,7 @@ export class BranchMenu {
 
   private async checkout(repository: RepositoryController, ref: GitRef): Promise<void> {
     if (ref.type === 'local-branch') {
+      if (await openExistingWorktree(repository, ref.name)) return;
       if (await checkoutWithSmartFallback(repository, ref.name)) await this.resolveConflictsIfNeeded(repository);
       return;
     }
@@ -232,6 +240,7 @@ export class BranchMenu {
     const name = ref.name.slice(ref.name.indexOf('/') + 1);
     const local = repository.snapshot.status?.refs.find(candidate => candidate.type === 'local-branch' && candidate.name === name);
     if (local) {
+      if (await openExistingWorktree(repository, local.name)) return;
       if (await checkoutWithSmartFallback(repository, local.name)) await this.resolveConflictsIfNeeded(repository);
     } else if (await createAndCheckoutWithSmartFallback(repository, name, ref.fullName, true)) await this.resolveConflictsIfNeeded(repository);
   }
@@ -243,14 +252,21 @@ export class BranchMenu {
   }
 }
 
-function appendRefs(items: MenuItem[], title: string, refs: GitRef[]): void {
+function appendRefs(items: MenuItem[], title: string, refs: GitRef[], worktrees: readonly GitWorktree[] = []): void {
   if (!refs.length) return;
   items.push({ label: title, kind: vscode.QuickPickItemKind.Separator });
   items.push(...refs.map(ref => ({
     label: `${ref.type === 'tag' ? '$(tag)' : ref.type === 'remote-branch' ? '$(cloud)' : '$(git-branch)'} ${ref.name}`,
-    description: ref.upstream ?? '',
+    description: worktrees.find(worktree => worktree.branch === ref.name)?.path ?? ref.upstream ?? '',
     ref
   })));
+}
+
+async function openExistingWorktree(repository: RepositoryController, branch: string): Promise<boolean> {
+  const worktree = repository.worktreeForBranch(branch, true);
+  if (!worktree) return false;
+  await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(worktree.path), true);
+  return true;
 }
 
 function syncDetail(status: RepositoryStatus): string {

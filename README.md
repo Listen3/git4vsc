@@ -4,7 +4,7 @@ Git4VSC 是一个面向 Visual Studio Code 的本地 Git 工作流扩展。它�
 
 项目调用本机 Git CLI；仓库状态、提交图和主要界面由 TypeScript 与 React 实现。产品结构和交互参考了 JetBrains Git4Idea 与 IntelliJ Platform VCS Log 的公开行为，但不复制其代码、图标或专有素材。
 
-> 当前版本：`0.1.3 Preview`。日常提交、同步、历史浏览和冲突处理流程已经可用，并支持在一个工作区管理多个嵌套仓库。
+> 当前版本：`0.1.5 Preview`。日常提交、同步、历史浏览和冲突处理流程已经可用，并支持在一个工作区管理多个嵌套仓库。
 
 ## 功能预览
 
@@ -37,6 +37,7 @@ Git4VSC 是一个面向 Visual Studio Code 的本地 Git 工作流扩展。它�
 
 - 拓扑提交图、虚拟滚动和分页加载，支持普通分叉、Merge 与多父提交。
 - 默认聚焦当前分支，保留上次选择、筛选条件和视图状态，避免重复打开时重新跳动。
+- 持久化缓存当前 HEAD 的首页日志，打开时先恢复缓存，再在后台静默校验；其他仓库按队列预热。
 - Text or hash 支持普通文本、Hash、正则、大小写匹配和最近搜索。
 - 支持 Branch、User、Date、Paths 组合筛选；Paths 使用扩展内的目录/文件选择窗口。
 - Author、Date、Hash 列可独立显示或隐藏，列宽可调整；窗口变化时 Commit 列自动适配剩余空间，时间支持相对格式。
@@ -49,7 +50,8 @@ Git4VSC 是一个面向 Visual Studio Code 的本地 Git 工作流扩展。它�
 - 自动发现工作区根目录及最多三层子目录中的 Git 仓库，并在 Commit 工具窗口中切换当前仓库。
 - Activity Bar 角标汇总所有已管理仓库中尚未提交的文件数量，包括新增、修改和删除。
 - 管理本地/远程分支、收藏分支、Tracking、Tag 和 Remote。
-- 支持 Checkout、Checkout and Update、Checkout and Rebase、Merge、Rebase、Pull、Push 和创建 Worktree。
+- 支持 Checkout、Checkout and Update、Checkout and Rebase、Merge、Rebase、Pull 和 Push。
+- Worktrees 面板支持创建、打开、锁定/解锁、Prune 和删除链接工作树；删除会同时移除物理目录和 Git Worktree 元数据，但保留分支。
 - 本地修改阻塞 Update/Checkout 时提供 Smart Operation：临时 Stash、完成操作并恢复修改；恢复冲突继续进入逐文件解决流程。
 - 支持创建和管理 Git Stash，包括 Apply、Pop、恢复暂存状态、Drop、查看文件和从 Stash 创建分支。
 - Commit 标题、分支列表与状态栏显示 ahead/behind 数量；有更新或待推送提交时使用方向和颜色提示。
@@ -66,7 +68,7 @@ Git4VSC 是一个面向 Visual Studio Code 的本地 Git 工作流扩展。它�
 
 - 在编辑器行号区域右键选择 **Annotate with Git Blame**，再次执行即可关闭。
 - 在行号右侧紧凑显示提交日期和作者，未提交的新行保持空白。
-- 不同时间的提交使用不同背景色；悬浮可查看作者、邮箱、摘要、Hash 和完整时间。
+- 不同时间的提交使用不同背景色；悬浮可查看完整信息，并将该提交定位到 Commit Log。
 
 ### AI Commit Message
 
@@ -83,11 +85,11 @@ Git4VSC 是一个面向 Visual Studio Code 的本地 Git 工作流扩展。它�
 | Push Preview | 可用 | 提交和文件预览、目录分组、目标分支编辑、受保护分支和 Force Push 确认 |
 | Update / Pull / Push | 可用 | Merge/Rebase、Smart Update 和 Push Rejected 恢复重试 |
 | 分支、Tag 与 Remote | 可用 | 常用创建、切换、比较、合并、Rebase、Tracking 和删除操作 |
-| Worktree | 部分可用 | 支持创建；暂不提供列表、打开、删除和 Prune 管理页 |
-| Commit Log | 可用 | 图谱、组合筛选、可选列、详情和常用提交/文件操作 |
+| Worktree | 可用 | 列表、创建、打开、锁定/解锁、删除和 Prune |
+| Commit Log | 可用 | 图谱、持久化首页缓存与预热、组合筛选、可选列、详情和常用操作 |
 | 文件历史 | 可用 | 编辑器右键打开 File History，并使用 rename follow 跟踪重命名前后的提交 |
 | Merge 冲突 | 可用 | 逐文件处理并使用 VS Code Merge Editor |
-| Git Blame | 可用 | 时间着色和 Hover 详情；暂不支持点击跳转 Commit Log |
+| Git Blame | 可用 | 时间着色、Hover 详情和定位对应 Commit Log |
 | AI Commit Message | 可选 | 使用用户配置的 OpenAI-compatible 服务 |
 | Git Stash | 可用 | 创建、Apply/Pop、Reinstate Index、Drop、查看文件、从 Stash 建分支 |
 | Changelists | 可用 | 仓库级持久化、活动清单、创建/编辑/删除、文件移动和按清单提交选择 |

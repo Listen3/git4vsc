@@ -11,6 +11,10 @@ suite('Git4VSC Extension Host', () => {
     assert.ok(commands.includes('git4vsc.openLog'));
     assert.ok(commands.includes('git4vsc.showFileHistory'));
     assert.ok(commands.includes('git4vsc.toggleBlameAnnotations'));
+    assert.ok(commands.includes('git4vsc.showBlameCommit'));
+    assert.ok(commands.includes('git4vsc.openWorktrees'));
+    assert.ok(commands.includes('git4vsc.newWorktree'));
+    assert.ok(commands.includes('git4vsc.worktrees.focus'));
     assert.ok(commands.includes('git4vsc.openSettings'));
     assert.ok(commands.includes('git4vsc.toggleLog'));
     assert.ok(commands.includes('git4vsc.openCommitView'));

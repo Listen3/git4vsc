@@ -5,6 +5,7 @@ import { isRepositoryIndex, repositoryInvalidations } from '../src/repository-wa
 describe('repository file watching', () => {
   const root = join('repo', 'project');
   const gitDir = join(root, '.git');
+  const commonDir = join('repo', '.git');
 
   it('refreshes only worktree status when a source file changes', () => {
     expect(repositoryInvalidations(root, gitDir, join(root, 'src', 'index.ts'))).toEqual(['status']);
@@ -19,5 +20,10 @@ describe('repository file watching', () => {
     expect(repositoryInvalidations(root, gitDir, join(gitDir, 'index'))).toEqual(['status']);
     expect(isRepositoryIndex(gitDir, join(gitDir, 'index'))).toBe(true);
     expect(repositoryInvalidations(root, gitDir, join(gitDir, 'index.lock'))).toEqual([]);
+  });
+
+  it('refreshes linked worktrees when common worktree metadata changes', () => {
+    expect(repositoryInvalidations(root, gitDir, join(commonDir, 'worktrees', 'linked', 'HEAD'), commonDir)).toEqual(['worktrees', 'refs', 'log']);
+    expect(repositoryInvalidations(root, commonDir, join(commonDir, 'worktrees', 'linked', 'HEAD'))).toEqual(['worktrees', 'refs', 'log']);
   });
 });

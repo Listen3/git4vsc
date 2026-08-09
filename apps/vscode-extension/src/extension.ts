@@ -13,6 +13,7 @@ import { notifyCommitResult } from './operation-notifications.js';
 import { SettingsPanel } from './settings-panel.js';
 import { isRepositoryIndex, repositoryInvalidations } from './repository-watch.js';
 import { findWorkspaceRepositoryRoots, repositoryContainingPath } from './repository-discovery.js';
+import { WorktreeManager, type WorktreeItem } from './worktree-manager.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const manager = new RepositoryManager();
@@ -58,23 +59,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     return true;
   };
   const previewPush = (repository: RepositoryController, branch: string, remote: string, upstream?: string) => commitView.previewPush(repository, branch, remote, upstream);
-  const logPanel = new LogPanel(context, () => manager.all[0], previewPush);
+  const worktreeManager = new WorktreeManager(() => manager.all[0]);
+  const logPanel = new LogPanel(context, () => manager.all[0], previewPush, () => worktreeManager.refresh());
   const settingsPanel = new SettingsPanel(context);
   const branchMenu = new BranchMenu(previewPush);
   const commitView = new CommitView(context, () => manager.all, {
     commit: (repository, message, selections) => commitRepository(repository, message, false, undefined, selections),
     push: repository => branchMenu.pushCurrent(repository),
-    selectRepository: repository => logPanel.select(repository)
+    selectRepository: repository => {
+      logPanel.select(repository);
+      worktreeManager.select(repository);
+    }
   });
   context.subscriptions.push(commitView, settingsPanel, blameAnnotations, vscode.window.registerWebviewViewProvider('git4vsc.repositories', commitView, { webviewOptions: { retainContextWhenHidden: true } }));
   context.subscriptions.push(conflictResolver, vscode.window.registerTreeDataProvider('git4vsc.conflicts', conflictTree));
   context.subscriptions.push(logPanel, vscode.window.registerWebviewViewProvider('git4vsc.logView', logPanel, { webviewOptions: { retainContextWhenHidden: true } }));
+  context.subscriptions.push(worktreeManager, vscode.window.registerTreeDataProvider('git4vsc.worktrees', worktreeManager));
   context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider('git4vsc', new GitContentProvider(() => manager.all)));
 
   const registeredRoots = new Set<string>();
   const syncViews = () => {
     commitView.refresh();
     conflictTree.refresh();
+    worktreeManager.refresh();
     void vscode.commands.executeCommand('setContext', 'git4vsc.hasConflicts', manager.all.some(candidate => candidate.snapshot.status?.changes.some(change => change.conflict)));
     void vscode.commands.executeCommand('setContext', 'git4vsc.operationInProgress', manager.all.some(candidate => candidate.snapshot.status?.phase !== 'normal' && candidate.snapshot.status?.phase !== 'detached'));
   };
@@ -88,6 +95,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const unsubscribe = repository.onDidChange(syncViews);
     context.subscriptions.push({ dispose: unsubscribe });
     syncViews();
+    logPanel.prewarm(repository);
   };
   const openWorkspaceRepositories = async (folder: vscode.WorkspaceFolder) => {
     try {
@@ -124,6 +132,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }));
   syncViews();
   logPanel.initialize(initialRepository);
+  worktreeManager.select(initialRepository);
   for (const folder of folders) void openWorkspaceRepositories(folder);
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
     if (!event.affectsConfiguration('git4vsc')) return;
@@ -164,6 +173,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.commands.registerCommand('git4vsc.toggleBlameAnnotations', (uri?: vscode.Uri) => blameAnnotations.toggle(uri)),
+    vscode.commands.registerCommand('git4vsc.showBlameCommit', async (file: unknown, hash: unknown) => {
+      if (typeof file !== 'string' || typeof hash !== 'string' || !hash || /^0+$/.test(hash)) return;
+      const repository = repositoryContainingPath(manager.all, file) ?? await openRepository(dirname(file));
+      await commitView.select(repository);
+      await logPanel.showCommit(repository, hash);
+    }),
+    vscode.commands.registerCommand('git4vsc.openWorktrees', async () => {
+      worktreeManager.select(selectedRepository());
+      await vscode.commands.executeCommand('git4vsc.worktrees.focus');
+    }),
+    vscode.commands.registerCommand('git4vsc.refreshWorktrees', () => worktreeManager.refresh()),
+    vscode.commands.registerCommand('git4vsc.newWorktree', () => worktreeManager.create()),
+    vscode.commands.registerCommand('git4vsc.openWorktree', (item: WorktreeItem) => worktreeManager.open(item)),
+    vscode.commands.registerCommand('git4vsc.deleteWorktree', (item: WorktreeItem) => worktreeManager.remove(item)),
+    vscode.commands.registerCommand('git4vsc.pruneWorktrees', () => worktreeManager.prune()),
+    vscode.commands.registerCommand('git4vsc.lockWorktree', (item: WorktreeItem) => worktreeManager.lock(item)),
+    vscode.commands.registerCommand('git4vsc.unlockWorktree', (item: WorktreeItem) => worktreeManager.unlock(item)),
+    vscode.commands.registerCommand('git4vsc.copyWorktreePath', (item: WorktreeItem) => worktreeManager.copyPath(item)),
     vscode.commands.registerCommand('git4vsc.showFileHistory', async (value?: unknown) => {
       const uri = editorUri(value);
       if (!uri || uri.scheme !== 'file') return;
@@ -286,14 +313,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 function watchRepository(context: vscode.ExtensionContext, repository: RepositoryController, refreshViews: () => void): void {
   const worktreeWatcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(repository.root, '**/*'));
-  const gitWatcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(repository.location.gitDir, '**/*'));
+  const gitPaths = [...new Set([repository.location.gitDir, repository.location.commonDir ?? repository.location.gitDir])];
+  const gitWatchers = gitPaths.map(path => vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(path, '**/*')));
   let timer: NodeJS.Timeout | undefined;
   let activeRefreshes = 0;
   let ignoreIndexUntil = 0;
   const pending = new Set<ReturnType<typeof repositoryInvalidations>[number]>();
   const schedule = (uri: vscode.Uri) => {
     if (isRepositoryIndex(repository.location.gitDir, uri.fsPath) && (activeRefreshes > 0 || Date.now() < ignoreIndexUntil)) return;
-    repositoryInvalidations(repository.root, repository.location.gitDir, uri.fsPath).forEach(part => pending.add(part));
+    repositoryInvalidations(repository.root, repository.location.gitDir, uri.fsPath, repository.location.commonDir).forEach(part => pending.add(part));
     if (pending.size === 0) return;
     clearTimeout(timer);
     timer = setTimeout(() => {
@@ -306,12 +334,12 @@ function watchRepository(context: vscode.ExtensionContext, repository: Repositor
       });
     }, 120);
   };
-  for (const watcher of [worktreeWatcher, gitWatcher]) {
+  for (const watcher of [worktreeWatcher, ...gitWatchers]) {
     watcher.onDidCreate(schedule);
     watcher.onDidChange(schedule);
     watcher.onDidDelete(schedule);
   }
-  context.subscriptions.push(worktreeWatcher, gitWatcher, { dispose: () => clearTimeout(timer) });
+  context.subscriptions.push(worktreeWatcher, ...gitWatchers, { dispose: () => clearTimeout(timer) });
 }
 
 export function deactivate(): void {}

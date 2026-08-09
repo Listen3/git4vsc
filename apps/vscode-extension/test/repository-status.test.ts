@@ -17,7 +17,7 @@ const status: RepositoryStatus = {
 };
 
 function snapshot(patch: Partial<RepositorySnapshot> = {}): RepositorySnapshot {
-  return { status, commits: [], loading: new Set(), operation: null, error: null, version: 1, ...patch };
+  return { status, commits: [], worktrees: [], loading: new Set(), operation: null, error: null, version: 1, ...patch };
 }
 
 describe('repository status bar presentation', () => {

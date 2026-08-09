@@ -1,4 +1,4 @@
-import type { ChangeCode, CommitFileChange, CommitSummary, GitBlameLine, GitChange, GitRef, MergeConflict, MergeConflictKind } from '@git4vsc/shared-types';
+import type { ChangeCode, CommitFileChange, CommitSummary, GitBlameLine, GitChange, GitRef, GitWorktree, MergeConflict, MergeConflictKind } from '@git4vsc/shared-types';
 
 export function parseBlame(output: string): GitBlameLine[] {
   const result: GitBlameLine[] = [];
@@ -19,6 +19,38 @@ export function parseBlame(output: string): GitBlameLine[] {
     }
   }
   return result;
+}
+
+export function parseWorktrees(output: string): GitWorktree[] {
+  const worktrees: GitWorktree[] = [];
+  let current: GitWorktree | null = null;
+  const flush = () => {
+    if (!current) return;
+    current.main = worktrees.length === 0;
+    worktrees.push(current);
+  };
+  for (const field of output.split('\0')) {
+    if (!field) continue;
+    const separator = field.indexOf(' ');
+    const key = separator < 0 ? field : field.slice(0, separator);
+    const value = separator < 0 ? '' : field.slice(separator + 1);
+    if (key === 'worktree') {
+      flush();
+      current = { path: value, head: null, branch: null, main: false, detached: false, bare: false, locked: false, prunable: false };
+    } else if (current && key === 'HEAD') current.head = value;
+    else if (current && key === 'branch') current.branch = value.replace(/^refs\/heads\//, '');
+    else if (current && key === 'detached') current.detached = true;
+    else if (current && key === 'bare') current.bare = true;
+    else if (current && key === 'locked') {
+      current.locked = true;
+      if (value) current.lockReason = value;
+    } else if (current && key === 'prunable') {
+      current.prunable = true;
+      if (value) current.pruneReason = value;
+    }
+  }
+  flush();
+  return worktrees;
 }
 
 export interface ParsedStatus {

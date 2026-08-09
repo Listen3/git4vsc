@@ -50,6 +50,19 @@ export interface GitRef {
   tracking?: 'ahead' | 'behind' | 'diverged' | 'equal';
 }
 
+export interface GitWorktree {
+  path: string;
+  head: string | null;
+  branch: string | null;
+  main: boolean;
+  detached: boolean;
+  bare: boolean;
+  locked: boolean;
+  lockReason?: string;
+  prunable: boolean;
+  pruneReason?: string;
+}
+
 export interface RepositoryStatus {
   root: string;
   gitDir: string;
@@ -133,7 +146,21 @@ export interface ListDialogRequest {
   searchable?: boolean;
   placeholder?: string;
   acceptLabel?: string;
+  input?: DialogListInput;
   items: DialogListItem[];
+}
+
+export interface DialogListInput {
+  label: string;
+  placeholder?: string;
+  value?: string;
+  enabledFor?: string[];
+  requiredFor?: string[];
+}
+
+export interface DialogListSelection {
+  id: string;
+  input: string;
 }
 
 export interface PushPreviewCommit {
@@ -215,14 +242,15 @@ export type WebviewDialogRequest = ListDialogRequest | PushPreviewDialogRequest 
 
 export interface WebviewDialogResult {
   id: number;
-  value: string | string[] | null;
+  value: string | string[] | DialogListSelection | null;
 }
 
-export type RepositoryInvalidation = 'status' | 'log' | 'refs';
+export type RepositoryInvalidation = 'status' | 'log' | 'refs' | 'worktrees';
 
 export interface RepositorySnapshot {
   status: RepositoryStatus | null;
   commits: CommitSummary[];
+  worktrees: GitWorktree[];
   loading: ReadonlySet<RepositoryInvalidation>;
   operation: string | null;
   error: string | null;

@@ -1,5 +1,5 @@
 import { useEffect, useState, type PointerEvent } from 'react';
-import type { CommitDetails, CommitFileChange, CommitSummary, GitRef, LogDateFilter, LogFilters, RepositoryStatus } from '@git4vsc/shared-types';
+import type { CommitDetails, CommitFileChange, CommitSummary, GitRef, GitWorktree, LogDateFilter, LogFilters, RepositoryStatus } from '@git4vsc/shared-types';
 import { BranchSidebar, type RefAction, type RemoteAction } from './BranchSidebar.js';
 import { CommitDetailsPane, type CommitFileAction } from './CommitDetailsPane.js';
 import { CommitLog, type CommitAction } from './CommitLog.js';
@@ -14,6 +14,7 @@ export interface LogViewOptions {
 
 export interface RepositoryPanelProps {
   status: RepositoryStatus | null;
+  worktrees?: readonly GitWorktree[] | undefined;
   commits: readonly CommitSummary[];
   activeRef: string | null;
   favoriteRefs?: readonly string[] | undefined;
@@ -114,7 +115,7 @@ export function RepositoryPanel(props: RepositoryPanelProps) {
 
   return (
     <main className="repository-panel" style={{ gridTemplateColumns: `${leftWidth}px 3px minmax(320px, 1fr) 3px ${rightWidth}px` }}>
-      <BranchSidebar status={status} activeRef={activeRef} favoriteRefs={favoriteRefs} onSelectRef={props.onSelectRef} onRefAction={props.onRefAction} onRemoteAction={props.onRemoteAction} />
+      <BranchSidebar status={status} worktrees={props.worktrees} activeRef={activeRef} favoriteRefs={favoriteRefs} onSelectRef={props.onSelectRef} onRefAction={props.onRefAction} onRemoteAction={props.onRemoteAction} />
       <div className="splitter" onPointerDown={event => startResize('left', event)} onDoubleClick={() => setLeftWidth(210)} />
       <section className="log-pane">
         <OperationActivity label={props.activity} />

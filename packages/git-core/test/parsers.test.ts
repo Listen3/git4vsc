@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseBlame, parseLog, parseNameStatus, parsePorcelainV2, parseRefs, parseUnmergedIndex } from '../src/parsers.js';
+import { parseBlame, parseLog, parseNameStatus, parsePorcelainV2, parseRefs, parseUnmergedIndex, parseWorktrees } from '../src/parsers.js';
 
 describe('parseBlame', () => {
   it('parses line porcelain metadata', () => {
@@ -21,6 +21,21 @@ describe('parseBlame', () => {
       authorTime: 1234567890,
       summary: 'explain the line'
     }]);
+  });
+});
+
+describe('parseWorktrees', () => {
+  it('parses main, locked and prunable porcelain records', () => {
+    const output = [
+      'worktree C:/repo', 'HEAD aaaa', 'branch refs/heads/main', '',
+      'worktree C:/feature', 'HEAD bbbb', 'branch refs/heads/feature', 'locked in use', '',
+      'worktree C:/missing', 'HEAD cccc', 'detached', 'prunable gitdir file points to non-existent location', ''
+    ].join('\0');
+    expect(parseWorktrees(output)).toEqual([
+      { path: 'C:/repo', head: 'aaaa', branch: 'main', main: true, detached: false, bare: false, locked: false, prunable: false },
+      { path: 'C:/feature', head: 'bbbb', branch: 'feature', main: false, detached: false, bare: false, locked: true, lockReason: 'in use', prunable: false },
+      { path: 'C:/missing', head: 'cccc', branch: null, main: false, detached: true, bare: false, locked: false, prunable: true, pruneReason: 'gitdir file points to non-existent location' }
+    ]);
   });
 });
 

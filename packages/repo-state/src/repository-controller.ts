@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
+import { resolve } from 'node:path';
 import type { GitClient, RepositoryLocation } from '@git4vsc/git-core';
-import type { CommitFileChange, CommitSelection, GitChange, GitStashEntry, RepositoryInvalidation, RepositorySnapshot } from '@git4vsc/shared-types';
+import type { CommitFileChange, CommitSelection, GitChange, GitStashEntry, GitWorktree, RepositoryInvalidation, RepositorySnapshot } from '@git4vsc/shared-types';
 
 class OperationQueue {
   private tail = Promise.resolve();
@@ -14,13 +15,14 @@ class OperationQueue {
 
 export class RepositoryController {
   private readonly events = new EventEmitter();
-  private readonly invalid = new Set<RepositoryInvalidation>(['status', 'refs']);
+  private readonly invalid = new Set<RepositoryInvalidation>(['status', 'refs', 'worktrees']);
   private readonly operations = new OperationQueue();
   private activeRefresh: Promise<void> | null = null;
   private pendingSmartStash: GitStashEntry | null = null;
   private mutable: RepositorySnapshot = {
     status: null,
     commits: [],
+    worktrees: [],
     loading: new Set(),
     operation: null,
     error: null,
@@ -32,6 +34,10 @@ export class RepositoryController {
   get root(): string { return this.location.root; }
 
   get snapshot(): RepositorySnapshot { return this.mutable; }
+
+  worktreeForBranch(branch: string, skipCurrent = false): GitWorktree | undefined {
+    return this.mutable.worktrees.find(worktree => worktree.branch === branch && (!skipCurrent || !samePath(worktree.path, this.root)));
+  }
 
   onDidChange(listener: (snapshot: RepositorySnapshot) => void): () => void {
     this.events.on('change', listener);
@@ -57,9 +63,10 @@ export class RepositoryController {
       this.patch({ loading: parts, error: null });
       try {
         const includeMetadata = parts.has('refs') || this.mutable.status === null;
-        const [status, log] = await Promise.all([
+        const [status, log, worktrees] = await Promise.all([
           parts.has('status') || parts.has('refs') ? this.git.status(this.location, includeMetadata) : undefined,
-          parts.has('log') ? this.git.log(this.location) : undefined
+          parts.has('log') ? this.git.log(this.location) : undefined,
+          parts.has('worktrees') ? this.git.worktrees(this.location) : undefined
         ]);
         const nextStatus = status && !includeMetadata && this.mutable.status
           ? {
@@ -71,6 +78,7 @@ export class RepositoryController {
         this.patch({
           ...(nextStatus ? { status: nextStatus } : {}),
           ...(log ? { commits: log.commits } : {}),
+          ...(worktrees ? { worktrees } : {}),
           loading: new Set(),
           version: this.mutable.version + 1
         });
@@ -151,11 +159,11 @@ export class RepositoryController {
   }
 
   createAndCheckoutBranch(name: string, startPoint: string, track = false): Promise<void> {
-    return this.runOperation('checkout-new-branch', () => this.git.createAndCheckoutBranch(this.location, name, startPoint, track), ['status', 'log', 'refs']);
+    return this.runOperation('checkout-new-branch', () => this.git.createAndCheckoutBranch(this.location, name, startPoint, track), ['status', 'log', 'refs', 'worktrees']);
   }
 
   checkoutAndUpdate(branch: string, upstream: string): Promise<void> {
-    return this.runOperation('checkout-update', () => this.git.checkoutAndUpdate(this.location, branch, upstream), ['status', 'log', 'refs'], true);
+    return this.runOperation('checkout-update', () => this.git.checkoutAndUpdate(this.location, branch, upstream), ['status', 'log', 'refs', 'worktrees'], true);
   }
 
   smartCheckoutAndUpdate(branch: string, upstream: string): Promise<void> {
@@ -163,7 +171,7 @@ export class RepositoryController {
   }
 
   checkoutAndRebase(branch: string, currentBranch: string): Promise<void> {
-    return this.runOperation('checkout-rebase', () => this.git.checkoutAndRebase(this.location, branch, currentBranch), ['status', 'log', 'refs'], true);
+    return this.runOperation('checkout-rebase', () => this.git.checkoutAndRebase(this.location, branch, currentBranch), ['status', 'log', 'refs', 'worktrees'], true);
   }
 
   smartCheckoutAndRebase(branch: string, currentBranch: string): Promise<void> {
@@ -171,7 +179,7 @@ export class RepositoryController {
   }
 
   checkoutRemoteAndRebase(localBranch: string, remoteBranch: string, currentBranch: string): Promise<void> {
-    return this.runOperation('checkout-rebase', () => this.git.checkoutRemoteAndRebase(this.location, localBranch, remoteBranch, currentBranch), ['status', 'log', 'refs'], true);
+    return this.runOperation('checkout-rebase', () => this.git.checkoutRemoteAndRebase(this.location, localBranch, remoteBranch, currentBranch), ['status', 'log', 'refs', 'worktrees'], true);
   }
 
   smartCheckoutRemoteAndRebase(localBranch: string, remoteBranch: string, currentBranch: string): Promise<void> {
@@ -183,11 +191,11 @@ export class RepositoryController {
   }
 
   checkout(target: string, detach = false, track = false): Promise<void> {
-    return this.runOperation('checkout', () => this.git.checkout(this.location, target, detach, track), ['status', 'log', 'refs']);
+    return this.runOperation('checkout', () => this.git.checkout(this.location, target, detach, track), ['status', 'log', 'refs', 'worktrees']);
   }
 
   forceCheckout(target: string, detach = false, track = false): Promise<void> {
-    return this.runOperation('force-checkout', () => this.git.forceCheckout(this.location, target, detach, track), ['status', 'log', 'refs']);
+    return this.runOperation('force-checkout', () => this.git.forceCheckout(this.location, target, detach, track), ['status', 'log', 'refs', 'worktrees']);
   }
 
   smartCheckout(target: string, detach = false, track = false): Promise<void> {
@@ -219,7 +227,7 @@ export class RepositoryController {
     return this.runOperation('continue', async () => {
       await this.git.continueOperation(this.location, phase);
       if (!(await this.git.conflicts(this.location)).length) await this.restorePendingSmartStash();
-    }, ['status', 'log', 'refs'], true);
+    }, ['status', 'log', 'refs', 'worktrees'], true);
   }
 
   abortOperation(): Promise<void> {
@@ -245,11 +253,11 @@ export class RepositoryController {
   }
 
   renameBranch(oldName: string, newName: string): Promise<void> {
-    return this.runOperation('rename-branch', () => this.git.renameBranch(this.location, oldName, newName), ['status', 'log', 'refs']);
+    return this.runOperation('rename-branch', () => this.git.renameBranch(this.location, oldName, newName), ['status', 'log', 'refs', 'worktrees']);
   }
 
   deleteBranch(name: string, force = false): Promise<void> {
-    return this.runOperation('delete-branch', () => this.git.deleteBranch(this.location, name, force), ['status', 'log', 'refs']);
+    return this.runOperation('delete-branch', () => this.git.deleteBranch(this.location, name, force), ['status', 'log', 'refs', 'worktrees']);
   }
 
   deleteRemoteBranch(remote: string, branch: string): Promise<void> {
@@ -300,8 +308,24 @@ export class RepositoryController {
     return this.runOperation('remove-remote', () => this.git.removeRemote(this.location, name), ['status', 'log', 'refs']);
   }
 
-  addWorktree(path: string, ref: string, newBranch?: string): Promise<void> {
-    return this.runOperation('add-worktree', () => this.git.addWorktree(this.location, path, ref, newBranch), ['refs']);
+  addWorktree(path: string, ref: string, newBranch?: string, detach = false): Promise<void> {
+    return this.runOperation('add-worktree', () => this.git.addWorktree(this.location, path, ref, newBranch, detach), ['refs', 'worktrees']);
+  }
+
+  removeWorktree(path: string, force = false): Promise<void> {
+    return this.runOperation('remove-worktree', () => this.git.removeWorktree(this.location, path, force), ['refs', 'worktrees']);
+  }
+
+  pruneWorktrees(): Promise<void> {
+    return this.runOperation('prune-worktrees', () => this.git.pruneWorktrees(this.location), ['refs', 'worktrees']);
+  }
+
+  lockWorktree(path: string, reason?: string): Promise<void> {
+    return this.runOperation('lock-worktree', () => this.git.lockWorktree(this.location, path, reason), ['refs', 'worktrees']);
+  }
+
+  unlockWorktree(path: string): Promise<void> {
+    return this.runOperation('unlock-worktree', () => this.git.unlockWorktree(this.location, path), ['refs', 'worktrees']);
   }
 
   cherryPick(hash: string): Promise<void> {
@@ -387,4 +411,10 @@ export class RepositoryController {
     this.mutable = { ...this.mutable, ...patch };
     this.events.emit('change', this.mutable);
   }
+}
+
+function samePath(left: string, right: string): boolean {
+  const a = resolve(left);
+  const b = resolve(right);
+  return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
 }

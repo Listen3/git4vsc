@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added a Worktrees panel for creating, opening, locking, pruning, and safely removing linked worktrees.
+- Added disk-backed Commit Log first-page caching with quiet background validation and repository prewarming.
+- Added a Git Blame hover action that opens the blamed revision in Commit Log.
+
 ## 0.1.5 - 2026-08-07
 
 - Added changelist group actions for editing, activating, and deleting lists.

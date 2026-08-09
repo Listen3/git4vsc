@@ -1,18 +1,20 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
-import type { CommitFileChange, DialogListItem, PathTreeDialogRequest, PathTreeEntry, WebviewDialogRequest } from '@git4vsc/shared-types';
+import type { CommitFileChange, DialogListItem, DialogListSelection, PathTreeDialogRequest, PathTreeEntry, WebviewDialogRequest } from '@git4vsc/shared-types';
 import { formatCommitTime } from './commit-date.js';
 import { OverlayScrollbar } from './OverlayScrollbar.js';
 
 export function DialogHost({ dialog, onResolve, onExpandPath }: {
   dialog: WebviewDialogRequest | null;
-  onResolve(value: string | string[] | null): void;
+  onResolve(value: string | string[] | DialogListSelection | null): void;
   onExpandPath?(dialogId: number, path: string): void;
 }) {
   const frame = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
+  const input = useRef<HTMLInputElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const [query, setQuery] = useState('');
+  const [inputValue, setInputValue] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedHash, setSelectedHash] = useState<string | null>(null);
   const searchable = dialog?.kind === 'list' && dialog.searchable !== false;
@@ -24,9 +26,10 @@ export function DialogHost({ dialog, onResolve, onExpandPath }: {
     }
     returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setQuery('');
+    setInputValue(dialog.kind === 'list' ? dialog.input?.value ?? '' : '');
     setSelectedId(dialog?.kind === 'list' ? dialog.items.find(item => !item.separator)?.id ?? null : null);
     setSelectedHash(dialog?.kind === 'push-preview' ? dialog.commits[0]?.commit.hash ?? null : null);
-    requestAnimationFrame(() => (dialog.kind === 'list' && dialog.searchable !== false ? search.current : frame.current)?.focus());
+    requestAnimationFrame(() => (dialog.kind === 'list' && dialog.input ? input.current : dialog.kind === 'list' && dialog.searchable !== false ? search.current : frame.current)?.focus());
   }, [dialog]);
 
   const visibleItems = useMemo(() => dialog?.kind === 'list' ? filterDialogItems(dialog.items, query) : [], [dialog, query]);
@@ -38,8 +41,14 @@ export function DialogHost({ dialog, onResolve, onExpandPath }: {
 
   const selectable = visibleItems.filter(item => !item.separator);
   const compact = dialog.kind === 'list' && !searchable;
-  const frameStyle = compact
-    ? { '--dialog-list-height': `${Math.min(12, Math.max(1, visibleItems.length)) * 25}px` } as CSSProperties
+  const inputEnabled = dialog.kind === 'list' && Boolean(dialog.input) && (!dialog.input?.enabledFor || Boolean(selectedId && dialog.input.enabledFor.includes(selectedId)));
+  const inputRequired = dialog.kind === 'list' && Boolean(dialog.input?.requiredFor && selectedId && dialog.input.requiredFor.includes(selectedId));
+  const listValue = (): string | DialogListSelection | null => dialog.kind !== 'list' || !selectedId
+    ? null
+    : dialog.input ? { id: selectedId, input: inputValue.trim() } : selectedId;
+  const acceptDisabled = !selectedId || inputRequired && !inputValue.trim();
+  const frameStyle = dialog.kind === 'list'
+    ? { '--dialog-list-height': `${compact ? Math.min(12, Math.max(1, dialog.items.length)) * 25 : dialogListHeight(dialog.items)}px` } as CSSProperties
     : undefined;
   const move = (delta: number) => {
     if (!selectable.length) return;
@@ -50,32 +59,39 @@ export function DialogHost({ dialog, onResolve, onExpandPath }: {
     if (event.key === 'Escape') { event.preventDefault(); onResolve(null); }
     else if (event.key === 'ArrowDown' && dialog.kind === 'list') { event.preventDefault(); move(1); }
     else if (event.key === 'ArrowUp' && dialog.kind === 'list') { event.preventDefault(); move(-1); }
-    else if (event.key === 'Enter' && dialog.kind === 'list' && selectedId) { event.preventDefault(); onResolve(selectedId); }
+    else if (event.key === 'Enter' && dialog.kind === 'list' && !acceptDisabled) { event.preventDefault(); onResolve(listValue()); }
     else if (event.key === 'Tab') trapFocus(event, frame.current);
   };
 
   return <div className="dialog-backdrop" onPointerDown={event => { if (event.target === event.currentTarget) onResolve(null); }}>
-    <div ref={frame} className={`dialog-frame dialog-${dialog.kind}${compact ? ' dialog-compact-list' : ''}`} style={frameStyle} role="dialog" aria-modal="true" aria-labelledby={`dialog-title-${dialog.id}`} tabIndex={-1} onKeyDown={keydown}>
+    <div ref={frame} className={`dialog-frame ${dialog.kind === 'list' ? 'dialog-list-frame' : `dialog-${dialog.kind}`}${compact ? ' dialog-compact-list' : ''}${dialog.kind === 'list' && dialog.input ? ' dialog-with-input' : ''}`} style={frameStyle} role="dialog" aria-modal="true" aria-labelledby={`dialog-title-${dialog.id}`} tabIndex={-1} onKeyDown={keydown}>
       <header className="dialog-header"><strong id={`dialog-title-${dialog.id}`}>{dialog.title}</strong><button type="button" aria-label="Close" onClick={() => onResolve(null)}>×</button></header>
       {dialog.kind === 'list'
         ? <>
           {searchable && <div className="dialog-search"><span className="sidebar-search-icon" /><input ref={search} value={query} aria-label="Filter options" placeholder={dialog.placeholder ?? 'Search'} onChange={event => setQuery(event.target.value)} /></div>}
-          <div ref={list} className="dialog-list" role="listbox">
-            {visibleItems.map(item => item.separator
-              ? <div key={item.id} className="dialog-list-separator">{item.label}</div>
-              : <button key={item.id} type="button" role="option" aria-selected={item.id === selectedId} className={item.id === selectedId ? 'selected' : ''} onClick={() => setSelectedId(item.id)} onDoubleClick={() => onResolve(item.id)}>
-                <span className="dialog-item-label">{item.label}</span>{item.description && <span className="dialog-item-description">{item.description}</span>}{item.detail && <small>{item.detail}</small>}
-              </button>)}
-            {!selectable.length && <div className="dialog-empty">No matching items</div>}
+          {dialog.input && <label className="dialog-list-input"><span>{dialog.input.label}</span><input ref={input} value={inputValue} disabled={!inputEnabled} placeholder={inputEnabled ? dialog.input.placeholder : 'Not used for this option'} onChange={event => setInputValue(event.target.value)} /></label>}
+          <div className="dialog-list-body">
+            <div ref={list} className="dialog-list" role="listbox">
+              {visibleItems.map(item => item.separator
+                ? <div key={item.id} className="dialog-list-separator">{item.label}</div>
+                : <button key={item.id} type="button" role="option" aria-selected={item.id === selectedId} className={item.id === selectedId ? 'selected' : ''} onClick={() => setSelectedId(item.id)} onDoubleClick={() => { if (!(dialog.input?.requiredFor?.includes(item.id) && !inputValue.trim())) onResolve(dialog.input ? { id: item.id, input: inputValue.trim() } : item.id); }}>
+                  <span className="dialog-item-label">{item.label}</span>{item.description && <span className="dialog-item-description">{item.description}</span>}{item.detail && <small>{item.detail}</small>}
+                </button>)}
+              {!selectable.length && <div className="dialog-empty">No matching items</div>}
+            </div>
+            <OverlayScrollbar targetRef={list} />
           </div>
-          <OverlayScrollbar targetRef={list} />
-          <footer className="dialog-footer"><button type="button" onClick={() => onResolve(null)}>Cancel</button><button type="button" className="dialog-primary" disabled={!selectedId} onClick={() => onResolve(selectedId)}>{dialog.acceptLabel ?? 'Select'}</button></footer>
+          <footer className="dialog-footer"><button type="button" onClick={() => onResolve(null)}>Cancel</button><button type="button" className="dialog-primary" disabled={acceptDisabled} onClick={() => onResolve(listValue())}>{dialog.acceptLabel ?? 'Select'}</button></footer>
         </>
         : dialog.kind === 'path-tree'
           ? <PathTreeDialog dialog={dialog} onExpandPath={onExpandPath} onCancel={() => onResolve(null)} onAccept={paths => onResolve(paths)} />
           : <PushPreview dialog={dialog} selectedHash={selectedHash} onSelect={setSelectedHash} onCancel={() => onResolve(null)} onPush={() => onResolve('push')} />}
     </div>
   </div>;
+}
+
+function dialogListHeight(items: DialogListItem[]): number {
+  return Math.max(27, items.slice(0, 12).reduce((height, item) => height + (item.separator ? 23 : item.detail ? 39 : 27), 0));
 }
 
 function PathTreeDialog({ dialog, onExpandPath, onCancel, onAccept }: {
