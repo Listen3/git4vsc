@@ -6,7 +6,7 @@ Focused Git workflows for Visual Studio Code.
 
 **[English](#english) · [简体中文](#简体中文)**
 
-> `0.1.6` — A stable workflow for multi-repository commit, history, branch, push, worktree, blame, and conflict management.
+> `0.1.7` — Refined Worktree creation and management for multi-repository Git workflows.
 
 ## Product tour / 功能预览
 
@@ -21,6 +21,14 @@ Focused Git workflows for Visual Studio Code.
 **Optional AI commit message settings / 可选的 AI 提交信息设置**
 
 ![Git4VSC AI commit message settings](https://raw.githubusercontent.com/Listen3/git4vsc/main/apps/vscode-extension/media/ai-settings.png)
+
+**Multiple repositories / 多仓库管理**
+
+![Git4VSC multiple repository workflow](https://raw.githubusercontent.com/Listen3/git4vsc/main/apps/vscode-extension/media/multi-repository.png)
+
+**Worktree management / Worktree 管理**
+
+![Git4VSC Worktree management](https://raw.githubusercontent.com/Listen3/git4vsc/main/apps/vscode-extension/media/worktree-management.png)
 
 ## English
 

@@ -713,7 +713,7 @@ class LogSession implements vscode.Disposable {
       return;
     }
     if (worktree && ['lockWorktree', 'unlockWorktree', 'removeWorktree'].includes(action)) {
-      const item = { repository: this.repository, worktree, current: false, open: Boolean(vscode.workspace.getWorkspaceFolder(vscode.Uri.file(worktree.path))) };
+      const item = { repository: this.repository, worktree, current: false, open: workspaceFolderOpen(worktree.path) };
       await vscode.commands.executeCommand(`git4vsc.${action === 'removeWorktree' ? 'deleteWorktree' : action}`, item);
       this.worktreesChanged();
       return;
@@ -1161,6 +1161,14 @@ function isLogFilters(value: unknown): value is LogFilters {
   return typeof filters.text === 'string' && typeof filters.regex === 'boolean' && typeof filters.caseSensitive === 'boolean'
     && typeof filters.user === 'string' && typeof filters.path === 'string'
     && ['all', 'today', 'yesterday', 'week', 'month'].includes(String(filters.date));
+}
+
+function workspaceFolderOpen(path: string): boolean {
+  const target = resolve(path);
+  return vscode.workspace.workspaceFolders?.some(folder => {
+    const root = resolve(folder.uri.fsPath);
+    return process.platform === 'win32' ? root.toLowerCase() === target.toLowerCase() : root === target;
+  }) ?? false;
 }
 
 function delay(milliseconds: number): Promise<void> {

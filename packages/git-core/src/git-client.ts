@@ -600,8 +600,13 @@ export class GitClient {
     try {
       await this.runner.run(['-C', location.root, 'worktree', 'add', ...(newBranch ? ['-b', newBranch] : detach ? ['--detach'] : []), path, ref]);
     } catch (error) {
-      if (newBranch && !branchExisted && !(await this.worktrees(location)).some(worktree => worktree.branch === newBranch)) {
-        await this.deleteBranch(location, newBranch, true);
+      try {
+        const branchCreated = newBranch && !branchExisted && await this.resolveOptionalRef(location, `refs/heads/${newBranch}`);
+        if (branchCreated && !(await this.worktrees(location)).some(worktree => worktree.branch === newBranch)) {
+          await this.deleteBranch(location, newBranch!, true);
+        }
+      } catch {
+        // Preserve the original worktree creation error when best-effort cleanup fails.
       }
       throw error;
     }

@@ -89,6 +89,13 @@ describe('branch context menus', () => {
     expect(menu.find(item => item.id === 'removeWorktree')?.disabled).toBe(true);
   });
 
+  it('disables mutation actions for a prunable worktree record', () => {
+    const worktree: GitWorktree = { path: '/repo-feature', head: 'feature-hash', branch: 'feature', main: false, detached: false, bare: false, locked: false, prunable: true };
+    const menu = buildBranchMenu(refs[1]!, status, [], [worktree]);
+    expect(menu.find(item => item.id === 'lockWorktree')?.disabled).toBe(true);
+    expect(menu.find(item => item.id === 'removeWorktree')?.disabled).toBe(true);
+  });
+
   it('hides upstream-dependent actions for an untracked local branch', () => {
     const untracked = { ...refs[1]!, upstream: undefined };
     const ids = actions(untracked);

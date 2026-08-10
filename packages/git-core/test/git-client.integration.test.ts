@@ -124,6 +124,9 @@ describe('GitClient against generated repositories', () => {
     await writeFile(join(invalidWorktree, 'existing.txt'), 'occupied');
     await expect(client.addWorktree(location, invalidWorktree, 'HEAD', 'client-orphan-branch')).rejects.toThrow();
     expect((await client.status(location)).refs.some(ref => ref.name === 'client-orphan-branch')).toBe(false);
+    const missingRefWorktree = join(fixtures.base, 'client-missing-ref-worktree');
+    await expect(client.addWorktree(location, missingRefWorktree, 'refs/heads/client-missing-ref', 'client-uncreated-branch')).rejects.toThrow(/invalid reference/i);
+    expect((await client.status(location)).refs.some(ref => ref.name === 'client-uncreated-branch')).toBe(false);
     await client.removeRemote(location, 'origin');
     expect((await client.status(location)).refs.some(ref => ref.name.startsWith('client-'))).toBe(false);
   });

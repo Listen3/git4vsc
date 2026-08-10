@@ -170,8 +170,8 @@ export function buildBranchMenu(ref: GitRef | null, status: RepositoryStatus | n
       { id: 'openWorktree', label: 'Open Worktree' },
       { id: 'copyWorktreePath', label: 'Copy Worktree Path' },
       { id: 'manageWorktrees', label: 'Manage Worktrees…' },
-      { id: worktree.locked ? 'unlockWorktree' : 'lockWorktree', label: worktree.locked ? 'Unlock Worktree' : 'Lock Worktree…' },
-      { id: 'removeWorktree', label: 'Remove Worktree…', disabled: worktree.locked }
+      { id: worktree.locked ? 'unlockWorktree' : 'lockWorktree', label: worktree.locked ? 'Unlock Worktree' : 'Lock Worktree…', disabled: worktree.prunable },
+      { id: 'removeWorktree', label: 'Remove Worktree…', disabled: worktree.locked || worktree.prunable }
     ] : [],
     [
       ...(!otherWorktree ? [{ id: 'checkout', label: 'Checkout' }] : []),

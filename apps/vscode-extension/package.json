@@ -212,7 +212,7 @@
     "views": {
       "git4vsc": [
         { "type": "webview", "id": "git4vsc.repositories", "name": "Commit" },
-        { "id": "git4vsc.worktrees", "name": "Worktrees", "when": "git4vsc.hasLinkedWorktrees", "visibility": "collapsed" }
+        { "id": "git4vsc.worktrees", "name": "Worktrees", "when": "git4vsc.hasLinkedWorktrees", "visibility": "visible" }
       ],
       "git4vscLogPanel": [
         { "type": "webview", "id": "git4vsc.logView", "name": "Log" }

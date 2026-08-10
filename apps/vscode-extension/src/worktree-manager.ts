@@ -62,7 +62,7 @@ export class WorktreeManager implements vscode.TreeDataProvider<WorktreeItem>, v
       repository,
       worktree,
       current: samePath(worktree.path, repository.root),
-      open: Boolean(vscode.workspace.getWorkspaceFolder(vscode.Uri.file(worktree.path)))
+      open: vscode.workspace.workspaceFolders?.some(folder => samePath(folder.uri.fsPath, worktree.path)) ?? false
     }));
   }
 
@@ -124,7 +124,11 @@ export class WorktreeManager implements vscode.TreeDataProvider<WorktreeItem>, v
   }
 
   async remove(item: WorktreeItem): Promise<void> {
-    if (item.worktree.main || item.open || item.worktree.prunable || item.worktree.locked) return;
+    if (item.worktree.main || item.worktree.prunable || item.worktree.locked) return;
+    if (item.open) {
+      void vscode.window.showInformationMessage('Close the worktree workspace before deleting it.');
+      return;
+    }
     const confirmed = await vscode.window.showWarningMessage(
       `Delete worktree ${basename(item.worktree.path)}?`,
       { modal: true, detail: `This deletes the directory ${item.worktree.path} and its Git worktree metadata. The branch will not be deleted.` },
@@ -163,7 +167,11 @@ export class WorktreeManager implements vscode.TreeDataProvider<WorktreeItem>, v
   }
 
   async lock(item: WorktreeItem): Promise<void> {
-    if (item.worktree.main || item.open || item.worktree.locked || item.worktree.prunable) return;
+    if (item.worktree.main || item.worktree.locked || item.worktree.prunable) return;
+    if (item.open) {
+      void vscode.window.showInformationMessage('Close the worktree workspace before locking it.');
+      return;
+    }
     const reason = await vscode.window.showInputBox({ title: `Lock ${basename(item.worktree.path)}`, prompt: 'Optional reason; press Enter to lock without one' });
     if (reason === undefined) return;
     await item.repository.lockWorktree(item.worktree.path, reason.trim() || undefined);

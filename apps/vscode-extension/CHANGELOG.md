@@ -4,6 +4,8 @@
 
 - Created branch-named subfolders when a non-empty Worktree parent is selected, reported the final path, and prevented failed creation from leaving orphan branches.
 - Expanded the Worktrees view after creation and added branch-menu shortcuts for opening, copying, locking, unlocking, managing, and removing linked worktrees.
+- Corrected open-worktree detection for nested workspace folders and preserved the original Git error when creation cleanup fails.
+- Showed the Worktrees list automatically whenever the selected repository has linked worktrees.
 
 ## 0.1.6 - 2026-08-09
 
