@@ -119,6 +119,7 @@ export class BlameAnnotations implements vscode.Disposable {
     const key = event.textEditor.document.uri.toString();
     if (!this.enabled.has(key) || !selection.isEmpty) return;
     if (selection.active.character !== 0) return;
+    if (event.textEditor.document.lineAt(selection.active.line).isEmptyOrWhitespace) return;
     const blame = this.cache.get(key)?.find(line => line.line === selection.active.line + 1);
     if (!blame || /^0+$/.test(blame.hash)) return;
     void vscode.commands.executeCommand('git4vsc.showBlameCommit', event.textEditor.document.uri.fsPath, blame.hash);

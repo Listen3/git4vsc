@@ -36,6 +36,7 @@ export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
   private view: vscode.WebviewView | null = null;
   private repository: RepositoryController | null = null;
   private session: LogSession | null = null;
+  private pendingCommit: string | null = null;
   private readonly cache: LogCache;
   private prewarmTail = Promise.resolve();
 
@@ -124,11 +125,12 @@ export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
   async showCommit(repository: RepositoryController, hash: string): Promise<void> {
     const changed = this.repository !== repository;
     this.repository = repository;
+    this.pendingCommit = hash;
     if (changed) this.attach();
     await vscode.commands.executeCommand('git4vsc.logView.focus');
     this.view?.show(true);
     if (!this.session) this.attach();
-    this.session?.showCommit(hash);
+    await this.revealPendingCommit();
   }
 
   dispose(): void {
@@ -140,6 +142,14 @@ export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
     if (!this.view || !this.repository) return;
     this.session?.dispose();
     this.session = new LogSession(this.context, this.repository, this.view, this.previewPush, this.cache, this.worktreesChanged, fileHistoryPath);
+    void this.revealPendingCommit();
+  }
+
+  private async revealPendingCommit(): Promise<void> {
+    const hash = this.pendingCommit;
+    if (!hash || !this.session) return;
+    this.pendingCommit = null;
+    await this.session.showCommit(hash);
   }
 }
 
@@ -161,6 +171,7 @@ class LogSession implements vscode.Disposable {
   private detailsLoading = false;
   private localError: string | null = null;
   private logRequest = 0;
+  private commitNavigation = 0;
   private detailsRequest = 0;
   private preferredSelection: string | null = null;
   private logIdentity: string;
@@ -256,21 +267,33 @@ class LogSession implements vscode.Disposable {
     }
   }
 
-  showCommit(hash: string): void {
-    if (this.fileHistoryPath) {
+  async showCommit(hash: string): Promise<void> {
+    const fromFileHistory = Boolean(this.fileHistoryPath);
+    if (fromFileHistory) {
       this.fileHistoryPath = null;
       this.activeRef = 'HEAD';
-      this.filters = this.mainFilters;
+      this.filters = { ...emptyLogFilters };
       this.updateTitle();
     }
-    if (this.commits.some(commit => commit.hash === hash)) {
+    if (!fromFileHistory && this.commits.some(commit => commit.hash === hash)) {
       this.preferredSelection = null;
-      void this.loadDetails(hash);
+      await this.loadDetails(hash);
       return;
     }
+    const navigation = ++this.commitNavigation;
     this.preferredSelection = hash;
-    this.filters = { ...this.mainFilters, text: hash, regex: false, caseSensitive: false };
-    void this.loadLog(true);
+    this.activeRef = 'HEAD';
+    this.filters = { ...emptyLogFilters };
+    await this.loadLog(true);
+    while (navigation === this.commitNavigation && !this.findCommit(hash) && this.hasMore) await this.loadLog(false);
+    if (navigation !== this.commitNavigation) return;
+    if (this.findCommit(hash)) {
+      this.preferredSelection = null;
+      await this.loadDetails(hash);
+      return;
+    }
+    this.preferredSelection = null;
+    void vscode.window.showWarningMessage(`Commit ${hash.slice(0, 8)} was not found in the current branch history.`);
   }
 
   dispose(): void {
