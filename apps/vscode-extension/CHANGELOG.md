@@ -1,13 +1,16 @@
 # Changelog
 
+## 0.1.8 - 2026-08-12
+
+- Corrected nested-workspace Worktree open detection and retained the original Git error when creation cleanup fails.
+- Showed linked Worktrees automatically, and disabled mutation actions for prunable entries.
+- Prevented blank Git Blame lines from being mistaken for annotation clicks.
+- Made Git Blame navigation load and center the target commit in the current branch history, including when the Log view opens for the first time.
+
 ## 0.1.7 - 2026-08-10
 
 - Created branch-named subfolders when a non-empty Worktree parent is selected, reported the final path, and prevented failed creation from leaving orphan branches.
 - Expanded the Worktrees view after creation and added branch-menu shortcuts for opening, copying, locking, unlocking, managing, and removing linked worktrees.
-- Corrected open-worktree detection for nested workspace folders and preserved the original Git error when creation cleanup fails.
-- Showed the Worktrees list automatically whenever the selected repository has linked worktrees.
-- Prevented clicks anywhere on blank Git Blame lines from being mistaken for clicks on the annotation column.
-- Made Git Blame navigation load and center the corresponding commit in the current branch history instead of showing an isolated hash search result.
 
 ## 0.1.6 - 2026-08-09
 

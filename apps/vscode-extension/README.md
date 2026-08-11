@@ -6,7 +6,7 @@ Focused Git workflows for Visual Studio Code.
 
 **[English](#english) · [简体中文](#简体中文)**
 
-> `0.1.7` — Refined Worktree creation and management for multi-repository Git workflows.
+> `0.1.8` — Refined Worktree management and Git Blame navigation for multi-repository Git workflows.
 
 ## Product tour / 功能预览
 
