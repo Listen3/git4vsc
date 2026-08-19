@@ -2,6 +2,7 @@ import { isAbsolute, relative } from 'node:path';
 import * as vscode from 'vscode';
 import type { GitBlameLine } from '@git4vsc/shared-types';
 import type { RepositoryController } from '@git4vsc/repo-state';
+import { updateBlameLines } from './blame-lines.js';
 
 export class BlameAnnotations implements vscode.Disposable {
   private readonly enabled = new Set<string>();
@@ -39,6 +40,7 @@ export class BlameAnnotations implements vscode.Disposable {
         for (const editor of editors) this.applyCached(editor);
       }),
       vscode.window.onDidChangeTextEditorSelection(event => this.openCommitOnClick(event)),
+      vscode.workspace.onDidChangeTextDocument(event => this.reanchorAfterEdit(event)),
       vscode.workspace.onDidSaveTextDocument(document => {
         if (this.enabled.has(document.uri.toString())) void this.render(document);
       })
@@ -89,6 +91,25 @@ export class BlameAnnotations implements vscode.Disposable {
     const key = editor.document.uri.toString();
     const lines = this.cache.get(key);
     if (this.enabled.has(key) && lines) this.apply(editor, lines);
+  }
+
+  private reanchorAfterEdit(event: vscode.TextDocumentChangeEvent): void {
+    const key = event.document.uri.toString();
+    const lines = this.cache.get(key);
+    if (!this.enabled.has(key) || !lines || !event.contentChanges.some(requiresReanchor)) return;
+    const updated = updateBlameLines(
+      lines,
+      event.contentChanges.map(change => ({
+        startLine: change.range.start.line,
+        endLine: change.range.end.line,
+        text: change.text
+      })),
+      event.document.lineCount
+    );
+    this.cache.set(key, updated);
+    for (const editor of vscode.window.visibleTextEditors) {
+      if (editor.document.uri.toString() === key) this.apply(editor, updated);
+    }
   }
 
   private apply(editor: vscode.TextEditor, lines: readonly GitBlameLine[]): void {
@@ -197,4 +218,10 @@ function calendarDay(date: Date): number {
 
 function css(styles: Record<string, string>): string {
   return `none;${Object.entries(styles).map(([property, value]) => `${property}:${value}`).join(';')};`;
+}
+
+function requiresReanchor(change: vscode.TextDocumentContentChangeEvent): boolean {
+  return change.range.start.character === 0
+    || change.range.start.line !== change.range.end.line
+    || /\r|\n/.test(change.text);
 }

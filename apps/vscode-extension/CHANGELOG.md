@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.0 - 2026-08-20
+
+- Promoted Git4VSC to its first stable 1.0 release.
+- Kept Git Blame annotations aligned while editing line starts, inserting new lines, and joining lines.
+
+## 0.2.0 - 2026-08-18
+
+- Promoted the expanded Commit, Worktree, Changelist, Git Blame, and multi-repository workflows to the 0.2 release line.
+- Retained the native Worktrees tree with folder opening and context actions for copying, locking, unlocking, and deleting worktrees.
+
 ## 0.1.8 - 2026-08-12
 
 - Corrected nested-workspace Worktree open detection and retained the original Git error when creation cleanup fails.

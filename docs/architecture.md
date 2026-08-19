@@ -98,6 +98,7 @@ flowchart LR
 - 点击 resource 用 `git4vsc:` content provider 提供 HEAD/index blob，再调用 `vscode.diff`。
 - Activity Bar 仅放原生 repository TreeView；复杂 log 是 editor Webview。
 - Webview 使用 CSP、固定资源目录、VS Code theme variables；消息白名单是 `ready/refresh/loadMore`。
+- Git Blame 的后续编辑态架构见 [`Versioned Blame Session Design`](design/versioned-blame-session.md)：版本化会话、`git blame --contents -` 和可见区域 decorations。
 - desktop/remote extension host 执行所在环境的 Git；不支持 browser-only VS Code。
 
 ## 错误与进度
