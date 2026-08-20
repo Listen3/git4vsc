@@ -48,8 +48,17 @@ interface FileMenuState {
   y: number;
 }
 
+type ChangeGroupAction = 'rollback' | 'deleteFile' | 'addToVcs';
+
+interface ChangeGroupMenuState {
+  group: ChangeGroup;
+  x: number;
+  y: number;
+}
+
 interface ChangelistMenuState {
   changelist: LocalChangelist;
+  changes: GitChange[];
   x: number;
   y: number;
 }
@@ -89,6 +98,7 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
   const [state, setState] = useState(initialState);
   const [message, setMessage] = useState('');
   const [fileMenu, setFileMenu] = useState<FileMenuState | null>(null);
+  const [changeGroupMenu, setChangeGroupMenu] = useState<ChangeGroupMenuState | null>(null);
   const [rowSelection, setRowSelection] = useState<Set<string>>(new Set());
   const [messageHeight, setMessageHeight] = useState(136);
   const [manageChangelists, setManageChangelists] = useState<ManageChangelistsState | null>(null);
@@ -131,6 +141,20 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
       window.removeEventListener('keydown', closeOnEscape);
     };
   }, [fileMenu]);
+
+  useEffect(() => {
+    if (!changeGroupMenu) return;
+    const close = () => setChangeGroupMenu(null);
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') close(); };
+    window.addEventListener('mousedown', close);
+    window.addEventListener('blur', close);
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('blur', close);
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [changeGroupMenu]);
 
   const groups = useMemo(() => changeGroups(state.status?.changes ?? [], state.changelists), [state.status, state.changelists]);
   const visibleChanges = useMemo(() => groups.flatMap(group => group.changes), [groups]);
@@ -231,6 +255,10 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
       postMessage({ type: action, paths: menu.changes.filter(change => change.workingTree === 'untracked').map(change => change.path) });
       return;
     }
+    if (action === 'deleteFile') {
+      postMessage({ type: action, paths: menu.changes.filter(change => change.workingTree !== 'deleted').map(change => change.path) });
+      return;
+    }
     postMessage({ type: action, path: menu.change.path });
   }
 
@@ -287,7 +315,7 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
     <section ref={changesRef} className="commit-changes" aria-label="Changes">
       {groups.length === 0
         ? <div className="commit-no-changes">No changes</div>
-        : groups.map(group => <ChangeGroupView key={group.id} group={group} busy={busy} selected={selected} rowSelection={rowSelection} visibleChanges={visibleChanges} selectRow={selectRow} selectDraggedRow={selectDraggedRow} setSelected={setSelected} postMessage={postMessage} openFileMenu={openFileMenu} openChangelistMenu={setChangelistMenu} openChangelists={id => setManageChangelists({ id })} />)}
+        : groups.map(group => <ChangeGroupView key={group.id} group={group} busy={busy} selected={selected} rowSelection={rowSelection} visibleChanges={visibleChanges} selectRow={selectRow} selectDraggedRow={selectDraggedRow} setSelected={setSelected} postMessage={postMessage} openFileMenu={openFileMenu} openChangeGroupMenu={setChangeGroupMenu} openChangelistMenu={setChangelistMenu} openChangelists={id => setManageChangelists({ id })} />)}
     </section>
     <OverlayScrollbar targetRef={changesRef} />
 
@@ -338,13 +366,32 @@ export function CommitApp({ postMessage }: { postMessage(message: unknown): void
       </div>
     </footer>
     {fileMenu && <FileContextMenu menu={fileMenu} busy={busy} run={runFileAction} />}
+    {changeGroupMenu && <ChangeGroupContextMenu menu={changeGroupMenu} busy={busy} run={(action, menu) => {
+      setChangeGroupMenu(null);
+      const paths = menu.group.changes.filter(change => action === 'rollback'
+        ? !change.conflict && change.workingTree !== 'untracked'
+        : action === 'addToVcs'
+          ? change.workingTree === 'untracked'
+          : change.workingTree !== 'deleted').map(change => change.path);
+      if (paths.length) postMessage({ type: action === 'rollback' ? 'rollbackFile' : action, paths });
+    }} />}
     {changelistMenu && <ChangelistContextMenu
       menu={changelistMenu}
       listCount={state.changelists.length}
+      busy={busy}
       close={() => setChangelistMenu(null)}
       edit={() => { setManageChangelists({ id: changelistMenu.changelist.id }); setChangelistMenu(null); }}
       remove={() => requestChangelistDeletion(changelistMenu.changelist.id)}
       setActive={() => { postMessage({ type: 'setActiveChangelist', id: changelistMenu.changelist.id }); setChangelistMenu(null); }}
+      runGroupAction={(action, changes) => {
+        setChangelistMenu(null);
+        const paths = changes.filter(change => action === 'rollback'
+          ? !change.conflict && change.workingTree !== 'untracked'
+          : action === 'addToVcs'
+            ? change.workingTree === 'untracked'
+            : change.workingTree !== 'deleted').map(change => change.path);
+        if (paths.length) postMessage({ type: action === 'rollback' ? 'rollbackFile' : action, paths });
+      }}
     />}
     {manageChangelists && <ManageChangelistsDialog
       changelists={state.changelists}
@@ -749,7 +796,7 @@ function SelectionSummaryView({ summary }: { summary: SelectionSummary }) {
   </div>;
 }
 
-function ChangeGroupView({ group, busy, selected, rowSelection, visibleChanges, selectRow, selectDraggedRow, setSelected, postMessage, openFileMenu, openChangelistMenu, openChangelists }: {
+function ChangeGroupView({ group, busy, selected, rowSelection, visibleChanges, selectRow, selectDraggedRow, setSelected, postMessage, openFileMenu, openChangeGroupMenu, openChangelistMenu, openChangelists }: {
   group: ChangeGroup;
   busy: boolean;
   selected(change: GitChange): boolean;
@@ -760,6 +807,7 @@ function ChangeGroupView({ group, busy, selected, rowSelection, visibleChanges, 
   setSelected(changes: readonly GitChange[], value: boolean): void;
   postMessage(message: unknown): void;
   openFileMenu(change: GitChange, event: React.MouseEvent): void;
+  openChangeGroupMenu(menu: ChangeGroupMenuState): void;
   openChangelistMenu(menu: ChangelistMenuState): void;
   openChangelists(id: string): void;
 }) {
@@ -778,9 +826,13 @@ function ChangeGroupView({ group, busy, selected, rowSelection, visibleChanges, 
     }}
   >
     <summary onContextMenu={event => {
-      if (!group.changelist) return;
-      event.preventDefault();
-      openChangelistMenu({ changelist: group.changelist, x: event.clientX, y: event.clientY });
+      if (group.changelist) {
+        event.preventDefault();
+        openChangelistMenu({ changelist: group.changelist, changes: group.changes, x: event.clientX, y: event.clientY });
+      } else if (group.changes.length) {
+        event.preventDefault();
+        openChangeGroupMenu({ group, x: event.clientX, y: event.clientY });
+      }
     }}>
       {!conflict && <SelectionCheckbox
         ariaLabel={`${allSelected ? 'Exclude' : 'Include'} all ${group.title}`}
@@ -813,6 +865,20 @@ function ChangeGroupView({ group, busy, selected, rowSelection, visibleChanges, 
       {!group.changes.length && <div className="changelist-group-empty">No files</div>}
     </div>
   </details>;
+}
+
+function ChangeGroupContextMenu({ menu, busy, run }: {
+  menu: ChangeGroupMenuState;
+  busy: boolean;
+  run(action: ChangeGroupAction, menu: ChangeGroupMenuState): void;
+}) {
+  const items = changeGroupActions(menu.group);
+  const width = Math.min(260, window.innerWidth - 8);
+  const left = Math.min(menu.x, window.innerWidth - width - 4);
+  const top = Math.min(menu.y, window.innerHeight - items.length * 27 - 12);
+  return <div className="commit-file-menu" role="menu" style={{ left: Math.max(4, left), top: Math.max(4, top) }} onMouseDown={event => event.stopPropagation()}>
+    {items.map(item => <button key={item.action} type="button" role="menuitem" disabled={busy || !item.enabled} onClick={() => run(item.action, menu)}>{item.label}</button>)}
+  </div>;
 }
 
 function ChangeRow({ change, staged, rowSelected, dragPaths, conflict, busy, selectRow, selectDraggedRow, setSelected, postMessage, openFileMenu }: {
@@ -882,13 +948,15 @@ function readDraggedPaths(data: DataTransfer): string[] {
   }
 }
 
-function ChangelistContextMenu({ menu, listCount, close, edit, remove, setActive }: {
+function ChangelistContextMenu({ menu, listCount, busy, close, edit, remove, setActive, runGroupAction }: {
   menu: ChangelistMenuState;
   listCount: number;
+  busy: boolean;
   close(): void;
   edit(): void;
   remove(): void;
   setActive(): void;
+  runGroupAction(action: ChangeGroupAction, changes: readonly GitChange[]): void;
 }) {
   useEffect(() => {
     const closeMenu = () => close();
@@ -905,11 +973,14 @@ function ChangelistContextMenu({ menu, listCount, close, edit, remove, setActive
 
   const width = Math.min(220, window.innerWidth - 8);
   const left = Math.min(menu.x, window.innerWidth - width - 4);
-  const top = Math.min(menu.y, window.innerHeight - 92);
+  const fileActions = changeGroupActions({ id: `changelist:${menu.changelist.id}`, changes: menu.changes });
+  const top = Math.min(menu.y, window.innerHeight - (92 + fileActions.length * 27 + 8));
   return <div className="commit-file-menu changelist-context-menu" role="menu" style={{ left: Math.max(4, left), top: Math.max(4, top) }} onMouseDown={event => event.stopPropagation()}>
     <button type="button" role="menuitem" onClick={edit}>Edit Changelist…</button>
     {!menu.changelist.active && <button type="button" role="menuitem" onClick={setActive}>Set Active Changelist</button>}
     <button type="button" role="menuitem" disabled={listCount < 2} onClick={remove}>{menu.changelist.paths.length ? 'Delete Changelist…' : 'Delete Changelist'}</button>
+    {fileActions.some(item => item.enabled) && <div className="commit-file-menu-separator" />}
+    {fileActions.map(item => <button key={item.action} type="button" role="menuitem" disabled={busy || !item.enabled} onClick={() => runGroupAction(item.action, menu.changes)}>{item.label}</button>)}
   </div>;
 }
 
@@ -937,15 +1008,27 @@ export function fileContextActions(change: GitChange, selection: readonly GitCha
   const commitCount = selection.filter(candidate => !candidate.conflict).length;
   const moveCount = selection.filter(candidate => !candidate.conflict && candidate.workingTree !== 'untracked').length;
   const rollbackCount = selection.filter(candidate => !candidate.conflict && candidate.workingTree !== 'untracked').length;
+  const deleteCount = selection.filter(candidate => candidate.workingTree !== 'deleted').length;
   const addCount = selection.filter(candidate => candidate.workingTree === 'untracked').length;
   return [
     { action: 'commitFile', label: commitCount > 1 ? 'Commit Files…' : 'Commit File…', enabled: commitCount > 0 },
     { action: 'moveToChangelist', label: 'Move to Another Changelist…', enabled: moveCount > 0 },
     { action: 'rollbackFile', label: 'Rollback…', enabled: rollbackCount > 0 },
-    { action: 'deleteFile', label: 'Delete…', enabled: !deleted },
+    { action: 'deleteFile', label: deleteCount > 1 ? `Delete ${deleteCount} Files…` : 'Delete…', enabled: deleteCount > 0 },
     { action: 'jumpToSource', label: 'Jump to Source', enabled: !deleted },
-    { action: 'addToVcs', label: 'Add to VCS', enabled: addCount > 0 },
+    { action: 'addToVcs', label: addCount > 1 ? `Add ${addCount} Files to VCS` : 'Add to VCS', enabled: addCount > 0 },
     { action: 'addToIgnore', label: 'Add to Ignore', enabled: untracked }
+  ];
+}
+
+export function changeGroupActions(group: Pick<ChangeGroup, 'id' | 'changes'>): { action: ChangeGroupAction; label: string; enabled: boolean }[] {
+  const tracked = group.changes.filter(change => !change.conflict && change.workingTree !== 'untracked');
+  const deletable = group.changes.filter(change => change.workingTree !== 'deleted');
+  const untracked = group.changes.filter(change => change.workingTree === 'untracked');
+  return [
+    { action: 'rollback', label: tracked.length > 1 ? `Rollback ${tracked.length} Files…` : 'Rollback…', enabled: tracked.length > 0 },
+    { action: 'deleteFile', label: deletable.length > 1 ? `Delete ${deletable.length} Files…` : 'Delete…', enabled: deletable.length > 0 },
+    { action: 'addToVcs', label: untracked.length > 1 ? `Add ${untracked.length} Files to VCS` : 'Add to VCS', enabled: untracked.length > 0 }
   ];
 }
 

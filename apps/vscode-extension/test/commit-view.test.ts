@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GitChange } from '@git4vsc/shared-types';
-import { changeGroups, changeTone, compareIdeaFiles, draggedChangePaths, fileContextActions, moveTargetChangelists, nextRowSelection, repositoryStatusLabel, selectedChangeSummary } from '../webview/commit-app.js';
+import { changeGroupActions, changeGroups, changeTone, compareIdeaFiles, draggedChangePaths, fileContextActions, moveTargetChangelists, nextRowSelection, repositoryStatusLabel, selectedChangeSummary } from '../webview/commit-app.js';
 
 describe('commit change groups', () => {
   it('summarizes cached repository tracking state without extra Git work', () => {
@@ -87,14 +87,47 @@ describe('commit change groups', () => {
 
   it('describes multi-file context actions from highlighted rows', () => {
     const changes: GitChange[] = [
-      { path: 'a.ts', index: null, workingTree: 'modified', conflict: false },
-      { path: 'b.ts', index: null, workingTree: 'modified', conflict: false }
+      { path: 'a.ts', index: null, workingTree: 'untracked', conflict: false },
+      { path: 'b.ts', index: null, workingTree: 'untracked', conflict: false }
     ];
     const actions = fileContextActions(changes[0]!, changes);
 
     expect(actions.find(action => action.action === 'commitFile')?.label).toBe('Commit Files…');
     expect(actions.find(action => action.action === 'moveToChangelist')?.label).toBe('Move to Another Changelist…');
     expect(actions.find(action => action.action === 'rollbackFile')?.label).toBe('Rollback…');
+    expect(actions.find(action => action.action === 'deleteFile')?.label).toBe('Delete 2 Files…');
+    expect(actions.find(action => action.action === 'addToVcs')?.label).toBe('Add 2 Files to VCS');
+  });
+
+  it('counts only files eligible for each multi-file action', () => {
+    const changes: GitChange[] = [
+      { path: 'draft.ts', index: null, workingTree: 'untracked', conflict: false },
+      { path: 'edit.ts', index: null, workingTree: 'modified', conflict: false },
+      { path: 'gone.ts', index: null, workingTree: 'deleted', conflict: false }
+    ];
+    const actions = fileContextActions(changes[2]!, changes);
+
+    expect(actions.find(action => action.action === 'deleteFile')).toMatchObject({ label: 'Delete 2 Files…', enabled: true });
+    expect(actions.find(action => action.action === 'addToVcs')).toMatchObject({ label: 'Add to VCS', enabled: true });
+  });
+
+  it('offers group actions according to the files in the group', () => {
+    const tracked = changeGroupActions({ id: 'changes', changes: [
+      { path: 'a.ts', index: null, workingTree: 'modified', conflict: false },
+      { path: 'b.ts', index: null, workingTree: 'deleted', conflict: false }
+    ] });
+    expect(tracked).toEqual([
+      { action: 'rollback', label: 'Rollback 2 Files…', enabled: true },
+      { action: 'deleteFile', label: 'Delete…', enabled: true },
+      { action: 'addToVcs', label: 'Add to VCS', enabled: false }
+    ]);
+
+    const untracked = changeGroupActions({ id: 'untracked', changes: [
+      { path: 'a.ts', index: null, workingTree: 'untracked', conflict: false },
+      { path: 'b.ts', index: null, workingTree: 'untracked', conflict: false }
+    ] });
+    expect(untracked.find(action => action.action === 'addToVcs')).toMatchObject({ label: 'Add 2 Files to VCS', enabled: true });
+    expect(untracked.find(action => action.action === 'rollback')).toMatchObject({ label: 'Rollback…', enabled: false });
   });
 
   it('opens create directly when moving from the only changelist', () => {

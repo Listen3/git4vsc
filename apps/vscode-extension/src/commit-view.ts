@@ -403,10 +403,16 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
       for (const change of changes) selected.delete(change.path);
       return this.refresh();
     }
-    if (message.type === 'deleteFile' && message.path) {
-      const confirmed = await vscode.window.showWarningMessage(`Delete ${message.path}?`, { modal: true, detail: 'The file will be moved to the Recycle Bin.' }, 'Delete');
+    if (message.type === 'deleteFile' && (message.paths?.length || message.path)) {
+      const paths = message.paths?.length ? message.paths : [message.path!];
+      const confirmed = await vscode.window.showWarningMessage(
+        paths.length === 1 ? `Delete ${paths[0]}?` : `Delete ${paths.length} selected files?`,
+        { modal: true, detail: `${paths.length === 1 ? 'The file' : 'The selected files'} will be moved to the Recycle Bin.` },
+        paths.length === 1 ? 'Delete' : `Delete ${paths.length} Files`
+      );
       if (!confirmed) return;
-      await vscode.workspace.fs.delete(this.fileUri(repository, message.path), { useTrash: true });
+      await Promise.all(paths.map(path => vscode.workspace.fs.delete(this.fileUri(repository, path), { useTrash: true })));
+      for (const path of paths) this.selection(repository).delete(path);
       repository.invalidate('status');
       await repository.refresh();
       return this.refresh();

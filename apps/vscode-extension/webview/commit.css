@@ -275,6 +275,7 @@ button:disabled { opacity: .45; }
 }
 
 .commit-file-menu button:disabled { opacity: .42; }
+.commit-file-menu-separator { height: 1px; margin: 4px 5px; background: var(--vscode-menu-separatorBackground, var(--git4vsc-border)); }
 
 .commit-dialog-backdrop {
   position: fixed;
