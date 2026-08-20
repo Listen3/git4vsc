@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1 - 2026-08-21
+
+- Refined multi-file Changes actions and refreshed the release package metadata.
+
 ## 1.0.0 - 2026-08-20
 
 - Promoted Git4VSC to its first stable 1.0 release.

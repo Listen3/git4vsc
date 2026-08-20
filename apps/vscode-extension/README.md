@@ -6,7 +6,7 @@ Focused Git workflows for Visual Studio Code.
 
 **[English](#english) · [简体中文](#简体中文)**
 
-> `1.0.0` — Stable Commit, Worktree, Changelist, Git Blame and multi-repository Git workflows.
+> `1.0.1` — Stable Commit, Worktree, Changelist, Git Blame and multi-repository Git workflows.
 
 ## Product tour / 功能预览
 
