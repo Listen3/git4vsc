@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { join, resolve } from 'node:path';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
 import { GitClient } from '../src/git-client.js';
+import { GitCommandError, type CommandRunner } from '../src/command-runner.js';
 import { createFixtureSet, type FixtureSet } from './git-fixtures.js';
 
 describe('GitClient against generated repositories', () => {
@@ -110,22 +111,23 @@ describe('GitClient against generated repositories', () => {
     await client.deleteTag(location, 'client-tag');
     const worktree = join(fixtures.base, 'client-created-worktree');
     await client.addWorktree(location, worktree, 'HEAD');
+    const canonicalWorktree = await realpath(worktree);
     const linkedLocation = await client.discover(worktree);
     expect((await client.status(linkedLocation)).phase).toBe('detached');
     expect(resolve(linkedLocation.commonDir!)).toBe(resolve(location.commonDir!));
-    expect((await client.worktrees(location)).some(item => resolve(item.path) === resolve(worktree) && item.detached)).toBe(true);
+    expect((await client.worktrees(location)).some(item => resolve(item.path) === canonicalWorktree && item.detached)).toBe(true);
     await client.lockWorktree(location, worktree, 'integration test');
-    expect((await client.worktrees(location)).find(item => resolve(item.path) === resolve(worktree))).toMatchObject({ locked: true, lockReason: 'integration test' });
+    expect((await client.worktrees(location)).find(item => resolve(item.path) === canonicalWorktree)).toMatchObject({ locked: true, lockReason: 'integration test' });
     await client.unlockWorktree(location, worktree);
     await client.removeWorktree(location, worktree);
-    expect((await client.worktrees(location)).some(item => resolve(item.path) === resolve(worktree))).toBe(false);
+    expect((await client.worktrees(location)).some(item => resolve(item.path) === canonicalWorktree)).toBe(false);
     const invalidWorktree = join(fixtures.base, 'client-non-empty-worktree');
     await mkdir(invalidWorktree);
     await writeFile(join(invalidWorktree, 'existing.txt'), 'occupied');
     await expect(client.addWorktree(location, invalidWorktree, 'HEAD', 'client-orphan-branch')).rejects.toThrow();
     expect((await client.status(location)).refs.some(ref => ref.name === 'client-orphan-branch')).toBe(false);
     const missingRefWorktree = join(fixtures.base, 'client-missing-ref-worktree');
-    await expect(client.addWorktree(location, missingRefWorktree, 'refs/heads/client-missing-ref', 'client-uncreated-branch')).rejects.toThrow(/invalid reference/i);
+    await expect(client.addWorktree(location, missingRefWorktree, 'refs/heads/client-missing-ref', 'client-uncreated-branch')).rejects.toThrow(/(?:invalid reference|not a valid object name)/i);
     expect((await client.status(location)).refs.some(ref => ref.name === 'client-uncreated-branch')).toBe(false);
     await client.removeRemote(location, 'origin');
     expect((await client.status(location)).refs.some(ref => ref.name.startsWith('client-'))).toBe(false);
@@ -254,6 +256,18 @@ describe('GitClient against generated repositories', () => {
     expect(stash?.message).toBe('integration stash');
     expect((await client.status(location)).changes.some(change => change.path === 'stash-untracked.txt')).toBe(false);
     expect((await client.stashChanges(location, stash!.ref)).map(change => change.path)).toEqual(expect.arrayContaining(['base.txt', 'stash-untracked.txt']));
+    const legacyClient = new GitClient({
+      executable: client.runner.executable,
+      run(args: readonly string[], options = {}) {
+        if (args.includes('show') && args.includes('--include-untracked')) {
+          return Promise.reject(new GitCommandError({
+            command: client.runner.executable, args, exitCode: 129, stdout: '', stderr: "error: unknown option `include-untracked'"
+          }));
+        }
+        return client.runner.run(args, options);
+      }
+    } as CommandRunner);
+    expect((await legacyClient.stashChanges(location, stash!.ref)).map(change => change.path)).toEqual(expect.arrayContaining(['base.txt', 'stash-untracked.txt']));
     await client.rememberSmartStash(location, stash!.hash);
     expect((await client.pendingSmartStash(location))?.hash).toBe(stash!.hash);
     await client.clearSmartStash(location);

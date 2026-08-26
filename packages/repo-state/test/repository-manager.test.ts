@@ -5,6 +5,7 @@ import { RepositoryManager } from '../src/repository-manager.js';
 
 class FakeGit {
   statusCalls = 0;
+  worktreeError: Error | null = null;
 
   async discover(): Promise<RepositoryLocation> {
     return { root: '/repository', gitDir: '/repository/.git' };
@@ -20,7 +21,10 @@ class FakeGit {
     return { commits: [], offset: 0, hasMore: false };
   }
 
-  async worktrees(): Promise<GitWorktree[]> { return []; }
+  async worktrees(): Promise<GitWorktree[]> {
+    if (this.worktreeError) throw this.worktreeError;
+    return [];
+  }
 }
 
 describe('RepositoryManager', () => {
@@ -32,5 +36,18 @@ describe('RepositoryManager', () => {
     expect(first).toBe(second);
     expect(manager.all).toEqual([first]);
     expect(git.statusCalls).toBe(1);
+  });
+
+  it('opens the repository when optional worktree discovery fails', async () => {
+    const git = new FakeGit();
+    git.worktreeError = new Error("unknown switch `z'");
+    const manager = new RepositoryManager(git as unknown as GitClient);
+
+    const repository = await manager.open('/repository');
+
+    expect(manager.all).toEqual([repository]);
+    expect(repository.snapshot.status?.root).toBe('/repository');
+    expect(repository.snapshot.worktrees).toEqual([]);
+    expect(repository.snapshot.error).toBe("Worktree information unavailable: unknown switch `z'");
   });
 });

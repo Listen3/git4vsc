@@ -37,6 +37,18 @@ describe('parseWorktrees', () => {
       { path: 'C:/missing', head: 'cccc', branch: null, main: false, detached: true, bare: false, locked: false, prunable: true, pruneReason: 'gitdir file points to non-existent location' }
     ]);
   });
+
+  it('parses the line-delimited porcelain emitted by older Git versions', () => {
+    const output = [
+      'worktree /repo', 'HEAD aaaa', 'branch refs/heads/main', '',
+      'worktree /feature path', 'HEAD bbbb', 'detached', 'locked', '', ''
+    ].join('\n');
+
+    expect(parseWorktrees(output)).toEqual([
+      { path: '/repo', head: 'aaaa', branch: 'main', main: true, detached: false, bare: false, locked: false, prunable: false },
+      { path: '/feature path', head: 'bbbb', branch: null, main: false, detached: true, bare: false, locked: true, prunable: false }
+    ]);
+  });
 });
 
 describe('parsePorcelainV2', () => {

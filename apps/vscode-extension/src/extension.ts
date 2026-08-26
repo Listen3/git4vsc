@@ -108,7 +108,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
     const roots = await findWorkspaceRepositoryRoots(folder.uri.fsPath);
     for (let index = 0; index < roots.length; index += 3) {
-      await Promise.allSettled(roots.slice(index, index + 3).map(root => openRepository(root)));
+      const batch = roots.slice(index, index + 3);
+      const results = await Promise.allSettled(batch.map(root => openRepository(root)));
+      results.forEach((result, resultIndex) => {
+        if (result.status === 'fulfilled') return;
+        const root = batch[resultIndex] ?? folder.uri.fsPath;
+        const detail = result.reason instanceof Error ? result.reason.message : String(result.reason);
+        void vscode.window.showErrorMessage(`Git4VSC could not open ${root}: ${detail}`);
+      });
     }
   };
   const folders = vscode.workspace.workspaceFolders ?? [];

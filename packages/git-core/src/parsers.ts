@@ -29,7 +29,11 @@ export function parseWorktrees(output: string): GitWorktree[] {
     current.main = worktrees.length === 0;
     worktrees.push(current);
   };
-  for (const field of output.split('\0')) {
+  // Git added `worktree list -z` after the minimum version supported by
+  // Git4VSC. Newer Git emits NUL-delimited fields, while the compatibility
+  // fallback uses the original line-delimited porcelain format.
+  const fields = output.includes('\0') ? output.split('\0') : output.split(/\r?\n/);
+  for (const field of fields) {
     if (!field) continue;
     const separator = field.indexOf(' ');
     const key = separator < 0 ? field : field.slice(0, separator);

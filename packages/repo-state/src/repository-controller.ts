@@ -63,10 +63,14 @@ export class RepositoryController {
       this.patch({ loading: parts, error: null });
       try {
         const includeMetadata = parts.has('refs') || this.mutable.status === null;
-        const [status, log, worktrees] = await Promise.all([
+        const [status, log, worktreeResult] = await Promise.all([
           parts.has('status') || parts.has('refs') ? this.git.status(this.location, includeMetadata) : undefined,
           parts.has('log') ? this.git.log(this.location) : undefined,
-          parts.has('worktrees') ? this.git.worktrees(this.location) : undefined
+          parts.has('worktrees')
+            ? this.git.worktrees(this.location)
+              .then(worktrees => ({ worktrees, error: null }))
+              .catch(error => ({ worktrees: undefined, error: error instanceof Error ? error.message : String(error) }))
+            : undefined
         ]);
         const nextStatus = status && !includeMetadata && this.mutable.status
           ? {
@@ -78,8 +82,9 @@ export class RepositoryController {
         this.patch({
           ...(nextStatus ? { status: nextStatus } : {}),
           ...(log ? { commits: log.commits } : {}),
-          ...(worktrees ? { worktrees } : {}),
+          ...(worktreeResult?.worktrees ? { worktrees: worktreeResult.worktrees } : {}),
           loading: new Set(),
+          ...(worktreeResult?.error ? { error: `Worktree information unavailable: ${worktreeResult.error}` } : {}),
           version: this.mutable.version + 1
         });
       } catch (error) {

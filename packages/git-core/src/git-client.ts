@@ -1,8 +1,8 @@
-import { access, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import type { CommitDetails, CommitFileChange, CommitPage, CommitSelection, CommitSummary, GitBlameLine, GitChange, GitDiffHunk, GitStashEntry, GitWorktree, LogQuery, MergeConflict, RepositoryPhase, RepositoryStatus } from '@git4vsc/shared-types';
-import { CommandRunner } from './command-runner.js';
+import { CommandRunner, GitCommandError } from './command-runner.js';
 import { parseBlame, parseLog, parseNameStatus, parsePorcelainV2, parseRefs, parseUnmergedIndex, parseWorktrees } from './parsers.js';
 import { parseFilePatch, selectPatchHunks } from './partial-commit.js';
 
@@ -72,9 +72,19 @@ export class GitClient {
     const [root, gitDir, commonDir] = await Promise.all([
       this.runner.run(['-C', path, 'rev-parse', '--show-toplevel']),
       this.runner.run(['-C', path, 'rev-parse', '--absolute-git-dir']),
-      this.runner.run(['-C', path, 'rev-parse', '--path-format=absolute', '--git-common-dir'])
+      this.discoverCommonDir(path)
     ]);
-    return { root: root.stdout.trim(), gitDir: gitDir.stdout.trim(), commonDir: commonDir.stdout.trim() };
+    return { root: root.stdout.trim(), gitDir: gitDir.stdout.trim(), commonDir };
+  }
+
+  private async discoverCommonDir(path: string): Promise<string> {
+    try {
+      return (await this.runner.run(['-C', path, 'rev-parse', '--path-format=absolute', '--git-common-dir'])).stdout.trim();
+    } catch (error) {
+      if (!isUnsupportedRevParsePathFormat(error)) throw error;
+      const commonDir = (await this.runner.run(['-C', path, 'rev-parse', '--git-common-dir'])).stdout.trim();
+      return resolve(path, commonDir);
+    }
   }
 
   async status(location: RepositoryLocation, includeMetadata = true): Promise<RepositoryStatus> {
@@ -328,8 +338,20 @@ export class GitClient {
   }
 
   async stashChanges(location: RepositoryLocation, ref: string): Promise<CommitFileChange[]> {
-    const result = await this.runner.run(['-C', location.root, 'stash', 'show', '--include-untracked', '--name-status', '-z', '-M', '-C', ref]);
-    return parseNameStatus(result.stdout);
+    try {
+      const result = await this.runner.run(['-C', location.root, 'stash', 'show', '--include-untracked', '--name-status', '-z', '-M', '-C', ref]);
+      return parseNameStatus(result.stdout);
+    } catch (error) {
+      if (!isUnsupportedStashShowIncludeUntracked(error)) throw error;
+    }
+
+    const tracked = await this.runner.run(['-C', location.root, 'stash', 'show', '--name-status', '-z', '-M', '-C', ref]);
+    const untrackedCommit = await this.resolveOptionalRef(location, `${ref}^3`);
+    if (!untrackedCommit) return parseNameStatus(tracked.stdout);
+    const untracked = await this.runner.run([
+      '-C', location.root, 'diff-tree', '--root', '--no-commit-id', '--name-status', '-r', '-z', '-M', '-C', untrackedCommit, '--'
+    ]);
+    return [...parseNameStatus(tracked.stdout), ...parseNameStatus(untracked.stdout)];
   }
 
   async rememberSmartStash(location: RepositoryLocation, hash: string): Promise<void> {
@@ -591,8 +613,53 @@ export class GitClient {
   }
 
   async worktrees(location: RepositoryLocation): Promise<GitWorktree[]> {
-    const result = await this.runner.run(['-C', location.root, 'worktree', 'list', '--porcelain', '-z']);
-    return parseWorktrees(result.stdout);
+    let result;
+    let usedCompatibilityFormat = false;
+    try {
+      result = await this.runner.run(['-C', location.root, 'worktree', 'list', '--porcelain', '-z']);
+    } catch (error) {
+      if (!isUnsupportedWorktreeNullTermination(error)) throw error;
+      result = await this.runner.run(['-C', location.root, 'worktree', 'list', '--porcelain']);
+      usedCompatibilityFormat = true;
+    }
+    const worktrees = parseWorktrees(result.stdout);
+    return usedCompatibilityFormat ? this.enrichLegacyWorktreeMetadata(location, worktrees) : worktrees;
+  }
+
+  private async enrichLegacyWorktreeMetadata(location: RepositoryLocation, worktrees: GitWorktree[]): Promise<GitWorktree[]> {
+    const metadataRoot = join(location.commonDir ?? location.gitDir, 'worktrees');
+    let entries;
+    try {
+      entries = await readdir(metadataRoot, { withFileTypes: true });
+    } catch {
+      return worktrees;
+    }
+
+    const byPath = new Map(worktrees.map(worktree => [comparablePath(worktree.path), worktree]));
+    await Promise.all(entries.filter(entry => entry.isDirectory()).map(async entry => {
+      const adminDir = join(metadataRoot, entry.name);
+      let gitDirFile: string;
+      try {
+        gitDirFile = resolve(adminDir, (await readFile(join(adminDir, 'gitdir'), 'utf8')).trim());
+      } catch {
+        return;
+      }
+      const worktree = byPath.get(comparablePath(dirname(gitDirFile)));
+      if (!worktree) return;
+
+      try {
+        const reason = (await readFile(join(adminDir, 'locked'), 'utf8')).trim();
+        worktree.locked = true;
+        if (reason) worktree.lockReason = reason;
+      } catch {
+        // An absent lock file means that the linked worktree is unlocked.
+      }
+      if (!worktree.locked && !(await exists(gitDirFile))) {
+        worktree.prunable = true;
+        worktree.pruneReason = 'gitdir file points to non-existent location';
+      }
+    }));
+    return worktrees;
   }
 
   async addWorktree(location: RepositoryLocation, path: string, ref: string, newBranch?: string, detach = false): Promise<void> {
@@ -639,6 +706,29 @@ export class GitClient {
   async reset(location: RepositoryLocation, hash: string, mode: 'soft' | 'mixed' | 'hard'): Promise<void> {
     await this.runner.run(['-C', location.root, 'reset', `--${mode}`, hash]);
   }
+}
+
+function isUnsupportedWorktreeNullTermination(error: unknown): boolean {
+  if (!(error instanceof GitCommandError)) return false;
+  const output = `${error.result.stdout}\n${error.result.stderr}`;
+  return /(?:unknown switch [`'"]?z|unknown option [`'"]?(?:z|-z)|unrecognized option [`'"]?(?:z|-z))/i.test(output);
+}
+
+function isUnsupportedRevParsePathFormat(error: unknown): boolean {
+  if (!(error instanceof GitCommandError)) return false;
+  const output = `${error.result.stdout}\n${error.result.stderr}`;
+  return /(?:unknown|unrecognized) option [`'"]?(?:--?)?path-format(?:=absolute)?/i.test(output);
+}
+
+function isUnsupportedStashShowIncludeUntracked(error: unknown): boolean {
+  if (!(error instanceof GitCommandError)) return false;
+  const output = `${error.result.stdout}\n${error.result.stderr}`;
+  return /(?:unknown|unrecognized) option [`'"]?(?:--?)?include-untracked/i.test(output);
+}
+
+function comparablePath(path: string): string {
+  const normalized = resolve(path);
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
 function escapeRegExp(value: string): string {

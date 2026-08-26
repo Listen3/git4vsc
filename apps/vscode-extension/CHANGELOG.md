@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2 - 2026-08-26
+
+- Restored repository discovery on older Git installations by falling back when newer `rev-parse` and Worktree output options are unavailable.
+- Kept repository status usable when optional Worktree metadata cannot be loaded, while surfacing actionable repository-open errors.
+- Preserved untracked Stash file listings and Worktree lock/prune metadata across the supported Git 2.23+ range.
+
 ## 1.0.1 - 2026-08-21
 
 - Refined multi-file Changes actions and refreshed the release package metadata.
