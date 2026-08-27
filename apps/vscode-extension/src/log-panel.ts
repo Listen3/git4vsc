@@ -13,6 +13,7 @@ import { configuredUpdateStrategy } from './update-strategy.js';
 import { checkoutWithSmartFallback, createAndCheckoutWithSmartFallback, runSmartCheckoutFallback, updateWithSmartFallback } from './smart-operations.js';
 import { LogCache } from './log-cache.js';
 import { worktreePath } from './worktree-path.js';
+import { checkedOutBranchRepository, refreshAfterLinkedWorktreeUpdate } from './worktree-update.js';
 
 type CommitAction = 'copyRevision' | 'copySubject' | 'createBranch' | 'createTag' | 'checkout' | 'compareLocal' | 'cherryPick' | 'revert' | 'reset';
 type CommitFileAction =
@@ -879,14 +880,14 @@ class LogSession implements vscode.Disposable {
 
   private async updateSelectedBranch(ref: GitRef): Promise<void> {
     if (ref.type !== 'local-branch') return;
-    if (await this.openExistingWorktree(ref.name)) return;
     const upstream = await this.repository.git.branchUpstream(this.repository.location, ref.name);
     if (!upstream) {
       void vscode.window.showWarningMessage(`${ref.name} has no tracked branch. Use “Set Tracked Branch” first.`);
       return;
     }
     const before = ref.hash;
-    if (ref.name === this.repository.snapshot.status?.branch) {
+    const worktreeRepository = await checkedOutBranchRepository(this.repository, ref.name);
+    if (ref.name === this.repository.snapshot.status?.branch || worktreeRepository) {
       const [remote, branch] = splitRemoteBranch(upstream);
       const configured = configuredUpdateStrategy();
       const strategy = configured === 'ask' ? await this.dialogs.show({ kind: 'list', title: 'Update Project', searchable: false, items: [
@@ -894,8 +895,18 @@ class LogSession implements vscode.Disposable {
         { id: 'rebase', label: 'Rebase the current branch on top of incoming changes' }
       ], acceptLabel: 'Update' }) : configured;
       if (strategy !== 'merge' && strategy !== 'rebase') return;
-      if (!await updateWithSmartFallback(this.repository, remote, branch, strategy === 'rebase')) return;
-      if (await this.resolveConflictsIfNeeded()) return;
+      const target = worktreeRepository ?? this.repository;
+      const completed = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: `Updating ${ref.name}…` }, () =>
+        updateWithSmartFallback(target, remote, branch, strategy === 'rebase'));
+      if (!completed) return;
+      if (worktreeRepository) await refreshAfterLinkedWorktreeUpdate(this.repository);
+      if (target.snapshot.status?.changes.some(change => change.conflict)) {
+        await vscode.commands.executeCommand('git4vsc.resolveConflicts', target);
+        return;
+      }
+      const after = target.snapshot.status?.head ?? null;
+      await notifyUpdateResult(this.repository, before, upstream, after);
+      return;
     }
     else await this.repository.updateBranch(ref.name, upstream);
     const after = this.repository.snapshot.status?.refs.find(candidate => candidate.type === 'local-branch' && candidate.name === ref.name)?.hash ?? null;

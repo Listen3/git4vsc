@@ -77,6 +77,7 @@ describe('branch context menus', () => {
     expect(enabled).not.toContain('checkout');
     expect(enabled).not.toContain('checkoutUpdate');
     expect(enabled).not.toContain('checkoutRebase');
+    expect(enabled).toContain('update');
     expect(menu.find(item => item.id === 'rename')?.disabled).toBe(true);
     expect(menu.find(item => item.id === 'delete')?.disabled).toBe(true);
   });

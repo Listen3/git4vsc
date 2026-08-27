@@ -7,6 +7,7 @@ import { notifyUpdateResult } from './operation-notifications.js';
 import { pickUpdateStrategy } from './update-strategy.js';
 import { checkoutWithSmartFallback, createAndCheckoutWithSmartFallback, runSmartCheckoutFallback, updateWithSmartFallback } from './smart-operations.js';
 import { gitResourceUri } from './git-uri.js';
+import { checkedOutBranchRepository, refreshAfterLinkedWorktreeUpdate } from './worktree-update.js';
 
 type MenuAction = 'update' | 'commit' | 'push' | 'log' | 'stash' | 'stashes' | 'worktrees' | 'newBranch' | 'checkoutRevision' | 'resolve';
 type RefAction = 'checkout' | 'checkoutUpdate' | 'openWorktree' | 'update' | 'push' | 'log';
@@ -189,8 +190,8 @@ export class BranchMenu {
     if (!current) actions.push(worktree
       ? { label: '$(window) Open Worktree', description: worktree.path, action: 'openWorktree' }
       : { label: '$(git-branch) Checkout', action: 'checkout' });
-    if (ref.type === 'local-branch' && upstream && !worktree) {
-      actions.push({ label: current ? '$(sync) Update from Tracked Branch' : '$(sync) Update Branch', description: upstream, action: current ? 'update' : 'checkoutUpdate' });
+    if (ref.type === 'local-branch' && upstream) {
+      actions.push({ label: current ? '$(sync) Update from Tracked Branch' : worktree ? '$(sync) Update Branch in Worktree' : '$(sync) Update Branch', description: upstream, action: current || worktree ? 'update' : 'checkoutUpdate' });
     }
     if (ref.type === 'local-branch') actions.push({ label: '$(cloud-upload) Push…', description: upstream ?? 'Select remote', action: 'push' });
     actions.push({ label: '$(git-commit) Open Commit Log', action: 'log' });
@@ -202,7 +203,22 @@ export class BranchMenu {
       return;
     }
     if (picked.action === 'checkout') return this.checkout(repository, ref);
-    if (picked.action === 'update') return this.update(repository);
+    if (picked.action === 'update') {
+      if (!worktree || current) return this.update(repository);
+      const target = await checkedOutBranchRepository(repository, ref.name);
+      if (!target) return;
+      const rebase = await pickUpdateStrategy();
+      if (rebase === undefined) return;
+      const before = target.snapshot.status?.head ?? ref.hash;
+      const [remote, branch] = splitRemoteBranch(upstream!);
+      const completed = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: `Updating ${ref.name}…` }, () =>
+        updateWithSmartFallback(target, remote, branch, rebase));
+      if (!completed) return;
+      await refreshAfterLinkedWorktreeUpdate(repository);
+      if (await this.resolveConflictsIfNeeded(target)) return;
+      await notifyUpdateResult(repository, before, upstream!, target.snapshot.status?.head ?? null);
+      return;
+    }
     if (picked.action === 'checkoutUpdate' && upstream) {
       const before = ref.hash;
       if (!await runSmartCheckoutFallback(repository, ref.name, () => repository.checkoutAndUpdate(ref.name, upstream), () => repository.smartCheckoutAndUpdate(ref.name, upstream))) return;
