@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { CommitSummary } from '@git4vsc/shared-types';
 import { GitCommandError, type CommandRunner } from '../src/command-runner.js';
 import { GitClient } from '../src/git-client.js';
@@ -60,7 +60,7 @@ describe('GitClient repository discovery compatibility', () => {
     await expect(client.discover('/repository/nested')).resolves.toEqual({
       root: '/repository',
       gitDir: '/repository/.git',
-      commonDir: '/repository/.git'
+      commonDir: resolve('/repository/nested', '../.git')
     });
     expect(run).toHaveBeenCalledWith(['-C', '/repository/nested', 'rev-parse', '--git-common-dir']);
   });

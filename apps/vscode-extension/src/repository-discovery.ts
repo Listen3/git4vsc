@@ -1,7 +1,8 @@
 import { readdir } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
-const ignoredDirectories = new Set(['.git', 'node_modules']);
+const ignoredDirectories = new Set(['.git', '.cache', '.next', '.pnpm', '.yarn', 'coverage', 'node_modules']);
+const scanBatchSize = 8;
 
 export async function findWorkspaceRepositoryRoots(workspaceRoot: string, maxDepth = 3): Promise<string[]> {
   const roots: string[] = [];
@@ -17,9 +18,10 @@ export async function findWorkspaceRepositoryRoots(workspaceRoot: string, maxDep
     if (entries.some(entry => entry.name === '.git' && (entry.isDirectory() || entry.isFile()))) roots.push(directory);
     if (depth >= maxDepth) return;
 
-    await Promise.all(entries
-      .filter(entry => entry.isDirectory() && !ignoredDirectories.has(entry.name))
-      .map(entry => visit(join(directory, entry.name), depth + 1)));
+    const directories = entries.filter(entry => entry.isDirectory() && !ignoredDirectories.has(entry.name));
+    for (let index = 0; index < directories.length; index += scanBatchSize) {
+      await Promise.all(directories.slice(index, index + scanBatchSize).map(entry => visit(join(directory, entry.name), depth + 1)));
+    }
   }
 
   await visit(resolve(workspaceRoot), 0);

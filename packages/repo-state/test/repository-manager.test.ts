@@ -4,10 +4,12 @@ import type { CommitPage, GitWorktree, RepositoryStatus } from '@git4vsc/shared-
 import { RepositoryManager } from '../src/repository-manager.js';
 
 class FakeGit {
+  discoverCalls = 0;
   statusCalls = 0;
   worktreeError: Error | null = null;
 
   async discover(): Promise<RepositoryLocation> {
+    this.discoverCalls += 1;
     return { root: '/repository', gitDir: '/repository/.git' };
   }
 
@@ -49,5 +51,15 @@ describe('RepositoryManager', () => {
     expect(repository.snapshot.status?.root).toBe('/repository');
     expect(repository.snapshot.worktrees).toEqual([]);
     expect(repository.snapshot.error).toBe("Worktree information unavailable: unknown switch `z'");
+  });
+
+  it('reuses an already opened repository without rediscovering its root', async () => {
+    const git = new FakeGit();
+    const manager = new RepositoryManager(git as unknown as GitClient);
+    const first = await manager.open('/repository');
+    const second = await manager.open('/repository');
+
+    expect(second).toBe(first);
+    expect(git.discoverCalls).toBe(1);
   });
 });

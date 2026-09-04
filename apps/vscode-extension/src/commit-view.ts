@@ -56,6 +56,7 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
   private readonly selections = new Map<string, Set<string>>();
   private readonly visibleChanges = new Map<string, Set<string>>();
   private readonly changelistStates = new Map<string, ChangelistState>();
+  private readonly changelistSaves = new Map<string, Promise<void>>();
   private readonly hunks = new Map<string, Map<string, GitDiffHunk[]>>();
   private readonly hunkSelections = new Map<string, Map<string, Set<string>>>();
   private readonly hunkVersions = new Map<string, number>();
@@ -65,6 +66,8 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
   private pushPreview: PushPreviewDialogRequest | null = null;
   private pushPreviewRemote: string | null = null;
   private snapshotRequest = 0;
+  private aiConfigured = false;
+  private aiSettingsRequest = 0;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -72,7 +75,8 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
     private readonly actions: CommitViewActions
   ) {
     this.activeRoot = context.workspaceState.get<string>('git4vsc.commit.activeRoot') ?? null;
-    this.aiSettingsSubscription = onDidChangeAiSettings(() => this.refresh());
+    this.aiSettingsSubscription = onDidChangeAiSettings(() => this.refreshAiConfiguration());
+    this.refreshAiConfiguration();
   }
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -81,10 +85,9 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
       enableScripts: true,
       localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview')]
     };
-    view.webview.html = this.html(view.webview);
     view.webview.onDidReceiveMessage(message => void this.handle(message as CommitViewMessage));
     view.onDidDispose(() => { this.view = null; });
-    this.refresh();
+    view.webview.html = this.html(view.webview);
   }
 
   refresh(): void {
@@ -103,7 +106,11 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
       const previousPaths = this.visibleChanges.get(repository.root);
       const currentPaths = new Set(status.changes.map(change => change.path));
       const appeared = previousPaths ? status.changes.filter(change => !previousPaths.has(change.path)) : [];
-      if (synchronizeChangelists(changelists, status.changes)) await this.persistChangelists(repository.root, changelists);
+      if (synchronizeChangelists(changelists, status.changes)) {
+        void this.persistChangelists(repository.root, changelists).catch(error => {
+          void vscode.window.showErrorMessage(`Unable to save changelists: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      }
       const selection = this.selections.get(repository.root);
       for (const change of appeared) {
         if (selection && !change.conflict && change.workingTree !== 'untracked' && changelists.assignments[change.path] === changelists.activeId) selection.add(change.path);
@@ -113,7 +120,6 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
     void vscode.commands.executeCommand('setContext', 'git4vsc.hasIncoming', Boolean(status?.upstream && status.behind));
     void vscode.commands.executeCommand('setContext', 'git4vsc.hasOutgoing', Boolean(status?.upstream && status.ahead));
     void vscode.commands.executeCommand('setContext', 'git4vsc.busy', operationActivity(repository?.snapshot.operation ?? null) !== null);
-    const aiConfigured = await aiIsConfigured(this.context);
     if (!this.view || request !== this.snapshotRequest) return;
     if (repository && !this.messages.has(repository.root)) {
       this.messages.set(repository.root, this.context.workspaceState.get<string>(this.messageKey(repository.root)) ?? '');
@@ -156,7 +162,7 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
         operation,
         activity: showOperationProgress ? (operation ? operationActivity(operation) : loading ? 'Refreshing…' : null) : null,
         error: repository?.snapshot.error ?? null,
-        aiConfigured,
+        aiConfigured: this.aiConfigured,
         aiGenerating: repository ? this.aiRequests.has(repository.root) : false,
         pushPreview: repository?.root === this.activeRoot ? this.pushPreview : null
       }
@@ -214,6 +220,16 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
     for (const request of this.aiRequests.values()) request.abort();
     this.aiRequests.clear();
     this.view = null;
+  }
+
+  private refreshAiConfiguration(): void {
+    const request = ++this.aiSettingsRequest;
+    void aiIsConfigured(this.context).then(configured => {
+      if (request !== this.aiSettingsRequest) return;
+      const changed = configured !== this.aiConfigured;
+      this.aiConfigured = configured;
+      if (changed) this.refresh();
+    });
   }
 
   private async handle(message: CommitViewMessage): Promise<void> {
@@ -571,8 +587,21 @@ export class CommitView implements vscode.WebviewViewProvider, vscode.Disposable
     return state;
   }
 
-  private persistChangelists(root: string, state: ChangelistState): Thenable<void> {
-    return this.context.workspaceState.update(this.changelistKey(root), state);
+  private persistChangelists(root: string, state: ChangelistState): Promise<void> {
+    const snapshot: ChangelistState = {
+      version: 1,
+      activeId: state.activeId,
+      lists: state.lists.map(list => ({ ...list })),
+      assignments: { ...state.assignments }
+    };
+    const save = (this.changelistSaves.get(root) ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(() => this.context.workspaceState.update(this.changelistKey(root), snapshot));
+    this.changelistSaves.set(root, save);
+    void save.finally(() => {
+      if (this.changelistSaves.get(root) === save) this.changelistSaves.delete(root);
+    }).catch(() => undefined);
+    return save;
   }
 
   private async openChange(repository: RepositoryController, filePath: string, side: 'staged' | 'working'): Promise<void> {

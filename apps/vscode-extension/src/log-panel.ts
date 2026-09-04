@@ -111,10 +111,11 @@ export class LogPanel implements vscode.WebviewViewProvider, vscode.Disposable {
 
   prewarm(repository: RepositoryController): void {
     this.prewarmTail = this.prewarmTail.then(async () => {
-      await delay(750);
+      await delay(2_000);
+      if (this.session && this.repository === repository) return;
       const head = repository.snapshot.status?.head;
       if (!head || repository.snapshot.operation || await this.cache.read(repository.root, head)) return;
-      const page = await repository.git.log(repository.location, 0, 200, { ref: head });
+      const page = await repository.git.log(repository.location, 0, 100, { ref: head });
       if (repository.snapshot.status?.head === head) await this.cache.write(repository.root, head, page);
     }).catch(() => undefined);
   }
@@ -174,6 +175,7 @@ class LogSession implements vscode.Disposable {
   private logRequest = 0;
   private commitNavigation = 0;
   private detailsRequest = 0;
+  private prefetchTimer: NodeJS.Timeout | undefined;
   private preferredSelection: string | null = null;
   private logIdentity: string;
   private readonly detailsCache = new Map<string, CommitDetails>();
@@ -239,10 +241,10 @@ class LogSession implements vscode.Disposable {
       await this.loadLog(true);
       return;
     }
-    this.commits = cached.commits;
-    this.users = logUsers(cached.commits, []);
-    this.hasMore = cached.hasMore;
-    this.selectedHash = selectionAfterLogReload(cached.commits, this.selectedHash);
+    this.commits = cached.commits.slice(0, 200);
+    this.users = logUsers(this.commits, []);
+    this.hasMore = cached.hasMore || cached.commits.length > this.commits.length;
+    this.selectedHash = selectionAfterLogReload(this.commits, this.selectedHash);
     this.postSnapshot();
     const validation = this.loadLog(true, true);
     if (this.selectedHash) void this.loadDetails(this.selectedHash);
@@ -300,6 +302,7 @@ class LogSession implements vscode.Disposable {
   dispose(): void {
     this.logRequest += 1;
     this.detailsRequest += 1;
+    clearTimeout(this.prefetchTimer);
     this.unsubscribe();
     this.messageSubscription.dispose();
     this.dialogs.cancel();
@@ -399,7 +402,7 @@ class LogSession implements vscode.Disposable {
   private async loadLog(reset: boolean, quiet = false): Promise<void> {
     if (!reset && (this.logLoading || !this.hasMore)) return;
     const request = ++this.logRequest;
-    const limit = reset ? Math.max(200, this.commits.length) : 200;
+    const limit = reset ? Math.max(100, this.commits.length) : 200;
     this.logLoading = true;
     this.quietLogLoading = quiet;
     this.localError = null;
@@ -421,7 +424,11 @@ class LogSession implements vscode.Disposable {
       this.logLoading = false;
       this.quietLogLoading = false;
       if (cacheHead && this.repository.snapshot.status?.head === cacheHead) {
-        void this.cache.write(this.repository.root, cacheHead, { commits: next, offset: 0, hasMore: page.hasMore }).catch(() => undefined);
+        void this.cache.write(this.repository.root, cacheHead, {
+          commits: next.slice(0, 200),
+          offset: 0,
+          hasMore: page.hasMore || next.length > 200
+        }).catch(() => undefined);
       }
       if (!reset) {
         this.postSnapshot();
@@ -1084,10 +1091,18 @@ class LogSession implements vscode.Disposable {
   }
 
   private prefetchAround(hash: string): void {
+    clearTimeout(this.prefetchTimer);
     const index = this.commits.findIndex(commit => commit.hash === hash);
-    for (const commit of this.commits.slice(Math.max(0, index - 1), index + 3)) {
-      if (commit.hash === hash || this.detailsCache.has(commit.hash) || this.detailsLoads.has(commit.hash)) continue;
-      void this.requestDetails(commit.hash, commit.parents).catch(() => undefined);
+    if (index < 0) return;
+    const commits = [this.commits[index + 1], this.commits[index - 1]].filter((commit): commit is CommitSummary => Boolean(commit));
+    this.prefetchTimer = setTimeout(() => void this.prefetchDetails(hash, commits), 700);
+  }
+
+  private async prefetchDetails(selectedHash: string, commits: readonly CommitSummary[]): Promise<void> {
+    for (const commit of commits) {
+      if (this.selectedHash !== selectedHash) return;
+      if (this.detailsCache.has(commit.hash) || this.detailsLoads.has(commit.hash)) continue;
+      await this.requestDetails(commit.hash, commit.parents).catch(() => undefined);
     }
   }
 

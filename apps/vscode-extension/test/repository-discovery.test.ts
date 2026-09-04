@@ -32,6 +32,16 @@ describe('workspace repository discovery', () => {
     expect(await findWorkspaceRepositoryRoots(root)).toEqual([worktree]);
   });
 
+  it('skips dependency caches without hiding repositories in ordinary build directories', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'git4vsc-discovery-'));
+    temporaryDirectories.push(root);
+    await Promise.all(['node_modules', '.next', '.cache'].map(directory => mkdir(join(root, directory, 'ignored', '.git'), { recursive: true })));
+    const repositories = ['vendor', 'dist', 'build'].map(directory => join(root, directory));
+    await Promise.all(repositories.map(repository => mkdir(join(repository, '.git'), { recursive: true })));
+
+    expect(await findWorkspaceRepositoryRoots(root)).toEqual(repositories.sort((left, right) => left.localeCompare(right)));
+  });
+
   it('uses the deepest repository containing an editor file', () => {
     const root = join('D:', 'workspace');
     const nested = join(root, 'packages', 'app');

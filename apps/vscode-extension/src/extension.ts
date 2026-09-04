@@ -79,7 +79,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider('git4vsc', new GitContentProvider(() => manager.all)));
 
   const registeredRoots = new Set<string>();
+  let viewSyncTimer: NodeJS.Timeout | undefined;
   const syncViews = () => {
+    clearTimeout(viewSyncTimer);
+    viewSyncTimer = undefined;
     commitView.refresh();
     conflictTree.refresh();
     worktreeManager.refresh();
@@ -88,17 +91,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     void vscode.commands.executeCommand('setContext', 'git4vsc.hasConflicts', manager.all.some(candidate => candidate.snapshot.status?.changes.some(change => change.conflict)));
     void vscode.commands.executeCommand('setContext', 'git4vsc.operationInProgress', manager.all.some(candidate => candidate.snapshot.status?.phase !== 'normal' && candidate.snapshot.status?.phase !== 'detached'));
   };
+  const scheduleViewSync = () => {
+    viewSyncTimer ??= setTimeout(syncViews, 25);
+  };
+  context.subscriptions.push({ dispose: () => clearTimeout(viewSyncTimer) });
   const registerRepository = (repository: RepositoryController) => {
     if (registeredRoots.has(repository.root)) return;
     registeredRoots.add(repository.root);
     const adapter = new ScmRepositoryAdapter(repository);
     adapters.push(adapter);
     context.subscriptions.push(adapter);
-    watchRepository(context, repository, syncViews);
-    const unsubscribe = repository.onDidChange(syncViews);
+    watchRepository(context, repository, scheduleViewSync);
+    const unsubscribe = repository.onDidChange(scheduleViewSync);
     context.subscriptions.push({ dispose: unsubscribe });
-    syncViews();
-    logPanel.prewarm(repository);
+    scheduleViewSync();
   };
   const openWorkspaceRepositories = async (folder: vscode.WorkspaceFolder) => {
     try {
@@ -142,8 +148,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }));
   syncViews();
   logPanel.initialize(initialRepository);
+  if (initialRepository) logPanel.prewarm(initialRepository);
   worktreeManager.select(initialRepository);
-  for (const folder of folders) void openWorkspaceRepositories(folder);
+  const discoveryTimer = setTimeout(() => {
+    for (const folder of folders) void openWorkspaceRepositories(folder);
+  }, 750);
+  context.subscriptions.push({ dispose: () => clearTimeout(discoveryTimer) });
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
     if (!event.affectsConfiguration('git4vsc')) return;
     commitView.refresh();

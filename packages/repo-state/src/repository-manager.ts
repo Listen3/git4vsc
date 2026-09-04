@@ -1,5 +1,6 @@
 import { GitClient } from '@git4vsc/git-core';
 import { RepositoryController } from './repository-controller.js';
+import { resolve } from 'node:path';
 
 export class RepositoryManager {
   private readonly repositories = new Map<string, RepositoryController>();
@@ -12,26 +13,34 @@ export class RepositoryManager {
   }
 
   get(root: string): RepositoryController | undefined {
-    return this.repositories.get(root);
+    return this.repositories.get(repositoryKey(root));
   }
 
   async open(path: string): Promise<RepositoryController> {
+    const known = this.get(path);
+    if (known) return known;
     const location = await this.git.discover(path);
-    const repository = this.repositories.get(location.root);
+    const key = repositoryKey(location.root);
+    const repository = this.repositories.get(key);
     if (repository) return repository;
-    const active = this.opening.get(location.root);
+    const active = this.opening.get(key);
     if (active) return active;
     const opening = (async () => {
       const repository = new RepositoryController(this.git, location);
       await repository.refresh();
-      this.repositories.set(location.root, repository);
+      this.repositories.set(key, repository);
       return repository;
     })();
-    this.opening.set(location.root, opening);
+    this.opening.set(key, opening);
     try {
       return await opening;
     } finally {
-      this.opening.delete(location.root);
+      this.opening.delete(key);
     }
   }
+}
+
+function repositoryKey(path: string): string {
+  const key = resolve(path);
+  return process.platform === 'win32' ? key.toLowerCase() : key;
 }

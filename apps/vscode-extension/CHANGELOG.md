@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.3 - 2026-09-04
+
+- Prioritized the active repository at startup and discovered additional workspace repositories asynchronously with bounded directory scanning.
+- Reduced Commit and Commit Log startup work by coalescing view refreshes, caching AI availability, limiting the persisted Log page, and deferring sequential commit-detail prefetching.
+- Reused opened repositories without repeated discovery and kept nested repositories inside ordinary build directories discoverable.
+- Serialized changelist persistence so background synchronization cannot overwrite newer user changes.
+
 ## 1.0.2 - 2026-08-26
 
 - Restored repository discovery on older Git installations by falling back when newer `rev-parse` and Worktree output options are unavailable.
